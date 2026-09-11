@@ -238,7 +238,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final wide = _isWideArtwork == true;
-          final wideHeight = constraints.maxWidth * 9 / 16;
+          final wideHeight = constraints.maxWidth * 3 / 4;
           return Stack(
             fit: StackFit.expand,
             children: [
@@ -252,8 +252,10 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                     height: wideHeight,
                     child: Image(
                       image: provider,
-                      fit: BoxFit.contain,
-                      alignment: Alignment.topCenter,
+                      // Wide artwork owns the full 16:9 width. Cover the
+                      // entire region instead of shrinking/letterboxing it.
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
                       filterQuality: FilterQuality.high,
                       frameBuilder: imageFadeIn,
                       gaplessPlayback: true,
@@ -306,6 +308,65 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                       ),
                     ),
                   ),
+                ),
+              ),
+
+              // Hero content stays anchored over the lower fade.
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 40,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: widget.onInfo,
+                      child: _logoUrl != null
+                          ? ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 96),
+                              child: CachedNetworkImage(
+                                imageUrl: _logoUrl!,
+                                fit: BoxFit.contain,
+                                fadeInDuration: const Duration(milliseconds: 250),
+                                errorWidget: (_, _, _) => _titleText(),
+                              ),
+                            )
+                          : _titleText(),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(height: 18, child: Center(child: _metaLine())),
+                    const SizedBox(height: 18),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _wrap(_playButton(), widget.onPlay, autofocus: true),
+                        const SizedBox(width: 10),
+                        _wrap(
+                          _circleBtn(
+                            widget.inList ? Icons.check_rounded : Icons.add_rounded,
+                            widget.onToggleList,
+                            active: widget.inList,
+                            semanticLabel: widget.inList
+                                ? 'Remove from My List'
+                                : 'Add to My List',
+                          ),
+                          widget.onToggleList,
+                        ),
+                        const SizedBox(width: 10),
+                        _wrap(
+                          _circleBtn(
+                            Icons.info_outline_rounded,
+                            widget.onInfo,
+                            semanticLabel: 'Details',
+                          ),
+                          widget.onInfo,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
