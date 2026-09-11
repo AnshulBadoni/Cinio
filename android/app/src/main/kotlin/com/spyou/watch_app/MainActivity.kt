@@ -92,7 +92,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
 
     /// The enabled alias, or "classic" when nothing has been set. A component
     /// left at COMPONENT_ENABLED_STATE_DEFAULT takes the manifest's
-    /// android:enabled, which is true only for the Classic alias — so that is
+    /// android:enabled, which is true for the Cinio/default alias — so that is
     /// what an untouched install is really showing. Must match
     /// `AppIconService.defaultId` and the manifest.
     private fun currentIconAlias(): String {
@@ -101,7 +101,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             val state = pm.getComponentEnabledSetting(ComponentName(this, cls))
             if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) return id
         }
-        return "classic"
+        return "default"
     }
 
     /// Enables [id]'s alias and disables the others.

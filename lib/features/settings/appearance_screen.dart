@@ -244,7 +244,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
           if (_icons.supported) ...[
             const SettingsSectionLabel('App icon'),
             _blurb(
-              'The icon on your home screen. Zangetsu closes when you change '
+              'The icon on your home screen. Cinio closes when you change '
               'it — Android has to swap the launcher entry.',
             ),
             const SizedBox(height: 10),
@@ -403,8 +403,8 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
         backgroundColor: AppColors.surface,
         title: Text('Use the ${o.label} icon?', style: AppText.title),
         content: const Text(
-          'Zangetsu will close so Android can apply the new icon. Open it '
-          'again from your home screen afterwards.\n\nIf you have Zangetsu in '
+          'Cinio will close so Android can apply the new icon. Open it '
+          'again from your home screen afterwards.\n\nIf you have Cinio in '
           'a folder or dock, you may need to add it again.',
           style: AppText.body,
         ),

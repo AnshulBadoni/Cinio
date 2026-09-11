@@ -40,7 +40,7 @@ class AppIconService {
   /// and with `MainActivity.currentIconAlias()`'s fallback — all three have to
   /// name the same icon or the launcher shows one thing while Settings claims
   /// another.
-  static const String defaultId = 'classic';
+  static const String defaultId = 'default';
 
   /// [defaultId] first — the picker leads with what a fresh install is
   /// actually wearing.
@@ -52,7 +52,7 @@ class AppIconService {
     ),
     AppIconOption(
       id: 'default',
-      label: 'Zangetsu',
+      label: 'Cinio',
       asset: 'assets/icon/preview_default.png',
     ),
   ];

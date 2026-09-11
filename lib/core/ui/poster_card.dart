@@ -174,10 +174,10 @@ class _PosterCardState extends State<PosterCard> {
                             begin: Alignment.bottomCenter,
                             end: Alignment.topCenter,
                             colors: [
-                              Color(0xA00B0B0F),
+                              Color(0x700B0B0F),
                               Color(0x000B0B0F),
                             ],
-                            stops: [0.0, 0.55],
+                            stops: [0.0, 0.35],
                           ),
                         ),
                       ),
