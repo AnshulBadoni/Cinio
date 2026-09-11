@@ -255,30 +255,27 @@ class _DetailViewState extends State<_DetailView>
   late WatchStatus? _status = _listStatus.statusOf(widget.item);
   late bool _inMyList = _status != null || _myList.contains(widget.item);
 
-  // ── Trailer (metadata-API lookup) ─────────────────────────────────────────
-  // Resolved lazily once per detail load and cached so the hero player doesn't
-  // refetch on every rebuild. Yields a YouTube id or null; once it resolves the
-  // hero swaps its static cover backdrop for an autoplaying, muted, looping
-  // player (Netflix-style).
-  Future<String?>? _trailerFuture;
-  String? _trailerId;
+  // ── Trailer resolution ────────────────────────────────────────────────────
+  // Provider-supplied trailer streams are preferred. If the provider has no
+  // usable trailer URL, TrailerService falls back to TMDB/YouTube for movies
+  // and TV (or AniList for anime).
+  Future<TrailerSource?>? _trailerFuture;
+  TrailerSource? _trailerSource;
 
-  /// Kick off (once) the YouTube-id lookup for the resolved detail. When it
-  /// completes with a non-null id, store it in [_trailerId] and rebuild so the
-  /// hero can mount the trailer player.
   void _resolveTrailer(MediaDetail detail) {
     if (_trailerFuture != null) return;
-    _trailerFuture =
-        sl<TrailerService>().youtubeId(
+    _trailerFuture = sl<TrailerService>()
+        .resolve(
           title: detail.title,
           englishTitle: detail.englishTitle,
           type: detail.type,
           year: detail.year,
-        )..then((id) {
-          if (!mounted) return;
-          if (id != null && id.isNotEmpty && id != _trailerId) {
-            setState(() => _trailerId = id);
-          }
+          providerTrailers: detail.providerTrailers,
+        )
+        .then((source) {
+          if (!mounted) return source;
+          if (source != null) setState(() => _trailerSource = source);
+          return source;
         });
   }
 
@@ -1009,11 +1006,11 @@ class _DetailViewState extends State<_DetailView>
     }
   }
 
-  /// Push the in-app trailer player for a resolved YouTube id.
-  void _openTrailer(String videoId) {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => TrailerScreen(videoId: videoId)));
+  /// Push the in-app trailer player for the resolved provider/TMDB source.
+  void _openTrailer(TrailerSource source) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => TrailerScreen(source: source)),
+    );
   }
 
   /// Netflix-style download label for the FIRST episode of the current season,
@@ -1403,8 +1400,8 @@ class _DetailViewState extends State<_DetailView>
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
     final hasCover = coverUrl.isNotEmpty;
 
-    // Kick off the trailer lookup (once). When it resolves, _trailerId is set
-    // and the hero swaps its static backdrop for the autoplaying trailer.
+    // Kick off the trailer lookup (once). Provider trailers are preferred;
+    // TMDB/AniList is used only when the provider has no trailer.
     _resolveTrailer(detail);
 
     // Season data. PRESERVED.
@@ -1509,12 +1506,12 @@ class _DetailViewState extends State<_DetailView>
                 coverUrl: coverUrl,
                 coverHeaders: coverHeaders,
                 hasCover: hasCover,
-                trailerId: _trailerId,
+                trailerSource: _trailerSource,
                 // Pause the trailer once the hero has scrolled past (reuses
                 // the same signal that fades in the app-bar title).
                 collapsed: _showAppBarTitle,
-                onTapFullscreen: _trailerId != null
-                    ? () => _openTrailer(_trailerId!)
+                onTapFullscreen: _trailerSource != null
+                    ? () => _openTrailer(_trailerSource!)
                     : null,
               ),
             ),

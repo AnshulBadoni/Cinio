@@ -16,8 +16,8 @@ import '../../core/ui/brand_loader.dart';
 /// button. The id is resolved upstream by [TrailerService] (AniList for anime,
 /// TMDB for movies/TV).
 class TrailerScreen extends StatefulWidget {
-  const TrailerScreen({super.key, required this.videoId});
-  final String videoId;
+  const TrailerScreen({super.key, required this.source});
+  final TrailerSource source;
 
   @override
   State<TrailerScreen> createState() => _TrailerScreenState();
@@ -38,15 +38,31 @@ class _TrailerScreenState extends State<TrailerScreen> {
 
   Future<void> _resolveAndOpen() async {
     final svc = sl<TrailerService>();
+    if (widget.source.isDirect) {
+      try {
+        await _player.open(
+          Media(
+            widget.source.url!,
+            httpHeaders: widget.source.headers.isEmpty ? null : widget.source.headers,
+          ),
+        );
+        if (!mounted) return;
+        setState(() => _resolved = true);
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _resolved = false);
+      }
+      return;
+    }
     // HD path (opt-in): 1080p video + a separate audio stream attached as an
     // external track. Falls through to the light muxed stream if HD extraction
     // or playback setup fails, so the trailer still plays.
     if (sl<PlaybackPrefs>().trailerHd) {
-      final hd = await svc.streamUrlHd(widget.videoId);
+      final hd = await svc.streamUrlHd(widget.source.youtubeId!);
       if (!mounted) return;
       if (hd != null && await _openHd(hd)) return;
     }
-    final url = await svc.streamUrl(widget.videoId, low: false);
+    final url = await svc.streamUrl(widget.source.youtubeId!, low: false);
     if (!mounted) return;
     if (url == null || url.isEmpty) {
       setState(() => _resolved = false);

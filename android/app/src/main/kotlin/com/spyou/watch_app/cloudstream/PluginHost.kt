@@ -947,6 +947,7 @@ class PluginHost(private val context: Context) {
         val recommendations = runCatching {
             this.recommendations?.map { it.toMap(apiName) }
         }.getOrNull() ?: emptyList<Map<String, Any?>>()
+        val trailers = extractTrailers(this)
         return mapOf(
             "name" to name,
             "url" to url,
@@ -961,7 +962,48 @@ class PluginHost(private val context: Context) {
             "syncData" to sync,
             "actors" to actors,
             "recommendations" to recommendations,
+            "trailers" to trailers,
         )
+    }
+
+    /**
+     * Provider trailer compatibility bridge. Different CloudStream/provider
+     * generations expose trailer data differently, so keep this reflective and
+     * deliberately permissive: trailerUrl, trailer, or trailers can be a
+     * string, an object, or a collection of objects containing extractorUrl,
+     * url, referer, headers, and raw.
+     */
+    private fun extractTrailers(response: LoadResponse): List<Map<String, Any?>> {
+        val values = sequenceOf("getTrailers", "getTrailerUrl", "getTrailer")
+            .mapNotNull { name ->
+                runCatching { response.javaClass.methods.firstOrNull { it.name == name && it.parameterCount == 0 }?.invoke(response) }.getOrNull()
+            }
+            .firstOrNull { it != null } ?: return emptyList()
+
+        val items = when (values) {
+            is Iterable<*> -> values.toList()
+            is Array<*> -> values.toList()
+            else -> listOf(values)
+        }
+        return items.mapNotNull { trailerToMap(it) }
+    }
+
+    private fun trailerToMap(value: Any?): Map<String, Any?>? {
+        if (value == null) return null
+        if (value is String) return value.takeIf { it.isNotBlank() }?.let { mapOf("extractorUrl" to it) }
+        fun read(name: String): Any? = runCatching {
+            val getter = value.javaClass.methods.firstOrNull { it.name.equals("get$name", true) && it.parameterCount == 0 }
+            getter?.invoke(value)
+        }.getOrNull()
+        val url = listOf("extractorUrl", "url", "videoUrl", "trailerUrl")
+            .asSequence().mapNotNull { read(it)?.toString()?.takeIf(String::isNotBlank) }.firstOrNull()
+            ?: return null
+        val headers = (read("headers") as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value.toString() }
+            ?: emptyMap()
+        val referer = read("referer")?.toString()?.takeIf { it.isNotBlank() }
+        val merged = headers.toMutableMap()
+        if (referer != null && merged.keys.none { it.equals("Referer", true) }) merged["Referer"] = referer
+        return mapOf("extractorUrl" to url, "headers" to merged, "raw" to (read("raw") ?: false))
     }
 
     private fun Episode.toMap(): Map<String, Any?> = mapOf(

@@ -2,6 +2,25 @@ import 'package:dio/dio.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../models/provider_info.dart';
+import '../models/media_detail.dart';
+
+class TrailerSource {
+  final String? youtubeId;
+  final String? url;
+  final Map<String, String> headers;
+
+  const TrailerSource.youtube(String id)
+      : youtubeId = id,
+        url = null,
+        headers = const {};
+
+  const TrailerSource.direct(String url, {Map<String, String> headers = const {}})
+      : youtubeId = null,
+        url = url,
+        headers = headers;
+
+  bool get isDirect => url != null && url!.isNotEmpty;
+}
 
 /// Resolves a YouTube trailer id for a title from a metadata provider.
 ///
@@ -24,6 +43,52 @@ class TrailerService {
   static const String _anilistQuery =
       'query(\$search:String){ Media(search:\$search, type:ANIME){ '
       'id title{romaji english} trailer{ id site } } }';
+
+  /// Resolves the preferred trailer source. Provider-supplied trailers always
+  /// win when they contain a non-empty URL; metadata fallback is used only when
+  /// the provider did not supply one.
+  Future<TrailerSource?> resolve({
+    required String title,
+    String? englishTitle,
+    required ProviderType type,
+    String? year,
+    List<ProviderTrailer> providerTrailers = const [],
+  }) async {
+    for (final trailer in providerTrailers) {
+      final url = trailer.url.trim();
+      if (url.isEmpty) continue;
+      final providerYoutubeId = _youtubeIdFromUrl(url);
+      if (providerYoutubeId != null) {
+        return TrailerSource.youtube(providerYoutubeId);
+      }
+      return TrailerSource.direct(url, headers: trailer.headers);
+    }
+    final id = await youtubeId(
+      title: title,
+      englishTitle: englishTitle,
+      type: type,
+      year: year,
+    );
+    return id == null || id.isEmpty ? null : TrailerSource.youtube(id);
+  }
+
+
+  static String? _youtubeIdFromUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return null;
+    final host = uri.host.toLowerCase();
+    if (host == 'youtu.be' || host.endsWith('.youtube.com') || host == 'youtube.com') {
+      if (host == 'youtu.be') {
+        final id = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
+        return id?.isNotEmpty == true ? id : null;
+      }
+      final v = uri.queryParameters['v'];
+      if (v != null && v.isNotEmpty) return v;
+      final match = RegExp(r'^/(?:embed|shorts|live)/([^/?]+)').firstMatch(uri.path);
+      return match?.group(1);
+    }
+    return null;
+  }
 
   /// Returns a YouTube video id for the title, or null. Cheap + best-effort.
   Future<String?> youtubeId({

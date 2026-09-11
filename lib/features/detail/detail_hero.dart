@@ -12,7 +12,7 @@ class _Hero extends StatelessWidget {
     required this.coverUrl,
     required this.coverHeaders,
     required this.hasCover,
-    this.trailerId,
+    this.trailerSource,
     this.collapsed = false,
     this.onTapFullscreen,
   });
@@ -21,8 +21,8 @@ class _Hero extends StatelessWidget {
   final Map<String, String>? coverHeaders;
   final bool hasCover;
 
-  /// Resolved YouTube id, or null while still loading / when none exists.
-  final String? trailerId;
+  /// Resolved trailer source, or null while still loading / when none exists.
+  final TrailerSource? trailerSource;
 
   /// True once the hero has scrolled past — the trailer pauses while collapsed.
   final bool collapsed;
@@ -68,16 +68,16 @@ class _Hero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final id = trailerId;
+    final source = trailerSource;
     return Stack(
       fit: StackFit.expand,
       children: [
         // Backdrop: autoplaying trailer once an id resolves, else the cover
         // image. The cover image always sits underneath as placeholder/fallback
         // so there's never a blank/black flash.
-        (id != null && id.isNotEmpty)
+        (source != null)
             ? _HeroTrailer(
-                videoId: id,
+                source: source,
                 collapsed: collapsed,
                 onTapFullscreen: onTapFullscreen,
                 placeholder: _coverBackdrop(),
@@ -101,7 +101,7 @@ class _Hero extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // _HeroTrailer — the autoplaying, muted, looping trailer that becomes the hero
-// backdrop once a YouTube id resolves (Netflix-style). The trailer is a DIRECT
+// backdrop once a trailer source resolves (Netflix-style). The trailer is a DIRECT
 // muxed stream (extracted by youtube_explode_dart) played natively via
 // media_kit — NO iframe, NO YouTube chrome (no related-videos / endscreen /
 // branding). The static cover image stays visible underneath until the first
@@ -117,13 +117,13 @@ class _Hero extends StatelessWidget {
 
 class _HeroTrailer extends StatefulWidget {
   const _HeroTrailer({
-    required this.videoId,
+    required this.source,
     required this.collapsed,
     required this.placeholder,
     this.onTapFullscreen,
   });
 
-  final String videoId;
+  final TrailerSource source;
   final bool collapsed;
   final Widget placeholder;
   final VoidCallback? onTapFullscreen;
@@ -193,10 +193,18 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
   /// extraction fails. On any failure we flip [_errored] and the cover stays.
   Future<void> _resolveAndOpen() async {
     final svc = sl<TrailerService>();
-    final hdUrl = sl<PlaybackPrefs>().trailerHd
-        ? (await svc.streamUrlHd(widget.videoId))?.video
-        : null;
-    final url = hdUrl ?? await svc.streamUrl(widget.videoId, low: true);
+    final source = widget.source;
+    final String? hdUrl;
+    final String? url;
+    if (source.isDirect) {
+      hdUrl = null;
+      url = source.url;
+    } else {
+      hdUrl = sl<PlaybackPrefs>().trailerHd
+          ? (await svc.streamUrlHd(source.youtubeId!))?.video
+          : null;
+      url = hdUrl ?? await svc.streamUrl(source.youtubeId!, low: true);
+    }
     if (!mounted) return;
     if (url == null || url.isEmpty) {
       setState(() => _errored = true);
@@ -237,7 +245,13 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
       // paused, then explicitly play() the moment the media is loaded and the
       // widget is still mounted, so the trailer starts on its own with no touch.
       final autostart = !_paused && !widget.collapsed && !_covered;
-      await player.open(Media(url), play: autostart);
+      await player.open(
+        Media(
+          url,
+          httpHeaders: source.headers.isEmpty ? null : source.headers,
+        ),
+        play: autostart,
+      );
       if (!mounted) return;
       // Autostart only when the hero is on-screen AND the user hasn't paused
       // (via the button or the "Autoplay trailer" setting being off). If it's
@@ -266,11 +280,20 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
           .timeout(const Duration(seconds: 7));
     } catch (_) {
       if (!mounted || player != _player) return;
-      final low = await sl<TrailerService>().streamUrl(widget.videoId, low: true);
+      final source = widget.source;
+      final low = source.isDirect
+          ? source.url
+          : await sl<TrailerService>().streamUrl(source.youtubeId!, low: true);
       if (!mounted || player != _player || low == null || low.isEmpty) return;
       try {
         final autostart = !_paused && !widget.collapsed && !_covered;
-        await player.open(Media(low), play: autostart);
+        await player.open(
+          Media(
+            low,
+            httpHeaders: source.headers.isEmpty ? null : source.headers,
+          ),
+          play: autostart,
+        );
         if (autostart) await player.play();
       } catch (_) {/* leave the cover as the backdrop */}
     }
@@ -280,7 +303,9 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
   void didUpdateWidget(covariant _HeroTrailer old) {
     super.didUpdateWidget(old);
     // Re-resolve from scratch if the id changes (different title).
-    if (old.videoId != widget.videoId) {
+    if (old.source.youtubeId != widget.source.youtubeId ||
+        old.source.url != widget.source.url ||
+        old.source.headers != widget.source.headers) {
       _disposePlayer();
       _ready = false;
       _errored = false;
