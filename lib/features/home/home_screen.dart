@@ -646,6 +646,14 @@ class _HomeViewState extends State<_HomeView>
         t.startsWith('$label ') || t.startsWith('$label:') || t.startsWith('$label -'));
   }
 
+  bool _isStudioOrChannelSection(String title) {
+    final t = title.trim().toLowerCase();
+    const labels = {'studio', 'studios', 'channel', 'channels'};
+    if (labels.contains(t)) return true;
+    return labels.any((label) =>
+        t.startsWith('$label ') || t.startsWith('$label:') || t.startsWith('$label -'));
+  }
+
   /// Builds one provider-defined Home row. People/cast rows use PeopleCard;
   /// normal rows honor the user's Poster/Landscape/Adaptive setting.
   Widget _sectionRow(HomeSection section) {
@@ -660,6 +668,10 @@ class _HomeViewState extends State<_HomeView>
           onLongPress: _showInfo,
         ),
       );
+    }
+
+    if (_isStudioOrChannelSection(section.title)) {
+      return _animated(_studioRow(section));
     }
 
     final style = sl<PlaybackPrefs>().homeCardStyle;
@@ -677,6 +689,36 @@ class _HomeViewState extends State<_HomeView>
         onTap: _openDetail,
         onLongPress: _showInfo,
       ),
+    );
+  }
+
+  Widget _studioRow(HomeSection section) {
+    // Studio/channel artwork is commonly square. Keep the image area square
+    // so logos and complete branding are not cropped into poster cards.
+    const width = 160.0;
+    const rowHeight = 188.0; // square art + title + spacing
+    return ContentRow(
+      title: section.title,
+      itemWidth: width,
+      itemHeight: rowHeight,
+      itemCount: section.items.length,
+      onSeeAll: () => _openSeeAll(section),
+      itemBuilder: (c, i) {
+        final item = section.items[i];
+        return SizedBox(
+          height: rowHeight,
+          child: PosterCard(
+            title: item.title,
+            imageUrl: item.cover,
+            headers: item.coverHeaders,
+            cellWidth: width,
+            qualityBadge: item.quality,
+            dubBadge: item.dubBadge,
+            onTap: () => _openDetail(item),
+            onLongPress: () => _showInfo(item),
+          ),
+        );
+      },
     );
   }
 
