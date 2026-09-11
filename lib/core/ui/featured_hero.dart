@@ -238,7 +238,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final wide = _isWideArtwork == true;
-          final wideHeight = constraints.maxWidth * 3 / 4;
+          final wideHeight = constraints.maxWidth;
           return Stack(
             fit: StackFit.expand,
             children: [
@@ -252,8 +252,9 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                     height: wideHeight,
                     child: Image(
                       image: provider,
-                      // Wide artwork owns the full 16:9 width. Cover the
-                      // entire region instead of shrinking/letterboxing it.
+                      // Wide artwork owns a full 1:1 square region at the top of the
+                      // hero. It fills the available width instead of
+                      // shrinking/letterboxing the artwork.
                       fit: BoxFit.cover,
                       alignment: Alignment.center,
                       filterQuality: FilterQuality.high,
