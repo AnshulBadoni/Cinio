@@ -421,8 +421,8 @@ class SourceSwitcher extends StatelessWidget {
         child: GestureDetector(
           onTap: () => showPicker(context),
           child: Container(
-            width: 40,
-            height: 40,
+            width: 34,
+            height: 34,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.black.withValues(alpha: 0.38),
@@ -432,7 +432,7 @@ class SourceSwitcher extends StatelessWidget {
             child: Text(
               letter,
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
               ),

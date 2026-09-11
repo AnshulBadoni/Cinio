@@ -547,6 +547,12 @@ class PlaybackPrefs {
   Future<void> setPeopleCardStyle(String value) =>
       _box.put('peopleCardStyle', value);
 
+  /// Normal Home row card shape: adaptive, poster, or landscape.
+  String get homeCardStyle =>
+      _box.get('homeCardStyle', defaultValue: 'adaptive') as String;
+  Future<void> setHomeCardStyle(String value) =>
+      _box.put('homeCardStyle', value);
+
   bool get qualityBadges =>
       _box.get('qualityBadges', defaultValue: true) as bool;
 

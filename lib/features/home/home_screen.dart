@@ -45,6 +45,8 @@ import '../sources/zangetsu_sources_screen.dart';
 import '../update/update_dialog.dart';
 import 'continue_section.dart';
 import '../../core/ui/content_row.dart';
+import '../../core/ui/adaptive_content_row.dart';
+import '../../core/ui/people_row.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/metadata/title_logo_service.dart';
@@ -632,28 +634,74 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  /// Builds one provider-defined browse row (poster cards). The section is
-  /// already guaranteed non-empty by [SourceRepository.home].
+  bool _isPeopleSection(String title) {
+    final t = title.trim().toLowerCase();
+    const peopleTitles = {
+      'actor', 'actors', 'actress', 'actresses',
+      'cast', 'casts', 'performer', 'performers',
+      'voice actor', 'voice actors', 'voice cast', 'staff',
+    };
+    if (peopleTitles.contains(t)) return true;
+    return peopleTitles.any((label) =>
+        t.startsWith('$label ') || t.startsWith('$label:') || t.startsWith('$label -'));
+  }
+
+  /// Builds one provider-defined Home row. People/cast rows use PeopleCard;
+  /// normal rows honor the user's Poster/Landscape/Adaptive setting.
   Widget _sectionRow(HomeSection section) {
     final items = section.items;
-    return _animated(
-      ContentRow(
-        title: section.title,
-        itemWidth: 140,
-        itemHeight: 236,
-        itemCount: items.length,
-        onSeeAll: () => _openSeeAll(section),
-        itemBuilder: (c, i) => PosterCard(
-          title: items[i].title,
-          imageUrl: items[i].cover,
-          headers: items[i].coverHeaders,
-          cellWidth: 140,
-          qualityBadge: items[i].quality,
-                  dubBadge: items[i].dubBadge,
-          onTap: () => _openDetail(items[i]),
-          onLongPress: () => _showInfo(items[i]),
+    if (_isPeopleSection(section.title)) {
+      return _animated(
+        PeopleRow(
+          title: section.title,
+          items: items,
+          onSeeAll: () => _openSeeAll(section),
+          onTap: _openDetail,
+          onLongPress: _showInfo,
         ),
+      );
+    }
+
+    final style = sl<PlaybackPrefs>().homeCardStyle;
+    if (style == 'poster') {
+      return _animated(_fixedContentRow(section, landscape: false));
+    }
+    if (style == 'landscape') {
+      return _animated(_fixedContentRow(section, landscape: true));
+    }
+    return _animated(
+      AdaptiveContentRow(
+        title: section.title,
+        items: items,
+        onSeeAll: () => _openSeeAll(section),
+        onTap: _openDetail,
+        onLongPress: _showInfo,
       ),
+    );
+  }
+
+  Widget _fixedContentRow(HomeSection section, {required bool landscape}) {
+    final width = landscape ? 210.0 : 140.0;
+    final height = landscape ? 145.0 : 236.0;
+    return ContentRow(
+      title: section.title,
+      itemWidth: width,
+      itemHeight: height,
+      itemCount: section.items.length,
+      onSeeAll: () => _openSeeAll(section),
+      itemBuilder: (c, i) {
+        final item = section.items[i];
+        return PosterCard(
+          title: item.title,
+          imageUrl: item.cover,
+          headers: item.coverHeaders,
+          cellWidth: width,
+          qualityBadge: item.quality,
+          dubBadge: item.dubBadge,
+          onTap: () => _openDetail(item),
+          onLongPress: () => _showInfo(item),
+        );
+      },
     );
   }
 

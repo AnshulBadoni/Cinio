@@ -107,7 +107,8 @@ const settingsLeaves = <SettingsLeaf>[
   SettingsLeaf('Material You', 'Appearance', keywords: 'wallpaper colours dynamic theme'),
   SettingsLeaf('Pure black background', 'Appearance', keywords: 'oled amoled dark'),
   SettingsLeaf('Poster badges', 'Appearance', keywords: 'quality sub dub badge'),
-  SettingsLeaf('People card style', 'Appearance', keywords: 'cast actor performer people circle square'),
+  SettingsLeaf('Card style', 'Appearance', keywords: 'poster landscape adaptive home cards'),
+    SettingsLeaf('People card style', 'Appearance', keywords: 'cast actor performer people circle square'),
   SettingsLeaf('Animate lists', 'Appearance', keywords: 'fade scroll animation'),
   SettingsLeaf('Animation style', 'Appearance', keywords: 'transition motion'),
 

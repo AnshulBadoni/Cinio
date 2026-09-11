@@ -172,6 +172,51 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                 onChanged: sl<PlaybackPrefs>().setQualityBadges,
               ),
               SettingsTile(
+                icon: Icons.crop_portrait_outlined,
+                title: 'Card style',
+                subtitle: 'Shape of normal Home content rows',
+                trailing: Text(
+                  switch (sl<PlaybackPrefs>().homeCardStyle) {
+                    'poster' => 'Poster',
+                    'landscape' => 'Landscape',
+                    _ => 'Adaptive',
+                  },
+                  style: AppText.caption,
+                ),
+                onTap: () async {
+                  final current = sl<PlaybackPrefs>().homeCardStyle;
+                  final picked = await showDialog<String>(
+                    context: context,
+                    builder: (ctx) => SimpleDialog(
+                      backgroundColor: AppColors.surface,
+                      title: Text('Card style', style: AppText.headline),
+                      children: [
+                        for (final option in const [
+                          ('adaptive', 'Adaptive'),
+                          ('poster', 'Poster'),
+                          ('landscape', 'Landscape'),
+                        ])
+                          SimpleDialogOption(
+                            onPressed: () => Navigator.pop(ctx, option.$1),
+                            child: Text(
+                              option.$2,
+                              style: TextStyle(
+                                color: current == option.$1
+                                    ? AppColors.accent
+                                    : AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                  if (picked != null) {
+                    await sl<PlaybackPrefs>().setHomeCardStyle(picked);
+                    if (mounted) setState(() {});
+                  }
+                },
+              ),
+              SettingsTile(
                 icon: Icons.people_outline_rounded,
                 title: 'People card style',
                 subtitle: 'How cast and performer rows are shown',
