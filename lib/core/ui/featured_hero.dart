@@ -235,151 +235,82 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   Widget _card(ImageProvider? provider, Color tint) {
     return ClipRRect(
       borderRadius: widget.fullBleed ? BorderRadius.zero : BorderRadius.circular(28),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (provider != null)
-            Stack(
-              fit: StackFit.expand,
-              children: [
-                // Fill the hero with a soft version of the artwork. This is
-                // only the backdrop; the sharp foreground image is never
-                // stretched to fill a mismatched hero frame.
-                Image(
-                  image: provider,
-                  fit: BoxFit.cover,
-                  filterQuality: FilterQuality.low,
-                  color: const Color(0x44000000),
-                  colorBlendMode: BlendMode.darken,
-                  gaplessPlayback: true,
-                ),
-                // Landscape artwork is shown at its natural aspect ratio so
-                // its top/bottom edges are not cropped or enlarged. Portrait
-                // artwork keeps the existing cinematic cover treatment.
-                Image(
-                  image: provider,
-                  fit: _isWideArtwork == true ? BoxFit.contain : BoxFit.cover,
-                  alignment: Alignment.center,
-                  filterQuality: FilterQuality.high,
-                  frameBuilder: imageFadeIn,
-                  gaplessPlayback: true,
-                ),
-              ],
-            )
-          else
-            ColoredBox(color: AppColors.surface2),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = _isWideArtwork == true;
+          final wideHeight = constraints.maxWidth * 9 / 16;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              const ColoredBox(color: AppColors.bg),
+              if (provider != null)
+                if (wide)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    height: wideHeight,
+                    child: Image(
+                      image: provider,
+                      fit: BoxFit.contain,
+                      alignment: Alignment.topCenter,
+                      filterQuality: FilterQuality.high,
+                      frameBuilder: imageFadeIn,
+                      gaplessPlayback: true,
+                    ),
+                  )
+                else
+                  Positioned.fill(
+                    child: Image(
+                      image: provider,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                      filterQuality: FilterQuality.high,
+                      frameBuilder: imageFadeIn,
+                      gaplessPlayback: true,
+                    ),
+                  ),
 
-          // Colour-matched top gradient — pulled from the artwork.
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      tint.withValues(alpha: 0.72),
-                      tint.withValues(alpha: 0.34),
-                      tint.withValues(alpha: 0.08),
-                      Colors.transparent,
-                    ],
-                    stops: const [0.0, 0.16, 0.34, 0.52],
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          tint.withValues(alpha: 0.72),
+                          tint.withValues(alpha: 0.34),
+                          tint.withValues(alpha: 0.08),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.16, 0.34, 0.52],
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-
-          // Bottom fade to the EXACT page colour, so the card bottom melts into
-          // the page with no hard bottom edge/line.
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0x000B0B0F),
-                      Color(0xB30B0B0F),
-                      AppColors.bg,
-                    ],
-                    stops: [0.42, 0.72, 1.0],
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: const [
+                          Color(0x000B0B0F),
+                          Color(0xA60B0B0F),
+                          AppColors.bg,
+                        ],
+                        stops: [wide ? 0.18 : 0.42, wide ? 0.48 : 0.72, 1.0],
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-
-          // ── Content ───────────────────────────────────────────────────────
-          // Anchored low in the card (Netflix/Apple-TV+-style) so there's no
-          // dead space below the buttons.
-          Positioned(
-            left: 20,
-            right: 20,
-            bottom: 40,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onTap: widget.onInfo,
-                  child: _logoUrl != null
-                      ? ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 96),
-                          child: CachedNetworkImage(
-                            imageUrl: _logoUrl!,
-                            fit: BoxFit.contain,
-                            fadeInDuration: const Duration(milliseconds: 250),
-                            // If the logo image itself fails, fall back to text.
-                            errorWidget: (_, _, _) => _titleText(),
-                          ),
-                        )
-                      : _titleText(),
-                ),
-                const SizedBox(height: 12),
-                // Metadata line (reserve height so the card never jumps).
-                SizedBox(height: 18, child: Center(child: _metaLine())),
-                const SizedBox(height: 18),
-                // Single action row — Play + inline My List (info is on the
-                // title tap / long-press), so the overlay stays compact.
-                // Each button is passed through [_wrap] so TV callers can
-                // inject TvFocusable focus without changing phone behaviour.
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _wrap(_playButton(), widget.onPlay, autofocus: true),
-                    const SizedBox(width: 10),
-                    _wrap(
-                      _circleBtn(
-                        widget.inList
-                            ? Icons.check_rounded
-                            : Icons.add_rounded,
-                        widget.onToggleList,
-                        active: widget.inList,
-                        semanticLabel: widget.inList
-                            ? 'Remove from My List'
-                            : 'Add to My List',
-                      ),
-                      widget.onToggleList,
-                    ),
-                    const SizedBox(width: 10),
-                    _wrap(
-                      _circleBtn(
-                        Icons.info_outline_rounded,
-                        widget.onInfo,
-                        semanticLabel: 'Details',
-                      ),
-                      widget.onInfo,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
