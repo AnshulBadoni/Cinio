@@ -88,15 +88,12 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   static final Map<String, Color> _paletteCache = {};
   Color? _artColor;
   String? _logoUrl; // TMDB title logo (null → show the text title)
-  bool? _isWideArtwork;
-  ImageStream? _artStream;
 
   @override
   void initState() {
     super.initState();
     _loadPalette();
     _loadLogo();
-    _resolveArtworkShape();
   }
 
   @override
@@ -107,8 +104,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       _logoUrl = null;
       _loadPalette();
       _loadLogo();
-      _resolveArtworkShape();
-    }
+      }
   }
 
   /// Best-effort TMDB title-logo lookup; on a hit, swap the text title for the
@@ -157,23 +153,6 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     }
   }
 
-  void _resolveArtworkShape() {
-    final cover = widget.item.cover;
-    if (cover == null || cover.isEmpty) return;
-    final provider = nativeCoverProvider(cover, widget.item.coverHeaders);
-    final stream = provider.resolve(const ImageConfiguration());
-    _artStream?.removeListener(ImageStreamListener(_onArtworkFrame));
-    _artStream = stream;
-    stream.addListener(ImageStreamListener(_onArtworkFrame));
-  }
-
-  void _onArtworkFrame(ImageInfo info, bool synchronousCall) {
-    final image = info.image;
-    final wide = image.width > image.height * 1.15;
-    if (mounted && _isWideArtwork != wide) {
-      setState(() => _isWideArtwork = wide);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -237,42 +216,23 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       borderRadius: widget.fullBleed ? BorderRadius.zero : BorderRadius.circular(28),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final wide = _isWideArtwork == true;
-          final wideHeight = constraints.maxWidth;
           return Stack(
             fit: StackFit.expand,
             children: [
               ColoredBox(color: AppColors.bg),
               if (provider != null)
-                if (wide)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    top: 0,
-                    height: wideHeight,
-                    child: Image(
-                      image: provider,
-                      // Wide artwork owns a full 1:1 square region at the top of the
-                      // hero. It fills the available width instead of
-                      // shrinking/letterboxing the artwork.
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                      filterQuality: FilterQuality.high,
-                      frameBuilder: imageFadeIn,
-                      gaplessPlayback: true,
-                    ),
-                  )
-                else
-                  Positioned.fill(
-                    child: Image(
-                      image: provider,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                      filterQuality: FilterQuality.high,
-                      frameBuilder: imageFadeIn,
-                      gaplessPlayback: true,
-                    ),
+                Positioned.fill(
+                  child: Image(
+                    image: provider,
+                    // Always use the fixed tall hero frame. Do not change the
+                    // layout based on the source artwork aspect ratio.
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                    filterQuality: FilterQuality.high,
+                    frameBuilder: imageFadeIn,
+                    gaplessPlayback: true,
                   ),
+                ),
 
               Positioned.fill(
                 child: IgnorePointer(
