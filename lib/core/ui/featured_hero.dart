@@ -88,12 +88,15 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   static final Map<String, Color> _paletteCache = {};
   Color? _artColor;
   String? _logoUrl; // TMDB title logo (null → show the text title)
+  bool? _isWideArtwork;
+  ImageStream? _artStream;
 
   @override
   void initState() {
     super.initState();
     _loadPalette();
     _loadLogo();
+    _resolveArtworkShape();
   }
 
   @override
@@ -104,6 +107,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       _logoUrl = null;
       _loadPalette();
       _loadLogo();
+      _resolveArtworkShape();
     }
   }
 
@@ -150,6 +154,24 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       }
     } catch (_) {
       /* keep fallback */
+    }
+  }
+
+  void _resolveArtworkShape() {
+    final cover = widget.item.cover;
+    if (cover == null || cover.isEmpty) return;
+    final provider = nativeCoverProvider(cover, widget.item.coverHeaders);
+    final stream = provider.resolve(const ImageConfiguration());
+    _artStream?.removeListener(ImageStreamListener(_onArtworkFrame));
+    _artStream = stream;
+    stream.addListener(ImageStreamListener(_onArtworkFrame));
+  }
+
+  void _onArtworkFrame(ImageInfo info, bool synchronousCall) {
+    final image = info.image;
+    final wide = image.width > image.height * 1.15;
+    if (mounted && _isWideArtwork != wide) {
+      setState(() => _isWideArtwork = wide);
     }
   }
 
@@ -217,19 +239,32 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         fit: StackFit.expand,
         children: [
           if (provider != null)
-            Image(
-              // Keep the source resolution for the hero. Wide artwork can be
-              // taller than the viewport's width after BoxFit.cover; decoding
-              // it down to screen width first can force an upscale and make
-              // landscape banners look soft/pixelated.
-              image: provider,
-              fit: BoxFit.cover,
-              frameBuilder: imageFadeIn,
-              // Crop from the top so the poster's own printed title block (and
-              // the thin rule above it) is pushed off the bottom and hidden by
-              // the gradient — also removes the duplicate "ghosted" title.
-              alignment: Alignment.topCenter,
-              gaplessPlayback: true,
+            Stack(
+              fit: StackFit.expand,
+              children: [
+                // Fill the hero with a soft version of the artwork. This is
+                // only the backdrop; the sharp foreground image is never
+                // stretched to fill a mismatched hero frame.
+                Image(
+                  image: provider,
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.low,
+                  color: const Color(0x44000000),
+                  colorBlendMode: BlendMode.darken,
+                  gaplessPlayback: true,
+                ),
+                // Landscape artwork is shown at its natural aspect ratio so
+                // its top/bottom edges are not cropped or enlarged. Portrait
+                // artwork keeps the existing cinematic cover treatment.
+                Image(
+                  image: provider,
+                  fit: _isWideArtwork == true ? BoxFit.contain : BoxFit.cover,
+                  alignment: Alignment.center,
+                  filterQuality: FilterQuality.high,
+                  frameBuilder: imageFadeIn,
+                  gaplessPlayback: true,
+                ),
+              ],
             )
           else
             ColoredBox(color: AppColors.surface2),
