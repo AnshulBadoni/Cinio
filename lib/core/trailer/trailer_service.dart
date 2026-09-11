@@ -2,39 +2,56 @@ import 'package:dio/dio.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../models/provider_info.dart';
-import '../models/media_detail.dart';
+import 'nsfw_trailer_service.dart';
 
+export 'nsfw_trailer_service.dart'
+    show
+        AlternateTrailer,
+        NsfwTrailerService,
+        TrailerAlternateContext,
+        TrailerAlternateType;
+
+/// Unified representation of a resolved trailer stream.
+///
+/// Can represent either a YouTube video ID (resolved to playable streams via
+/// [TrailerService.streamUrl]) or a direct stream URL (e.g. HLS .m3u8) with
+/// required HTTP headers.
 class TrailerSource {
+  const TrailerSource.youtube(this.youtubeId)
+      : directUrl = null,
+        headers = null;
+
+  const TrailerSource.direct({
+    required String url,
+    this.headers,
+  })  : directUrl = url,
+        youtubeId = null;
+
   final String? youtubeId;
-  final String? url;
-  final Map<String, String> headers;
+  final String? directUrl;
+  final Map<String, String>? headers;
 
-  const TrailerSource.youtube(String id)
-      : youtubeId = id,
-        url = null,
-        headers = const {};
+  bool get isDirect => directUrl != null && directUrl!.isNotEmpty;
+  bool get isYoutube => youtubeId != null && youtubeId!.isNotEmpty;
 
-  const TrailerSource.direct(String url, {Map<String, String> headers = const {}})
-      : youtubeId = null,
-        url = url,
-        headers = headers;
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TrailerSource &&
+          runtimeType == other.runtimeType &&
+          youtubeId == other.youtubeId &&
+          directUrl == other.directUrl;
 
-  bool get isDirect => url != null && url!.isNotEmpty;
+  @override
+  int get hashCode => youtubeId.hashCode ^ directUrl.hashCode;
 }
 
-/// Resolves a YouTube trailer id for a title from a metadata provider.
-///
-/// Streaming sources (AllAnime / NetMirror) don't expose trailers, so we match
-/// the title against a free/keyed metadata API and pull its YouTube trailer:
-///   • Anime  → AniList GraphQL (free, no key).
-///   • Movie/TV → TMDB (key-gated; gracefully disabled when [kTmdbApiKey] is
-///     empty).
-///
-/// Best-effort and cheap: every lookup is wrapped so any network/parse failure
-/// resolves to `null` rather than throwing — the caller just hides the button.
 class TrailerService {
-  TrailerService(this._dio);
+  TrailerService(this._dio, [NsfwTrailerService? nsfwTrailerService])
+      : _nsfwTrailerService = nsfwTrailerService ?? NsfwTrailerService(_dio);
+
   final Dio _dio;
+  final NsfwTrailerService _nsfwTrailerService;
 
   static const String _anilistEndpoint = 'https://graphql.anilist.co';
   // TMDB v3 — api_key attached by the Dio interceptor (initDependencies).
@@ -44,48 +61,45 @@ class TrailerService {
       'query(\$search:String){ Media(search:\$search, type:ANIME){ '
       'id title{romaji english} trailer{ id site } } }';
 
-  /// Resolves the preferred trailer source. Provider-supplied trailers always
-  /// win when they contain a non-empty URL; metadata fallback is used only when
-  /// the provider did not supply one.
-  Future<TrailerSource?> resolve({
+  /// Resolves a playable [TrailerSource] for a title.
+  ///
+  /// Resolution priority:
+  /// 1. If [alternateContext] is non-null (NSFW trailers toggle ON + model/studio context),
+  ///    attempt adult trailer lookup via [NsfwTrailerService].
+  /// 2. If an alternate trailer is found, returns [TrailerSource.direct].
+  /// 3. Otherwise (or on failure), fall back to normal metadata lookup (AniList / TMDB)
+  ///    returning [TrailerSource.youtube].
+  Future<TrailerSource?> resolveTrailer({
     required String title,
     String? englishTitle,
     required ProviderType type,
     String? year,
-    List<ProviderTrailer> providerTrailers = const [],
+    TrailerAlternateContext? alternateContext,
   }) async {
-    for (final trailer in providerTrailers) {
-      final url = trailer.url.trim();
-      if (url.isEmpty) continue;
-      final providerYoutubeId = _youtubeIdFromUrl(url);
-      if (providerYoutubeId != null) {
-        return TrailerSource.youtube(providerYoutubeId);
+    if (alternateContext != null) {
+      try {
+        final alternate = await _nsfwTrailerService.fetch(
+          context: alternateContext,
+        );
+        if (alternate != null && alternate.url.isNotEmpty) {
+          return TrailerSource.direct(
+            url: alternate.url,
+            headers: alternate.headers,
+          );
+        }
+      } catch (_) {
+        // Silently fall back to normal trailer
       }
-      return TrailerSource.direct(url, headers: trailer.headers);
     }
-    final id = await youtubeId(
+
+    final ytId = await youtubeId(
       title: title,
       englishTitle: englishTitle,
       type: type,
       year: year,
     );
-    return id == null || id.isEmpty ? null : TrailerSource.youtube(id);
-  }
-
-
-  static String? _youtubeIdFromUrl(String url) {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return null;
-    final host = uri.host.toLowerCase();
-    if (host == 'youtu.be' || host.endsWith('.youtube.com') || host == 'youtube.com') {
-      if (host == 'youtu.be') {
-        final id = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
-        return id?.isNotEmpty == true ? id : null;
-      }
-      final v = uri.queryParameters['v'];
-      if (v != null && v.isNotEmpty) return v;
-      final match = RegExp(r'^/(?:embed|shorts|live)/([^/?]+)').firstMatch(uri.path);
-      return match?.group(1);
+    if (ytId != null && ytId.isNotEmpty) {
+      return TrailerSource.youtube(ytId);
     }
     return null;
   }
@@ -96,6 +110,7 @@ class TrailerService {
     String? englishTitle,
     required ProviderType type,
     String? year,
+    TrailerAlternateContext? alternateContext,
   }) async {
     switch (type) {
       case ProviderType.anime:

@@ -32,6 +32,7 @@ import 'connections_screen_tv.dart';
 import 'discord_settings_screen.dart';
 import 'donate_screen.dart';
 import 'settings_screen.dart';
+import 'trailers_settings_screen.dart';
 import '../shell/tv_source_picker.dart';
 
 /// TV Settings list: same sections as the phone [SettingsScreen]. Tappable
@@ -277,6 +278,12 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         title: 'Playback',
                         subtitle: 'Quality, autoplay, speed',
                         onTap: () => _push(const PlaybackSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.movie_filter_outlined,
+                        title: 'Trailers',
+                        subtitle: 'TMDB and optional NSFW trailer sources',
+                        onTap: () => _push(const TrailersSettingsScreen()),
                       ),
                       SettingsTile(
                         icon: Icons.download_outlined,

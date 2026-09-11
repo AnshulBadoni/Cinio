@@ -266,7 +266,6 @@ class CloudStreamProvider implements BaseProvider {
     }
     final csType = m['type'] as String?;
     final ids = _parseSyncIds(m['syncData']);
-    final providerTrailers = _providerTrailersFrom(m['trailers']);
     return MediaDetail(
       id: (m['url'] ?? url).toString(),
       title: (m['name'] ?? '').toString(),
@@ -289,7 +288,6 @@ class CloudStreamProvider implements BaseProvider {
       // Cast/Relations straight from the provider (works without ids).
       castMembers: _castFrom(m['actors']),
       relations: _relationsFrom(m['recommendations']),
-      providerTrailers: providerTrailers,
     );
   }
 
@@ -367,38 +365,6 @@ class CloudStreamProvider implements BaseProvider {
           relation: 'Recommended',
         ),
       );
-    }
-    return out;
-  }
-
-  List<ProviderTrailer> _providerTrailersFrom(dynamic raw) {
-    if (raw is! List) return const [];
-    final out = <ProviderTrailer>[];
-    for (final item in raw) {
-      if (item is String) {
-        final url = item.trim();
-        if (url.isNotEmpty) out.add(ProviderTrailer(url: url));
-        continue;
-      }
-      final m = _asMap(item);
-      if (m == null) continue;
-      final url = (m['extractorUrl'] ?? m['url'] ?? m['videoUrl'] ?? m['trailerUrl'])?.toString().trim();
-      if (url == null || url.isEmpty) continue;
-      final headers = <String, String>{};
-      final rawHeaders = m['headers'];
-      if (rawHeaders is Map) {
-        rawHeaders.forEach((k, v) {
-          if (k != null && v != null && v.toString().isNotEmpty) {
-            headers[k.toString()] = v.toString();
-          }
-        });
-      }
-      final referer = m['referer']?.toString().trim();
-      if (referer != null && referer.isNotEmpty &&
-          !headers.keys.any((k) => k.toLowerCase() == 'referer')) {
-        headers['Referer'] = referer;
-      }
-      out.add(ProviderTrailer(url: url, headers: headers));
     }
     return out;
   }

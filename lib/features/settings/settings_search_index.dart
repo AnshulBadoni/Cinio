@@ -82,6 +82,9 @@ const settingsLeaves = <SettingsLeaf>[
   SettingsLeaf('Auto-translate subtitles', 'Playback', keywords: 'subs translate google'),
   SettingsLeaf('Translate subtitles to', 'Playback', keywords: 'subs language translate'),
 
+  // Trailers → TrailersSettingsScreen
+  SettingsLeaf('NSFW trailers', 'Trailers', keywords: 'adult 18+ alternate source preview'),
+
   // Reading → ReaderSettingsScreen
   SettingsLeaf('Reading mode', 'Reader', keywords: 'manga direction webtoon'),
   SettingsLeaf('Fit', 'Reader', keywords: 'width height page scale'),

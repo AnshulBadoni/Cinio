@@ -363,8 +363,10 @@ Future<void> initDependencies() async {
   // promptly after a restart instead of looking disconnected.
   await sl<DiscordRpc>().start();
 
-  // Metadata-API trailer lookups (AniList for anime, TMDB for movie/TV).
-  sl.registerSingleton<TrailerService>(TrailerService(dio));
+  // Metadata-API trailer lookups (AniList for anime, TMDB for movie/TV, NSFW alternate).
+  sl.registerSingleton<NsfwTrailerService>(NsfwTrailerService(dio));
+  sl.registerSingleton<TrailerService>(
+      TrailerService(dio, sl<NsfwTrailerService>()));
 
   // Detail-screen Cast + Relations enrichment (AniList for anime, TMDB for
   // movie/TV). Keys off the malId/tmdbId the providers already expose.

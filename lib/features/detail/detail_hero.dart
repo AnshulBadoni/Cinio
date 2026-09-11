@@ -12,7 +12,7 @@ class _Hero extends StatelessWidget {
     required this.coverUrl,
     required this.coverHeaders,
     required this.hasCover,
-    this.trailerSource,
+    this.trailer,
     this.collapsed = false,
     this.onTapFullscreen,
   });
@@ -21,8 +21,8 @@ class _Hero extends StatelessWidget {
   final Map<String, String>? coverHeaders;
   final bool hasCover;
 
-  /// Resolved trailer source, or null while still loading / when none exists.
-  final TrailerSource? trailerSource;
+  /// Resolved trailer source (YouTube or direct stream with headers).
+  final TrailerSource? trailer;
 
   /// True once the hero has scrolled past — the trailer pauses while collapsed.
   final bool collapsed;
@@ -68,16 +68,15 @@ class _Hero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final source = trailerSource;
     return Stack(
       fit: StackFit.expand,
       children: [
         // Backdrop: autoplaying trailer once an id resolves, else the cover
         // image. The cover image always sits underneath as placeholder/fallback
         // so there's never a blank/black flash.
-        (source != null)
+        (trailer != null)
             ? _HeroTrailer(
-                source: source,
+                trailer: trailer!,
                 collapsed: collapsed,
                 onTapFullscreen: onTapFullscreen,
                 placeholder: _coverBackdrop(),
@@ -101,7 +100,7 @@ class _Hero extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // _HeroTrailer — the autoplaying, muted, looping trailer that becomes the hero
-// backdrop once a trailer source resolves (Netflix-style). The trailer is a DIRECT
+// backdrop once a YouTube id resolves (Netflix-style). The trailer is a DIRECT
 // muxed stream (extracted by youtube_explode_dart) played natively via
 // media_kit — NO iframe, NO YouTube chrome (no related-videos / endscreen /
 // branding). The static cover image stays visible underneath until the first
@@ -117,16 +116,18 @@ class _Hero extends StatelessWidget {
 
 class _HeroTrailer extends StatefulWidget {
   const _HeroTrailer({
-    required this.source,
+    required this.trailer,
     required this.collapsed,
     required this.placeholder,
     this.onTapFullscreen,
   });
 
-  final TrailerSource source;
+  final TrailerSource trailer;
   final bool collapsed;
   final Widget placeholder;
   final VoidCallback? onTapFullscreen;
+
+  TrailerSource get effectiveTrailer => trailer;
 
   @override
   State<_HeroTrailer> createState() => _HeroTrailerState();
@@ -192,19 +193,29 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
   /// needed); otherwise the light muxed 360p. Falls back to 360p if HD
   /// extraction fails. On any failure we flip [_errored] and the cover stays.
   Future<void> _resolveAndOpen() async {
+    final t = widget.effectiveTrailer;
     final svc = sl<TrailerService>();
-    final source = widget.source;
-    final String? hdUrl;
+
     final String? url;
-    if (source.isDirect) {
+    final Map<String, String>? headers;
+    final String? hdUrl;
+
+    if (t.isDirect) {
+      url = t.directUrl;
+      headers = t.headers;
       hdUrl = null;
-      url = source.url;
-    } else {
+    } else if (t.isYoutube) {
       hdUrl = sl<PlaybackPrefs>().trailerHd
-          ? (await svc.streamUrlHd(source.youtubeId!))?.video
+          ? (await svc.streamUrlHd(t.youtubeId!))?.video
           : null;
-      url = hdUrl ?? await svc.streamUrl(source.youtubeId!, low: true);
+      url = hdUrl ?? await svc.streamUrl(t.youtubeId!, low: true);
+      headers = null;
+    } else {
+      url = null;
+      headers = null;
+      hdUrl = null;
     }
+
     if (!mounted) return;
     if (url == null || url.isEmpty) {
       setState(() => _errored = true);
@@ -245,13 +256,7 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
       // paused, then explicitly play() the moment the media is loaded and the
       // widget is still mounted, so the trailer starts on its own with no touch.
       final autostart = !_paused && !widget.collapsed && !_covered;
-      await player.open(
-        Media(
-          url,
-          httpHeaders: source.headers.isEmpty ? null : source.headers,
-        ),
-        play: autostart,
-      );
+      await player.open(Media(url, httpHeaders: headers), play: autostart);
       if (!mounted) return;
       // Autostart only when the hero is on-screen AND the user hasn't paused
       // (via the button or the "Autoplay trailer" setting being off). If it's
@@ -262,7 +267,9 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
         // Best-effort HD: 1080p is a throttled adaptive stream that can stall.
         // If it doesn't actually start rolling, swap to the reliable 360p muxed
         // stream so the banner never sits frozen on a single frame.
-        if (hdUrl != null) unawaited(_fallBackIfHdStalls(player));
+        if (hdUrl != null && t.isYoutube) {
+          unawaited(_fallBackIfHdStalls(player, t.youtubeId!));
+        }
       }
     } catch (_) {
       if (!mounted) return;
@@ -273,27 +280,18 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
   /// Watchdog for the opt-in HD banner: if playback hasn't progressed within a
   /// few seconds (YouTube throttled the 1080p stream), re-open with the light
   /// 360p muxed stream. No-op if HD started fine.
-  Future<void> _fallBackIfHdStalls(Player player) async {
+  Future<void> _fallBackIfHdStalls(Player player, String videoId) async {
     try {
       await player.stream.position
           .firstWhere((p) => p > Duration.zero)
           .timeout(const Duration(seconds: 7));
     } catch (_) {
       if (!mounted || player != _player) return;
-      final source = widget.source;
-      final low = source.isDirect
-          ? source.url
-          : await sl<TrailerService>().streamUrl(source.youtubeId!, low: true);
+      final low = await sl<TrailerService>().streamUrl(videoId, low: true);
       if (!mounted || player != _player || low == null || low.isEmpty) return;
       try {
         final autostart = !_paused && !widget.collapsed && !_covered;
-        await player.open(
-          Media(
-            low,
-            httpHeaders: source.headers.isEmpty ? null : source.headers,
-          ),
-          play: autostart,
-        );
+        await player.open(Media(low), play: autostart);
         if (autostart) await player.play();
       } catch (_) {/* leave the cover as the backdrop */}
     }
@@ -302,10 +300,8 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
   @override
   void didUpdateWidget(covariant _HeroTrailer old) {
     super.didUpdateWidget(old);
-    // Re-resolve from scratch if the id changes (different title).
-    if (old.source.youtubeId != widget.source.youtubeId ||
-        old.source.url != widget.source.url ||
-        old.source.headers != widget.source.headers) {
+    // Re-resolve from scratch if the trailer changes (different title).
+    if (old.effectiveTrailer != widget.effectiveTrailer) {
       _disposePlayer();
       _ready = false;
       _errored = false;

@@ -23,16 +23,6 @@ enum MediaStatus {
 /// Full series detail. The video-native analogue of Sozo Read's
 /// `BookDetail` (chapters → episodes, authors → studios).
 @JsonSerializable(explicitToJson: true)
-class ProviderTrailer extends Equatable {
-  final String url;
-  final Map<String, String> headers;
-
-  const ProviderTrailer({required this.url, this.headers = const {}});
-
-  @override
-  List<Object?> get props => [url, headers];
-}
-
 class MediaDetail extends Equatable {
   final String id;
   final String title;
@@ -97,11 +87,6 @@ class MediaDetail extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final List<MediaRelation> relations;
 
-  /// Trailer streams supplied directly by the active provider. These are
-  /// preferred over metadata-service trailers when present. Runtime-only.
-  @JsonKey(includeFromJson: false, includeToJson: false)
-  final List<ProviderTrailer> providerTrailers;
-
   const MediaDetail({
     required this.id,
     required this.title,
@@ -126,7 +111,6 @@ class MediaDetail extends Equatable {
     this.imdbId,
     this.castMembers = const [],
     this.relations = const [],
-    this.providerTrailers = const [],
   });
 
   factory MediaDetail.fromJson(Map<String, dynamic> json) =>
@@ -157,7 +141,6 @@ class MediaDetail extends Equatable {
     String? imdbId,
     List<CastMember>? castMembers,
     List<MediaRelation>? relations,
-    List<ProviderTrailer>? providerTrailers,
   }) => MediaDetail(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -182,7 +165,6 @@ class MediaDetail extends Equatable {
     imdbId: imdbId ?? this.imdbId,
     castMembers: castMembers ?? this.castMembers,
     relations: relations ?? this.relations,
-    providerTrailers: providerTrailers ?? this.providerTrailers,
   );
 
   @override
@@ -210,6 +192,5 @@ class MediaDetail extends Equatable {
     imdbId,
     castMembers,
     relations,
-    providerTrailers,
   ];
 }

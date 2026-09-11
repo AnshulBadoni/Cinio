@@ -39,6 +39,7 @@ import 'nav_tabs_screen.dart';
 import 'reader_settings_screen.dart';
 import 'discord_settings_screen.dart';
 import 'torrent_settings_screen.dart';
+import 'trailers_settings_screen.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -737,6 +738,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         onTap: () => _push(const PlaybackSettingsScreen()),
       ),
       _SettingsEntry(
+        section: 'Trailers',
+        icon: Icons.movie_filter_outlined,
+        title: 'Trailers',
+        subtitle: 'TMDB and optional NSFW trailer sources',
+        keywords: 'trailer preview tmdb nsfw adult',
+        onTap: () => _push(const TrailersSettingsScreen()),
+      ),
+      _SettingsEntry(
         section: 'Reading',
         icon: Icons.menu_book_outlined,
         title: 'Reader',
@@ -1009,6 +1018,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'Account & sync',
     'Sources',
     'Playback',
+    'Trailers',
     'Reading',
     'History',
     'Downloads',
@@ -1161,6 +1171,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'Account & sync' => Icons.person_outline_rounded,
     'Sources' => Icons.dns_rounded,
     'Playback' => Icons.play_circle_outline_rounded,
+    'Trailers' => Icons.movie_filter_outlined,
     'Reading' => Icons.menu_book_outlined,
     'History' => Icons.history_rounded,
     'Downloads' => Icons.download_outlined,
@@ -1175,6 +1186,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'Account & sync' => 'Trackers, Discord, backup, sync',
     'Sources' => 'Providers, active source, updates',
     'Playback' => 'Quality, autoplay, speed',
+    'Trailers' => 'TMDB and optional NSFW sources',
     'Reading' => 'Manga & novel reader defaults',
     'History' => 'Shows you\'ve watched',
     'Downloads' => 'Downloads, storage, torrents',

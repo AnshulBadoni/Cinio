@@ -105,6 +105,13 @@ class PlaybackPrefs {
   bool get trailerHd => _box.get('trailerHd', defaultValue: false) as bool;
   Future<void> setTrailerHd(bool value) => _box.put('trailerHd', value);
 
+  /// Whether the optional alternate NSFW trailer source may be considered.
+  /// Off by default. The source/matching rules are intentionally kept
+  /// separate from CloudStream provider responses.
+  bool get nsfwTrailers =>
+      _box.get('nsfwTrailers', defaultValue: false) as bool;
+  Future<void> setNsfwTrailers(bool value) => _box.put('nsfwTrailers', value);
+
   /// Default playback speed multiplier.
   double get defaultSpeed =>
       (_box.get('defaultSpeed', defaultValue: 1.0) as num).toDouble();

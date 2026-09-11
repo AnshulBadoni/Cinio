@@ -256,8 +256,14 @@ class _HomeViewState extends State<_HomeView>
     sl<TitleLogoService>().prefetch(items);
   }
 
-  void _openDetail(MediaItem item) {
-    Navigator.push(context, DetailScreen.route(item)).then((_) {
+  void _openDetail(
+    MediaItem item, {
+    DetailTrailerContext? trailerContext,
+  }) {
+    Navigator.push(
+      context,
+      DetailScreen.route(item, trailerContext: trailerContext),
+    ).then((_) {
       // Refresh Continue Watching + My List row when returning from detail.
       if (mounted) setState(() {});
     });
@@ -664,7 +670,10 @@ class _HomeViewState extends State<_HomeView>
           title: section.title,
           items: items,
           onSeeAll: () => _openSeeAll(section),
-          onTap: _openDetail,
+          onTap: (item) => _openDetail(
+            item,
+            trailerContext: DetailTrailerContext.model,
+          ),
           onLongPress: _showInfo,
         ),
       );
@@ -714,7 +723,10 @@ class _HomeViewState extends State<_HomeView>
             cellWidth: width,
             qualityBadge: item.quality,
             dubBadge: item.dubBadge,
-            onTap: () => _openDetail(item),
+            onTap: () => _openDetail(
+              item,
+              trailerContext: DetailTrailerContext.studio,
+            ),
             onLongPress: () => _showInfo(item),
           ),
         );
@@ -762,6 +774,14 @@ class _HomeViewState extends State<_HomeView>
     });
   }
 
+  DetailTrailerContext? _trailerContextForSection(HomeSection section) {
+    if (_isPeopleSection(section.title)) return DetailTrailerContext.model;
+    if (_isStudioOrChannelSection(section.title)) {
+      return DetailTrailerContext.studio;
+    }
+    return null;
+  }
+
   /// Open the full-grid "See All" view of a browse row.
   void _openSeeAll(HomeSection section) {
     Navigator.push(
@@ -770,7 +790,10 @@ class _HomeViewState extends State<_HomeView>
         builder: (_) => SeeAllScreen(
           title: section.title,
           items: section.items,
-          onTap: _openDetail,
+          onTap: (item) => _openDetail(
+            item,
+            trailerContext: _trailerContextForSection(section),
+          ),
           onLongPress: _showInfo,
           // Only paginable rows (Aniyomi popular/latest, CloudStream mainPage)
           // carry a `more` descriptor; everything else stays a fixed list.

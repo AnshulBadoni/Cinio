@@ -16,8 +16,14 @@ import '../../core/ui/brand_loader.dart';
 /// button. The id is resolved upstream by [TrailerService] (AniList for anime,
 /// TMDB for movies/TV).
 class TrailerScreen extends StatefulWidget {
-  const TrailerScreen({super.key, required this.source});
-  final TrailerSource source;
+  const TrailerScreen({
+    super.key,
+    this.source,
+    this.videoId,
+  }) : assert(source != null || videoId != null);
+
+  final TrailerSource? source;
+  final String? videoId;
 
   @override
   State<TrailerScreen> createState() => _TrailerScreenState();
@@ -30,6 +36,9 @@ class _TrailerScreenState extends State<TrailerScreen> {
   // null = resolving; true = a stream is open; false = extraction failed.
   bool? _resolved;
 
+  TrailerSource get _effectiveSource =>
+      widget.source ?? TrailerSource.youtube(widget.videoId!);
+
   @override
   void initState() {
     super.initState();
@@ -37,14 +46,11 @@ class _TrailerScreenState extends State<TrailerScreen> {
   }
 
   Future<void> _resolveAndOpen() async {
-    final svc = sl<TrailerService>();
-    if (widget.source.isDirect) {
+    final source = _effectiveSource;
+    if (source.isDirect) {
       try {
         await _player.open(
-          Media(
-            widget.source.url!,
-            httpHeaders: widget.source.headers.isEmpty ? null : widget.source.headers,
-          ),
+          Media(source.directUrl!, httpHeaders: source.headers),
         );
         if (!mounted) return;
         setState(() => _resolved = true);
@@ -54,15 +60,23 @@ class _TrailerScreenState extends State<TrailerScreen> {
       }
       return;
     }
+
+    final videoId = source.youtubeId;
+    if (videoId == null || videoId.isEmpty) {
+      setState(() => _resolved = false);
+      return;
+    }
+
+    final svc = sl<TrailerService>();
     // HD path (opt-in): 1080p video + a separate audio stream attached as an
     // external track. Falls through to the light muxed stream if HD extraction
     // or playback setup fails, so the trailer still plays.
     if (sl<PlaybackPrefs>().trailerHd) {
-      final hd = await svc.streamUrlHd(widget.source.youtubeId!);
+      final hd = await svc.streamUrlHd(videoId);
       if (!mounted) return;
       if (hd != null && await _openHd(hd)) return;
     }
-    final url = await svc.streamUrl(widget.source.youtubeId!, low: false);
+    final url = await svc.streamUrl(videoId, low: false);
     if (!mounted) return;
     if (url == null || url.isEmpty) {
       setState(() => _resolved = false);

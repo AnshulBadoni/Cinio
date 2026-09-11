@@ -150,16 +150,25 @@ String? _repoLabelFromUrl(String? repoUrl) {
   }
 }
 
+enum DetailTrailerContext { model, studio }
+
 class DetailScreen extends StatelessWidget {
-  const DetailScreen({super.key, required this.item});
+  const DetailScreen({super.key, required this.item, this.trailerContext});
   final MediaItem item;
+  final DetailTrailerContext? trailerContext;
 
   /// Opening transition: the page fades in while sliding up and scaling from
   /// 0.96 — a smooth "rise" into the detail rather than the platform push.
-  static Route<void> route(MediaItem item) => PageRouteBuilder<void>(
+  static Route<void> route(
+    MediaItem item, {
+    DetailTrailerContext? trailerContext,
+  }) => PageRouteBuilder<void>(
     transitionDuration: const Duration(milliseconds: 340),
     reverseTransitionDuration: const Duration(milliseconds: 260),
-    pageBuilder: (_, _, _) => DetailScreen(item: item),
+    pageBuilder: (_, _, _) => DetailScreen(
+      item: item,
+      trailerContext: trailerContext,
+    ),
     transitionsBuilder: (_, animation, _, child) {
       final curved = CurvedAnimation(
         parent: animation,
@@ -193,7 +202,10 @@ class DetailScreen extends StatelessWidget {
         seedMalId: item.malId,
         seedType: item.type,
       )..load(),
-      child: _DetailView(item: item),
+      child: _DetailView(
+        item: item,
+        trailerContext: trailerContext,
+      ),
     );
   }
 }
@@ -207,8 +219,9 @@ class DetailScreen extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DetailView extends StatefulWidget {
-  const _DetailView({required this.item});
+  const _DetailView({required this.item, this.trailerContext});
   final MediaItem item;
+  final DetailTrailerContext? trailerContext;
 
   @override
   State<_DetailView> createState() => _DetailViewState();
@@ -255,27 +268,47 @@ class _DetailViewState extends State<_DetailView>
   late WatchStatus? _status = _listStatus.statusOf(widget.item);
   late bool _inMyList = _status != null || _myList.contains(widget.item);
 
-  // ── Trailer resolution ────────────────────────────────────────────────────
-  // Provider-supplied trailer streams are preferred. If the provider has no
-  // usable trailer URL, TrailerService falls back to TMDB/YouTube for movies
-  // and TV (or AniList for anime).
+  // ── Trailer (metadata-API lookup) ─────────────────────────────────────────
+  // Resolved lazily once per detail load and cached so the hero player doesn't
+  // refetch on every rebuild. Yields a YouTube id or null; once it resolves the
+  // hero swaps its static cover backdrop for an autoplaying, muted, looping
+  // player (Netflix-style).
   Future<TrailerSource?>? _trailerFuture;
   TrailerSource? _trailerSource;
 
+  /// Kick off (once) the trailer lookup for the resolved detail. When it
+  /// completes with a non-null source, store it in [_trailerSource] and rebuild so the
+  /// hero can mount the trailer player.
   void _resolveTrailer(MediaDetail detail) {
     if (_trailerFuture != null) return;
-    _trailerFuture = sl<TrailerService>()
-        .resolve(
-          title: detail.title,
-          englishTitle: detail.englishTitle,
-          type: detail.type,
-          year: detail.year,
-          providerTrailers: detail.providerTrailers,
-        )
-        .then((source) {
-          if (!mounted) return source;
-          if (source != null) setState(() => _trailerSource = source);
-          return source;
+
+    // Model/studio context is only meaningful when the detail was opened from
+    // one of those dedicated rows AND the user explicitly enabled NSFW
+    // trailers. No alternate-source request is made for ordinary details.
+    final nsfwEnabled = sl<PlaybackPrefs>().nsfwTrailers;
+    final hasNsfwContext = widget.trailerContext != null;
+
+    final TrailerAlternateContext? alternateContext;
+    if (hasNsfwContext && nsfwEnabled) {
+      final name = detail.title;
+      alternateContext = widget.trailerContext == DetailTrailerContext.model
+          ? TrailerAlternateContext.model(name)
+          : TrailerAlternateContext.studio(name);
+    } else {
+      alternateContext = null;
+    }
+
+    _trailerFuture = sl<TrailerService>().resolveTrailer(
+      title: detail.title,
+      englishTitle: detail.englishTitle,
+      type: detail.type,
+      year: detail.year,
+      alternateContext: alternateContext,
+    )..then((source) {
+          if (!mounted) return;
+          if (source != null && source != _trailerSource) {
+            setState(() => _trailerSource = source);
+          }
         });
   }
 
@@ -1006,11 +1039,11 @@ class _DetailViewState extends State<_DetailView>
     }
   }
 
-  /// Push the in-app trailer player for the resolved provider/TMDB source.
+  /// Push the in-app trailer player for a resolved trailer source.
   void _openTrailer(TrailerSource source) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => TrailerScreen(source: source)),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => TrailerScreen(source: source)));
   }
 
   /// Netflix-style download label for the FIRST episode of the current season,
@@ -1400,8 +1433,8 @@ class _DetailViewState extends State<_DetailView>
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
     final hasCover = coverUrl.isNotEmpty;
 
-    // Kick off the trailer lookup (once). Provider trailers are preferred;
-    // TMDB/AniList is used only when the provider has no trailer.
+    // Kick off the trailer lookup (once). When it resolves, _trailerId is set
+    // and the hero swaps its static backdrop for the autoplaying trailer.
     _resolveTrailer(detail);
 
     // Season data. PRESERVED.
@@ -1506,7 +1539,7 @@ class _DetailViewState extends State<_DetailView>
                 coverUrl: coverUrl,
                 coverHeaders: coverHeaders,
                 hasCover: hasCover,
-                trailerSource: _trailerSource,
+                trailer: _trailerSource,
                 // Pause the trailer once the hero has scrolled past (reuses
                 // the same signal that fades in the app-bar title).
                 collapsed: _showAppBarTitle,
