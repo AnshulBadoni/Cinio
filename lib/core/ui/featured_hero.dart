@@ -265,7 +265,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                           Color(0xA60B0B0F),
                           AppColors.bg,
                         ],
-                        stops: [wide ? 0.18 : 0.42, wide ? 0.48 : 0.72, 1.0],
+                        stops: const [0.42, 0.72, 1.0],
                       ),
                     ),
                   ),
