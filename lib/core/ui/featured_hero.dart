@@ -296,7 +296,6 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                           child: CachedNetworkImage(
                             imageUrl: _logoUrl!,
                             fit: BoxFit.contain,
-                            memCacheWidth: memW,
                             fadeInDuration: const Duration(milliseconds: 250),
                             // If the logo image itself fails, fall back to text.
                             errorWidget: (_, _, _) => _titleText(),
