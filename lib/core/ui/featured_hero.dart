@@ -242,7 +242,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
           return Stack(
             fit: StackFit.expand,
             children: [
-              const ColoredBox(color: AppColors.bg),
+              ColoredBox(color: AppColors.bg),
               if (provider != null)
                 if (wide)
                   Positioned(
@@ -297,7 +297,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: const [
+                        colors: [
                           Color(0x000B0B0F),
                           Color(0xA60B0B0F),
                           AppColors.bg,
