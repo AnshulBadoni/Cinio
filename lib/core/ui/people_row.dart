@@ -29,8 +29,8 @@ class PeopleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final square = sl<PlaybackPrefs>().peopleCardStyle == 'square';
-    final width = square ? 124.0 : 112.0;
-    final height = square ? 184.0 : 160.0;
+    final width = square ? 136.0 : 124.0;
+    final height = square ? 196.0 : 172.0;
     return ContentRow(
       title: title,
       itemWidth: width,
@@ -87,8 +87,8 @@ class _PersonCardState extends State<_PersonCard> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               SizedBox(
-                width: widget.square ? 124 : 112,
-                height: widget.square ? 124 : 112,
+                width: widget.square ? 136 : 124,
+                height: widget.square ? 136 : 124,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(widget.square ? 12 : 999),
                   child: widget.item.cover == null
@@ -106,7 +106,7 @@ class _PersonCardState extends State<_PersonCard> {
               const SizedBox(height: 8),
               Text(
                 widget.item.title,
-                maxLines: 2,
+                maxLines: 1,
                 textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
                 style: AppText.caption.copyWith(color: AppColors.textPrimary),

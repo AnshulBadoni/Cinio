@@ -224,7 +224,7 @@ class _PosterCardState extends State<PosterCard> {
                 const SizedBox(height: 8),
                 Text(
                   widget.title,
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppText.caption.copyWith(color: AppColors.textPrimary),
                 ),

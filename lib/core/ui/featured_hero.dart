@@ -159,7 +159,6 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     final cover = item.cover;
     final hasCover = cover != null && cover.isNotEmpty;
     final mq = MediaQuery.of(context);
-    final memW = (mq.size.width * mq.devicePixelRatio).round();
     final tint = _artColor ?? AppColors.surface2;
 
     final provider = hasCover
@@ -200,18 +199,18 @@ class _FeaturedHeroState extends State<FeaturedHero> {
           // Rounded, no border/shadow; its bottom melts into the page colour so
           // there's no hard edge below it.
           if (widget.fullBleed)
-            _card(provider, tint, memW)
+            _card(provider, tint)
           else
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 90, 16, 40),
-              child: _card(provider, tint, memW),
+              child: _card(provider, tint),
             ),
         ],
       ),
     );
   }
 
-  Widget _card(ImageProvider? provider, Color tint, int memW) {
+  Widget _card(ImageProvider? provider, Color tint) {
     return ClipRRect(
       borderRadius: widget.fullBleed ? BorderRadius.zero : BorderRadius.circular(28),
       child: Stack(
@@ -219,9 +218,11 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         children: [
           if (provider != null)
             Image(
-              // Decode at the screen's actual size (not full source res) — same
-              // visible sharpness, a fraction of the memory + decode cost.
-              image: ResizeImage(provider, width: memW),
+              // Keep the source resolution for the hero. Wide artwork can be
+              // taller than the viewport's width after BoxFit.cover; decoding
+              // it down to screen width first can force an upscale and make
+              // landscape banners look soft/pixelated.
+              image: provider,
               fit: BoxFit.cover,
               frameBuilder: imageFadeIn,
               // Crop from the top so the poster's own printed title block (and
@@ -357,7 +358,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       height: 1.02,
       letterSpacing: -0.6,
     ),
-    maxLines: 2,
+    maxLines: 1,
     overflow: TextOverflow.ellipsis,
   );
 

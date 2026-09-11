@@ -682,7 +682,7 @@ class _HomeViewState extends State<_HomeView>
 
   Widget _fixedContentRow(HomeSection section, {required bool landscape}) {
     final width = landscape ? 210.0 : 140.0;
-    final height = landscape ? 145.0 : 236.0;
+    final height = landscape ? 150.0 : 236.0;
     return ContentRow(
       title: section.title,
       itemWidth: width,

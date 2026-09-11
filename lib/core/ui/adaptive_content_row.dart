@@ -102,7 +102,7 @@ class _AdaptiveContentRowState extends State<AdaptiveContentRow> {
   Widget build(BuildContext context) {
     final landscape = _landscape;
     final width = landscape ? 210.0 : 140.0;
-    final height = landscape ? 145.0 : 236.0;
+    final height = landscape ? 150.0 : 236.0;
     return ContentRow(
       title: widget.title,
       itemWidth: width,
