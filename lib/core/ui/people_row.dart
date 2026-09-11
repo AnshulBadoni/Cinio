@@ -92,14 +92,14 @@ class _PersonCardState extends State<_PersonCard> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(widget.square ? 12 : 999),
                   child: widget.item.cover == null
-                      ? const ColoredBox(color: AppColors.surface2)
+                      ? ColoredBox(color: AppColors.surface2)
                       : CachedNetworkImage(
                           imageUrl: widget.item.cover!,
                           cacheManager: AppImageCache.manager,
                           httpHeaders: widget.item.coverHeaders,
                           fit: BoxFit.cover,
-                          placeholder: (_, __) => const ColoredBox(color: AppColors.surface2),
-                          errorWidget: (_, __, ___) => const ColoredBox(color: AppColors.surface2),
+                          placeholder: (_, __) => ColoredBox(color: AppColors.surface2),
+                          errorWidget: (_, __, ___) => ColoredBox(color: AppColors.surface2),
                         ),
                 ),
               ),
