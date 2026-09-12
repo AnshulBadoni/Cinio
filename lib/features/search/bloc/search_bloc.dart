@@ -326,7 +326,10 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     return [for (final item in input) if (seen.add('${item.title.toLowerCase()}|${item.tmdbId}|${item.tmdbIsTv}')) item];
   }
 
-  Future<void> _onDiscoverMore(Emitter<SearchState> emit) async {
+  Future<void> _onDiscoverMore(
+    SearchDiscoverMore event,
+    Emitter<SearchState> emit,
+  ) async {
     if (state.query.trim().isNotEmpty || state.discoverLoadingMore || state.discoverAtEnd) return;
     emit(state.copyWith(discoverLoadingMore: true));
     try {

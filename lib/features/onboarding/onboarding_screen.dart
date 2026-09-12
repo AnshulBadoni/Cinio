@@ -84,9 +84,20 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                 ),
               ),
-              // Keep the native/Flutter splash background and glow, but do not
-              // render the legacy Zangetsu wordmark during app startup. The
-              // startup path itself remains unchanged.
+              // Cinio wordmark: replaces the legacy Zangetsu brand moment.
+              Center(
+                child: Opacity(
+                  opacity: _fade.value,
+                  child: Transform.scale(
+                    scale: 0.92 + (0.08 * r),
+                    child: Image.asset(
+                      'assets/icon/splash_wordmark.png',
+                      width: 330,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
             ],
           );
         },
