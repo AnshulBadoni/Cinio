@@ -175,6 +175,10 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   // run keep streaming its (e.g. all-sources) results over the new one.
   int _runGen = 0;
 
+  // Bumped for every discovery refresh so an older TMDB/provider request
+  // cannot overwrite a newer catalog selection with a stale success/error.
+  int _discoverGen = 0;
+
   Future<void> _onStarted(
     SearchStarted event,
     Emitter<SearchState> emit,
@@ -255,6 +259,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     Emitter<SearchState> emit,
   ) async {
     if (state.query.trim().isNotEmpty) return;
+    final gen = ++_discoverGen;
     emit(state.copyWith(
       status: SearchStatus.loading,
       discoverItems: const [],
@@ -266,15 +271,20 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     ));
     try {
       final items = await _fetchDiscoverPage(1);
-      if (isClosed) return;
+      if (isClosed || gen != _discoverGen) return;
       emit(state.copyWith(
         status: SearchStatus.success,
         discoverItems: _dedupe(items),
         discoverPage: 1,
         discoverAtEnd: items.isEmpty,
       ));
-    } catch (e) {
-      if (!isClosed) emit(state.copyWith(status: SearchStatus.error, error: 'Could not load discovery'));
+    } catch (_) {
+      // A catalog switch can start another request while this one is still
+      // running. Never let the older request replace the newer catalog with
+      // a stale error.
+      if (!isClosed && gen == _discoverGen) {
+        emit(state.copyWith(status: SearchStatus.error, error: 'Could not load discovery'));
+      }
     }
   }
 

@@ -491,7 +491,14 @@ class _SearchViewState extends State<_SearchView>
                     case SearchStatus.error:
                       return _errorView(state);
                     case SearchStatus.success:
-                      return _resultsBody(state, cellW, modeSources);
+                      // An empty query is Discover mode, not a provider-search
+                      // result set. TMDB discovery stores its items in
+                      // [discoverItems], so sending this state through
+                      // [_resultsBody] made a successful Discover request look
+                      // like "0 results for \"\"".
+                      return state.query.trim().isEmpty
+                          ? _idleView(state)
+                          : _resultsBody(state, cellW, modeSources);
                   }
                 },
               ),
