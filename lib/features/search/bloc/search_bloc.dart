@@ -12,6 +12,7 @@ import '../../../core/playback/search_source_prefs.dart';
 import '../../../core/playback/source_health_store.dart';
 import '../../../core/repository/source_repository.dart';
 import '../../../core/search/title_suggestion_service.dart';
+import '../../../core/metadata/tmdb_discover_service.dart';
 import '../../../core/state/active_source_cubit.dart';
 // sourceTypeOf lives with the source picker; search_screen.dart reaches for it
 // the same way for its own mode narrowing.
@@ -31,6 +32,11 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
        _suggestions = suggestions ?? sl<TitleSuggestionService>(),
        super(_restoredState(prefs ?? sl<SearchPrefs>())) {
     on<SearchStarted>(_onStarted);
+    on<SearchCatalogSourceChanged>(_onCatalogSourceChanged);
+    on<SearchCatalogChanged>(_onCatalogChanged);
+    on<SearchDiscoverTypeChanged>(_onDiscoverTypeChanged);
+    on<SearchDiscoverRequested>(_onDiscoverRequested);
+    on<SearchDiscoverMore>(_onDiscoverMore);
     on<SearchQueryChanged>(_onQueryChanged);
     on<SearchSuggestionsUpdated>(_onSuggestionsUpdated);
     on<SearchSortChanged>(_onSortChanged);
@@ -67,6 +73,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   final SearchHistory _history;
   final SearchPrefs _prefs;
   final TitleSuggestionService _suggestions;
+  final TmdbDiscoverService _tmdb = sl<TmdbDiscoverService>();
   StreamSubscription<ContentMode>? _modeSub;
 
   /// Hard cap on one source's search.
@@ -172,15 +179,168 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     SearchStarted event,
     Emitter<SearchState> emit,
   ) async {
-    if (state.trending.isNotEmpty) return;
+    if (state.discoverItems.isNotEmpty || state.trending.isNotEmpty) return;
+    add(const SearchDiscoverRequested());
+  }
+
+  void _onCatalogSourceChanged(
+    SearchCatalogSourceChanged event,
+    Emitter<SearchState> emit,
+  ) {
+    final nextSource = event.source == 'providers'
+        ? SearchCatalogSource.providers
+        : SearchCatalogSource.tmdb;
+    final providerFilter = switch (state.discoverType) {
+      SearchDiscoverType.all => SearchContentFilter.all,
+      SearchDiscoverType.anime => SearchContentFilter.anime,
+      SearchDiscoverType.movies => SearchContentFilter.movies,
+      SearchDiscoverType.series => SearchContentFilter.movies,
+    };
+    emit(state.copyWith(
+      catalogSource: nextSource,
+      contentFilter: nextSource == SearchCatalogSource.providers
+          ? providerFilter
+          : SearchContentFilter.all,
+    ));
+    if (state.query.trim().isEmpty) {
+      add(const SearchDiscoverRequested());
+    } else {
+      add(const SearchSubmitted());
+    }
+  }
+
+  void _onCatalogChanged(
+    SearchCatalogChanged event,
+    Emitter<SearchState> emit,
+  ) {
+    emit(state.copyWith(catalog: event.catalog));
+    if (state.query.trim().isEmpty) {
+      add(const SearchDiscoverRequested());
+    } else {
+      add(const SearchSubmitted());
+    }
+  }
+
+  void _onDiscoverTypeChanged(
+    SearchDiscoverTypeChanged event,
+    Emitter<SearchState> emit,
+  ) {
+    final providerFilter = switch (event.type) {
+      SearchDiscoverType.all => SearchContentFilter.all,
+      SearchDiscoverType.anime => SearchContentFilter.anime,
+      SearchDiscoverType.movies => SearchContentFilter.movies,
+      // Provider MediaItems do not have a universal movie-vs-series type;
+      // keep the legacy non-anime bucket for Providers. TMDB has a true
+      // Series filter via its TV catalog.
+      SearchDiscoverType.series => SearchContentFilter.movies,
+    };
+    emit(state.copyWith(
+      discoverType: event.type,
+      contentFilter: state.catalogSource == SearchCatalogSource.providers
+          ? providerFilter
+          : state.contentFilter,
+    ));
+    if (state.catalogSource == SearchCatalogSource.providers) {
+      _prefs.setContentFilterName(providerFilter.name);
+    }
+    if (state.query.trim().isEmpty) {
+      add(const SearchDiscoverRequested());
+    } else if (state.catalogSource == SearchCatalogSource.tmdb) {
+      add(const SearchSubmitted());
+    }
+  }
+
+  Future<void> _onDiscoverRequested(
+    SearchDiscoverRequested event,
+    Emitter<SearchState> emit,
+  ) async {
+    if (state.query.trim().isNotEmpty) return;
+    emit(state.copyWith(
+      status: SearchStatus.loading,
+      discoverItems: const [],
+      discoverPage: 1,
+      discoverLoadingMore: false,
+      discoverAtEnd: false,
+      clearError: true,
+      groups: const [],
+    ));
     try {
-      final sections = await _repo.home();
-      final items = sections.isNotEmpty
-          ? sections.first.items.take(12).toList()
-          : <MediaItem>[];
-      emit(state.copyWith(trending: items));
+      final items = await _fetchDiscoverPage(1);
+      if (isClosed) return;
+      emit(state.copyWith(
+        status: SearchStatus.success,
+        discoverItems: _dedupe(items),
+        discoverPage: 1,
+        discoverAtEnd: items.isEmpty,
+      ));
+    } catch (e) {
+      if (!isClosed) emit(state.copyWith(status: SearchStatus.error, error: 'Could not load discovery'));
+    }
+  }
+
+  Future<List<MediaItem>> _fetchDiscoverPage(int page) async {
+    final type = switch (state.discoverType) {
+      SearchDiscoverType.anime => 'anime',
+      SearchDiscoverType.movies => 'movies',
+      SearchDiscoverType.series => 'series',
+      SearchDiscoverType.all => 'all',
+    };
+    final genre = state.genreFilter;
+    if (state.catalogSource == SearchCatalogSource.tmdb) {
+      return _tmdb.discover(
+        catalog: switch (state.catalog) {
+          SearchCatalog.trending => 'trending',
+          SearchCatalog.popular => 'popular',
+          SearchCatalog.topRated => 'top_rated',
+          SearchCatalog.discoverNew => 'discover_new',
+        },
+        type: type,
+        genre: genre,
+        page: page,
+      );
+    }
+    final sourceId = sl<ActiveSourceCubit>().state;
+    final dateRange = switch (state.catalog) {
+      SearchCatalog.trending => 1,
+      SearchCatalog.popular => 30,
+      SearchCatalog.topRated => 0,
+      SearchCatalog.discoverNew => 7,
+    };
+    final items = await _repo.popular(
+      dateRange: dateRange,
+      page: page,
+      sourceId: sourceId,
+    );
+    if (state.catalog == SearchCatalog.discoverNew) {
+      items.shuffle();
+    }
+    return items.where((item) {
+      if (!state.contentFilter.matches(item)) return false;
+      if (genre != null && !SearchMeta.matchesGenre(item, genre)) return false;
+      return true;
+    }).toList();
+  }
+
+  List<MediaItem> _dedupe(List<MediaItem> input) {
+    final seen = <String>{};
+    return [for (final item in input) if (seen.add('${item.title.toLowerCase()}|${item.tmdbId}|${item.tmdbIsTv}')) item];
+  }
+
+  Future<void> _onDiscoverMore(Emitter<SearchState> emit) async {
+    if (state.query.trim().isNotEmpty || state.discoverLoadingMore || state.discoverAtEnd) return;
+    emit(state.copyWith(discoverLoadingMore: true));
+    try {
+      final next = state.discoverPage + 1;
+      final items = await _fetchDiscoverPage(next);
+      final merged = _dedupe([...state.discoverItems, ...items]);
+      if (!isClosed) emit(state.copyWith(
+        discoverItems: merged,
+        discoverPage: next,
+        discoverLoadingMore: false,
+        discoverAtEnd: items.isEmpty || merged.length == state.discoverItems.length,
+      ));
     } catch (_) {
-      /* trending is best-effort */
+      if (!isClosed) emit(state.copyWith(discoverLoadingMore: false));
     }
   }
 
@@ -194,6 +354,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
 
     final trimmed = q.trim();
     if (trimmed.isEmpty) {
+      add(const SearchDiscoverRequested());
       // Clearing the field returns to the idle screen and drops suggestions.
       emit(
         state.copyWith(
@@ -294,6 +455,11 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       state.copyWith(contentFilter: event.filter, sourceFilter: kAllSources),
     );
     _prefs.setContentFilterName(event.filter.name);
+    if (state.query.trim().isEmpty) {
+      add(const SearchDiscoverRequested());
+    } else {
+      add(const SearchSubmitted());
+    }
   }
 
   void _onAudioFilterChanged(
@@ -304,6 +470,11 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     // sources" so the user never lands on an empty filtered view.
     emit(state.copyWith(audioFilter: event.filter, sourceFilter: kAllSources));
     _prefs.setAudioFilterName(event.filter.name);
+    if (state.query.trim().isEmpty) {
+      add(const SearchDiscoverRequested());
+    } else {
+      add(const SearchSubmitted());
+    }
   }
 
   void _onGenreFilterChanged(
@@ -318,6 +489,11 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       ),
     );
     _prefs.setGenre(event.genre);
+    if (state.query.trim().isEmpty) {
+      add(const SearchDiscoverRequested());
+    } else {
+      add(const SearchSubmitted());
+    }
   }
 
   void _onStatusFilterChanged(
@@ -328,6 +504,11 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     // sources" so the user never lands on an empty filtered view.
     emit(state.copyWith(statusFilter: event.filter, sourceFilter: kAllSources));
     _prefs.setStatusFilterName(event.filter.name);
+    if (state.query.trim().isEmpty) {
+      add(const SearchDiscoverRequested());
+    } else {
+      add(const SearchSubmitted());
+    }
   }
 
   /// The single entry point for the heavy search. Sets [query] when provided
@@ -371,6 +552,27 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   /// results as soon as they arrive (fast sources show first; one slow/broken
   /// source never blocks the rest).
   Future<void> _runSearch(String q, Emitter<SearchState> emit) async {
+    if (state.catalogSource == SearchCatalogSource.tmdb) {
+      final gen = ++_runGen;
+      _lastRunQuery = q;
+      _history.add(q);
+      emit(state.copyWith(status: SearchStatus.loading, groups: const [], discoverItems: const [], clearError: true));
+      try {
+        final type = switch (state.discoverType) {
+          SearchDiscoverType.anime => 'anime',
+          SearchDiscoverType.movies => 'movies',
+          SearchDiscoverType.series => 'series',
+          SearchDiscoverType.all => 'all',
+        };
+        final items = await _tmdb.search(query: q, type: type, genre: state.genreFilter);
+        if (isClosed || gen != _runGen) return;
+        emit(state.copyWith(status: SearchStatus.success, groups: [SourceResultGroup(sourceId: 'tmdb:catalog', sourceName: 'TMDB', items: items)], discoverItems: const []));
+      } catch (_) {
+        if (!isClosed && gen == _runGen) emit(state.copyWith(status: SearchStatus.error, groups: const [], error: 'TMDB search failed'));
+      }
+      return;
+    }
+
     final gen = ++_runGen; // this run is superseded once a newer one starts
     _lastRunQuery = q;
     _history.add(q);

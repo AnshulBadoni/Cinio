@@ -117,6 +117,35 @@ class SearchStatusFilterChanged extends SearchEvent {
 }
 
 /// Fired once on open to load trending titles for the idle screen.
+class SearchCatalogSourceChanged extends SearchEvent {
+  const SearchCatalogSourceChanged(this.source);
+  final String source;
+  @override
+  List<Object?> get props => [source];
+}
+
+class SearchDiscoverTypeChanged extends SearchEvent {
+  const SearchDiscoverTypeChanged(this.type);
+  final SearchDiscoverType type;
+  @override
+  List<Object?> get props => [type];
+}
+
+class SearchCatalogChanged extends SearchEvent {
+  const SearchCatalogChanged(this.catalog);
+  final SearchCatalog catalog;
+  @override
+  List<Object?> get props => [catalog];
+}
+
+class SearchDiscoverMore extends SearchEvent {
+  const SearchDiscoverMore();
+}
+
+class SearchDiscoverRequested extends SearchEvent {
+  const SearchDiscoverRequested();
+}
+
 class SearchStarted extends SearchEvent {
   const SearchStarted();
 }

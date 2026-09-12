@@ -7,6 +7,27 @@ import '../../../core/playback/source_health_store.dart' show SourceOutcome;
 
 enum SearchStatus { idle, loading, success, error }
 
+enum SearchCatalogSource { tmdb, providers }
+
+enum SearchCatalog {
+  trending('Trending'),
+  popular('Popular'),
+  topRated('Top Rated'),
+  discoverNew('Discover New');
+  const SearchCatalog(this.label);
+  final String label;
+}
+
+
+enum SearchDiscoverType {
+  all('All'),
+  movies('Movies'),
+  series('Series'),
+  anime('Anime');
+  const SearchDiscoverType(this.label);
+  final String label;
+}
+
 enum SearchSort {
   bestMatch('Best match'),
   newest('Newest'),
@@ -218,6 +239,10 @@ class SearchState extends Equatable {
   final SearchStatus status;
   final String query;
 
+  final SearchCatalogSource catalogSource;
+  final SearchCatalog catalog;
+  final SearchDiscoverType discoverType;
+
   /// Per-source result groups (cross-source search).
   final List<SourceResultGroup> groups;
 
@@ -254,6 +279,11 @@ class SearchState extends Equatable {
   /// Active publication-status filter (Any / Ongoing / Completed). Not
   /// mode-gated — see [SearchStatusFilter].
   final SearchStatusFilter statusFilter;
+
+  final List<MediaItem> discoverItems;
+  final int discoverPage;
+  final bool discoverLoadingMore;
+  final bool discoverAtEnd;
 
   final String? error;
 
@@ -344,6 +374,9 @@ class SearchState extends Equatable {
   SearchState({
     this.status = SearchStatus.idle,
     this.query = '',
+    this.catalogSource = SearchCatalogSource.tmdb,
+    this.catalog = SearchCatalog.trending,
+    this.discoverType = SearchDiscoverType.all,
     this.groups = const [],
     this.sourceFilter = kAllSources,
     this.ecosystem = SearchEcosystem.all,
@@ -355,6 +388,10 @@ class SearchState extends Equatable {
     this.statusFilter = SearchStatusFilter.any,
     this.error,
     this.trending = const [],
+    this.discoverItems = const [],
+    this.discoverPage = 1,
+    this.discoverLoadingMore = false,
+    this.discoverAtEnd = false,
     this.suggestions = const [],
     this.aniFiltersBySource = const {},
     this.mihonFiltersBySource = const {},
@@ -372,6 +409,9 @@ class SearchState extends Equatable {
   /// tint on the filter button and the "no results — clear filters" hint).
   /// Deliberately excludes [sort] — a sort choice reorders, never narrows.
   bool get hasActiveFilter =>
+      catalogSource != SearchCatalogSource.tmdb ||
+      catalog != SearchCatalog.trending ||
+      discoverType != SearchDiscoverType.all ||
       contentFilter != SearchContentFilter.all ||
       audioFilter != SearchAudioFilter.any ||
       genreFilter != null ||
@@ -382,6 +422,9 @@ class SearchState extends Equatable {
   /// badge. Sort used to tint its own separate icon; now that it lives in the
   /// same sheet, a non-default sort still needs a visible signal somewhere.
   int get activeFilterCount =>
+      (catalogSource != SearchCatalogSource.tmdb ? 1 : 0) +
+      (catalog != SearchCatalog.trending ? 1 : 0) +
+      (discoverType != SearchDiscoverType.all ? 1 : 0) +
       (sort != SearchSort.bestMatch ? 1 : 0) +
       (contentFilter != SearchContentFilter.all ? 1 : 0) +
       (audioFilter != SearchAudioFilter.any ? 1 : 0) +
@@ -407,11 +450,14 @@ class SearchState extends Equatable {
 
   /// Total results across every source in the active ecosystem, honouring all
   /// client-side filters.
-  int get totalCount => groups.fold(
-    0,
-    (sum, g) =>
-        sum + (_inEcosystem(g.sourceId) ? g.items.where(_passes).length : 0),
-  );
+  int get totalCount {
+    if (query.trim().isEmpty) return discoverItems.length;
+    return groups.fold(
+      0,
+      (sum, g) =>
+          sum + (_inEcosystem(g.sourceId) ? g.items.where(_passes).length : 0),
+    );
+  }
 
   /// Result count for one source group under the active filters.
   int countFor(SourceResultGroup g) => g.items.where(_passes).length;
@@ -692,6 +738,9 @@ class SearchState extends Equatable {
     String? sourceFilter,
     SearchEcosystem? ecosystem,
     bool? currentSourceOnly,
+    SearchCatalogSource? catalogSource,
+    SearchCatalog? catalog,
+    SearchDiscoverType? discoverType,
     SearchSort? sort,
     SearchContentFilter? contentFilter,
     SearchAudioFilter? audioFilter,
@@ -712,9 +761,16 @@ class SearchState extends Equatable {
     int? filteredBrowsePage,
     bool? filteredBrowseLoadingMore,
     bool? filteredBrowseAtEnd,
+    List<MediaItem>? discoverItems,
+    int? discoverPage,
+    bool? discoverLoadingMore,
+    bool? discoverAtEnd,
   }) => SearchState(
     status: status ?? this.status,
     query: query ?? this.query,
+    catalogSource: catalogSource ?? this.catalogSource,
+    catalog: catalog ?? this.catalog,
+    discoverType: discoverType ?? this.discoverType,
     groups: groups ?? this.groups,
     sourceFilter: sourceFilter ?? this.sourceFilter,
     ecosystem: ecosystem ?? this.ecosystem,
@@ -739,12 +795,19 @@ class SearchState extends Equatable {
     filteredBrowseLoadingMore:
         filteredBrowseLoadingMore ?? this.filteredBrowseLoadingMore,
     filteredBrowseAtEnd: filteredBrowseAtEnd ?? this.filteredBrowseAtEnd,
+    discoverItems: discoverItems ?? this.discoverItems,
+    discoverPage: discoverPage ?? this.discoverPage,
+    discoverLoadingMore: discoverLoadingMore ?? this.discoverLoadingMore,
+    discoverAtEnd: discoverAtEnd ?? this.discoverAtEnd,
   );
 
   @override
   List<Object?> get props => [
     status,
     query,
+    catalogSource,
+    catalog,
+    discoverType,
     groups,
     sourceFilter,
     ecosystem,
@@ -767,5 +830,9 @@ class SearchState extends Equatable {
     filteredBrowsePage,
     filteredBrowseLoadingMore,
     filteredBrowseAtEnd,
+    discoverItems,
+    discoverPage,
+    discoverLoadingMore,
+    discoverAtEnd,
   ];
 }

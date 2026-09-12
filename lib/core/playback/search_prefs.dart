@@ -71,6 +71,7 @@ class SearchPrefs extends ChangeNotifier {
   }
 
   // ── Remembered filter/sort state (read once when a search runs) ───────────
+
   /// Stored by enum NAME so the index can shift without breaking persistence.
   String? get contentFilterName => _box.get(_contentFilterKey) as String?;
   Future<void> setContentFilterName(String name) =>

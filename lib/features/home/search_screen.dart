@@ -222,8 +222,16 @@ class _SearchViewState extends State<_SearchView>
     return t;
   }
 
-  void _openDetail(MediaItem item) {
-    Navigator.push(context, DetailScreen.route(item)).then((_) {
+  Future<void> _openDetail(MediaItem item) async {
+    final resolved = await _resolveCatalogItem(item);
+    if (!mounted) return;
+    if (resolved == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No result found for ${item.title}')),
+      );
+      return;
+    }
+    Navigator.push(context, DetailScreen.route(resolved)).then((_) {
       if (mounted) setState(() {});
     });
   }
@@ -313,55 +321,90 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
+  Future<MediaItem?> _resolveCatalogItem(MediaItem item) async {
+    if (item.sourceId != 'tmdb:catalog') return item;
+    final sourceId = sl<ActiveSourceCubit>().state;
+    try {
+      final results = await _repo.search(item.title, sourceId: sourceId);
+      for (final result in results) {
+        if (item.tmdbId != null &&
+            result.tmdbId == item.tmdbId &&
+            result.tmdbIsTv == item.tmdbIsTv) {
+          return result;
+        }
+      }
+      return bestTitleMatch(results, item.title);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _play(MediaItem item) async {
+    final resolved = await _resolveCatalogItem(item);
+    if (!mounted) return;
+    if (resolved == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No playable result found for ${item.title}')),
+      );
+      return;
+    }
     final category =
-        sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
+        sl<TitlePrefsStore>().category(resolved.sourceId, resolved.url) ??
         sl<PlaybackPrefs>().defaultCategory;
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PlayerScreen(
-          sourceId: item.sourceId,
+          sourceId: resolved.sourceId,
           episodesResolver: () =>
-              _repo.episodes(item.url, sourceId: item.sourceId),
+              _repo.episodes(resolved.url, sourceId: resolved.sourceId),
           resume: sl<ResumeStore>(),
           resolveSources: (u) =>
-              _repo.sources(u, sourceId: item.sourceId, fast: true),
+              _repo.sources(u, sourceId: resolved.sourceId, fast: true),
           history: sl<WatchHistory>(),
-          showTitle: item.title,
-          cover: item.cover,
-          coverHeaders: item.coverHeaders,
-          showUrl: item.url,
+          showTitle: resolved.title,
+          cover: resolved.cover ?? item.cover,
+          coverHeaders: resolved.coverHeaders ?? item.coverHeaders,
+          showUrl: resolved.url,
           category: category,
-          malId: item.malId,
-          scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
+          malId: resolved.malId,
+          scrobbleTitle: resolved.type == ProviderType.anime ? resolved.title : null,
         ),
       ),
     );
     if (mounted) setState(() {});
   }
 
-  void _showInfo(MediaItem item) {
+  Future<void> _showInfo(MediaItem item) async {
+    final resolved = await _resolveCatalogItem(item);
+    if (!mounted) return;
+    final target = resolved ?? item;
+    if (resolved == null && item.sourceId == 'tmdb:catalog') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No result found for ${item.title}')),
+      );
+      return;
+    }
     showMediaInfoSheet(
       context,
-      title: item.title,
-      englishTitle: item.englishTitle,
-      cover: item.cover,
-      headers: item.coverHeaders,
-      typeLabel: _typeLabel(item.type),
-      subCount: item.subCount,
-      dubCount: item.dubCount,
-      detail: _detailOf(item.url, item.sourceId),
-      inMyList: _myList.contains(item),
-      onPlay: () => _play(item),
-      onOpenDetail: () => _openDetail(item),
+      title: target.title,
+      englishTitle: target.englishTitle,
+      cover: target.cover ?? item.cover,
+      headers: target.coverHeaders ?? item.coverHeaders,
+      typeLabel: _typeLabel(target.type),
+      subCount: target.subCount,
+      dubCount: target.dubCount,
+      detail: _detailOf(target.url, target.sourceId),
+      inMyList: _myList.contains(target),
+      onPlay: () => _play(target),
+      onOpenDetail: () => _openDetail(target),
       onToggleMyList: () async {
         if (!requireLogin(context, action: 'add to My List')) {
-          return _myList.contains(item);
+          return _myList.contains(target);
         }
-        await _myList.toggle(item);
+        await _myList.toggle(target);
         if (mounted) setState(() {});
-        return _myList.contains(item);
+        return _myList.contains(target);
       },
     );
   }
@@ -1688,162 +1731,62 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
-  // ── Idle view: recent searches + trending ─────────────────────────────────
+  // ── Idle view: endless Discover feed ───────────────────────────────────────
   Widget _idleView(SearchState state) {
-    // Recent searches are hidden during a filtered browse — the screen is
-    // showing filter results, not a search landing page, and the chips would
-    // push them below the fold.
-    final recent = state.hasFilteredBrowse
-        ? const <String>[]
-        : _history.recent();
-    // A filters-only browse (source filters set with an empty search box)
-    // replaces "Top picks" — those results ARE what the filters asked for.
-    // Falls back to trending the moment the filters are cleared.
-    final browsing = state.hasFilteredBrowse;
-    final trending = browsing ? state.filteredBrowse : state.trending;
-
-    if (recent.isEmpty && trending.isEmpty) {
+    final items = state.discoverItems;
+    final cellW = (MediaQuery.sizeOf(context).width - 40 - 24) / 3;
+    if (items.isEmpty && state.status == SearchStatus.loading) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+    if (items.isEmpty) {
       return const Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.search_rounded, size: 48, color: AppColors.textTertiary),
+            Icon(Icons.explore_outlined, size: 48, color: AppColors.textTertiary),
             SizedBox(height: 12),
-            Text(
-              'Search for something to watch',
-              textAlign: TextAlign.center,
-              style: AppText.body,
-            ),
+            Text('Nothing to discover with these filters', style: AppText.body),
           ],
         ),
       );
     }
-
-    final cellW = (MediaQuery.sizeOf(context).width - 40 - 24) / 3;
     return NotificationListener<ScrollNotification>(
-      // Infinite scroll for a filtered browse, the way Aniyomi keeps paging one.
-      // The bloc ignores the event unless a browse is active and idle, so this
-      // costs nothing on the normal idle screen.
       onNotification: (n) {
-        if (browsing &&
-            state.canLoadMoreFilteredBrowse &&
-            n.metrics.axis == Axis.vertical &&
-            n.metrics.pixels >= n.metrics.maxScrollExtent - 600) {
-          context.read<SearchBloc>().add(const SearchFilteredBrowseMore());
+        if (n.metrics.axis == Axis.vertical &&
+            n.metrics.pixels >= n.metrics.maxScrollExtent - 800 &&
+            !state.discoverLoadingMore &&
+            !state.discoverAtEnd) {
+          context.read<SearchBloc>().add(const SearchDiscoverMore());
         }
         return false;
       },
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          4,
-          16,
-          24 + MediaQuery.paddingOf(context).bottom,
-        ),
+      child: GridView.builder(
+        padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        children: [
-          if (recent.isNotEmpty) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text('Recent searches', style: AppText.overline),
-                ),
-                GestureDetector(
-                  onTap: () async {
-                    await _history.clear();
-                    if (mounted) setState(() {});
-                  },
-                  child: Text(
-                    'Clear',
-                    style: AppText.caption.copyWith(color: AppColors.accent),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [for (final q in recent) _recentChip(q)],
-            ),
-            const SizedBox(height: 24),
-          ],
-          if (trending.isNotEmpty) ...[
-            if (browsing)
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Filtered · ${_repo.displayName(state.filteredBrowseSourceId)}',
-                      style: AppText.overline,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () => context.read<SearchBloc>().add(
-                      SearchSourceFiltersApplied(
-                        state.filteredBrowseSourceId,
-                        '',
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 2,
-                      ),
-                      child: Text(
-                        'Clear',
-                        style: TextStyle(
-                          color: AppColors.accent,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              )
-            else
-              const Text('Top picks', style: AppText.overline),
-            const SizedBox(height: 12),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 0.62,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 16,
-              ),
-              itemCount: trending.length,
-              itemBuilder: (context, i) {
-                final item = trending[i];
-                return PosterCard(
-                  title: item.title,
-                  imageUrl: item.cover,
-                  headers: item.coverHeaders,
-                  tags: _tagsFor(item),
-                  qualityBadge: item.quality,
-                  dubBadge: item.dubBadge,
-                  cellWidth: cellW,
-                  onTap: () => _openDetail(item),
-                  onLongPress: () => _showInfo(item),
-                );
-              },
-            ),
-            if (browsing && state.filteredBrowseLoadingMore)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              ),
-          ],
-        ],
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          childAspectRatio: 0.62,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 16,
+        ),
+        itemCount: items.length + (state.discoverLoadingMore ? 3 : 0),
+        itemBuilder: (context, i) {
+          if (i >= items.length) {
+            return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+          }
+          final item = items[i];
+          return PosterCard(
+            title: item.title,
+            imageUrl: item.cover,
+            headers: item.coverHeaders,
+            tags: _tagsFor(item),
+            qualityBadge: item.quality,
+            dubBadge: item.dubBadge,
+            cellWidth: cellW,
+            onTap: () => _openDetail(item),
+            onLongPress: () => _showInfo(item),
+          );
+        },
       ),
     );
   }
@@ -2054,6 +1997,9 @@ class _SearchFilterSheet extends StatelessWidget {
       sl<SearchSourcePrefs>().setManyIncluded(allIds, true);
     }
     context.read<SearchBloc>()
+      ..add(const SearchCatalogSourceChanged('tmdb'))
+      ..add(const SearchCatalogChanged(SearchCatalog.trending))
+      ..add(const SearchDiscoverTypeChanged(SearchDiscoverType.all))
       ..add(const SearchSortChanged(SearchSort.bestMatch))
       ..add(const SearchContentFilterChanged(SearchContentFilter.all))
       ..add(const SearchAudioFilterChanged(SearchAudioFilter.any))
@@ -2063,6 +2009,8 @@ class _SearchFilterSheet extends StatelessWidget {
 
   bool _canReset(SearchState state, SearchSourcePrefs prefs) =>
       state.hasActiveFilter ||
+      state.catalogSource != SearchCatalogSource.tmdb ||
+      state.catalog != SearchCatalog.trending ||
       state.sort != SearchSort.bestMatch ||
       (!state.currentSourceOnly && prefs.excluded.isNotEmpty);
 
@@ -2103,12 +2051,12 @@ class _SearchFilterSheet extends StatelessWidget {
                 builder: (context, _) => ListView(
                   padding: const EdgeInsets.only(bottom: 8),
                   children: [
+                    _catalogSourceSelector(context),
+                    _catalogSelector(context),
                     _sortSelector(context),
-                    if (showTypeAudio) _contentTypeSelector(context),
-                    // Audio needs BOTH anime mode and results that actually
-                    // report sub/dub counts — movie sources never set them, so
-                    // without the second test the group shows and either choice
-                    // empties the list. Same rule Genre and Status already use.
+                    _discoverTypeSelector(context),
+                    // Audio needs anime mode and results that actually report
+                    // sub/dub counts.
                     if (showTypeAudio &&
                         context.watch<SearchBloc>().state.hasAnyAudio)
                       _audioSelector(context),
@@ -2143,6 +2091,9 @@ class _SearchFilterSheet extends StatelessWidget {
           BlocBuilder<SearchBloc, SearchState>(
             buildWhen: (p, c) =>
                 p.sort != c.sort ||
+                p.catalogSource != c.catalogSource ||
+                p.catalog != c.catalog ||
+                p.discoverType != c.discoverType ||
                 p.contentFilter != c.contentFilter ||
                 p.audioFilter != c.audioFilter ||
                 p.genreFilter != c.genreFilter ||
@@ -2209,6 +2160,9 @@ class _SearchFilterSheet extends StatelessWidget {
           p.genreFilter != c.genreFilter ||
           p.statusFilter != c.statusFilter ||
           p.sort != c.sort ||
+          p.catalogSource != c.catalogSource ||
+          p.catalog != c.catalog ||
+          p.discoverType != c.discoverType ||
           p.groups != c.groups ||
           p.ecosystem != c.ecosystem ||
           p.currentSourceOnly != c.currentSourceOnly,
@@ -2304,6 +2258,58 @@ class _SearchFilterSheet extends StatelessWidget {
     );
   }
 
+  Widget _catalogSourceSelector(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _filterLabel('CATALOG SOURCE'),
+          const SizedBox(height: 10),
+          BlocBuilder<SearchBloc, SearchState>(
+            buildWhen: (p, c) => p.catalogSource != c.catalogSource,
+            builder: (context, state) => Wrap(
+              spacing: 8,
+              children: [
+                _pill(label: 'TMDB', selected: state.catalogSource == SearchCatalogSource.tmdb,
+                  onTap: () => context.read<SearchBloc>().add(const SearchCatalogSourceChanged('tmdb'))),
+                _pill(label: 'Providers', selected: state.catalogSource == SearchCatalogSource.providers,
+                  onTap: () => context.read<SearchBloc>().add(const SearchCatalogSourceChanged('providers'))),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+      ),
+    );
+  }
+
+  Widget _catalogSelector(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _filterLabel('CATALOG'),
+          const SizedBox(height: 10),
+          BlocBuilder<SearchBloc, SearchState>(
+            buildWhen: (p, c) => p.catalog != c.catalog,
+            builder: (context, state) => Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final c in SearchCatalog.values)
+                  _pill(label: c.label, selected: state.catalog == c,
+                    onTap: () => context.read<SearchBloc>().add(SearchCatalogChanged(c))),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+      ),
+    );
+  }
+
   /// Sort selector, merged in from the old standalone sort sheet. Applies
   /// immediately, same as every other pill here.
   Widget _sortSelector(BuildContext context) {
@@ -2326,6 +2332,37 @@ class _SearchFilterSheet extends StatelessWidget {
                     selected: state.sort == s,
                     onTap: () =>
                         context.read<SearchBloc>().add(SearchSortChanged(s)),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+      ),
+    );
+  }
+
+  Widget _discoverTypeSelector(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _filterLabel('TYPE'),
+          const SizedBox(height: 10),
+          BlocBuilder<SearchBloc, SearchState>(
+            buildWhen: (p, c) => p.discoverType != c.discoverType,
+            builder: (context, state) => Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final type in SearchDiscoverType.values)
+                  _pill(
+                    label: type.label,
+                    selected: state.discoverType == type,
+                    onTap: () => context.read<SearchBloc>().add(
+                      SearchDiscoverTypeChanged(type),
+                    ),
                   ),
               ],
             ),
@@ -2414,7 +2451,9 @@ class _SearchFilterSheet extends StatelessWidget {
       buildWhen: (p, c) =>
           p.genreFilter != c.genreFilter || p.groups != c.groups,
       builder: (context, state) {
-        final available = state.availableGenres;
+        final available = state.catalogSource == SearchCatalogSource.tmdb
+            ? const ['Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Family', 'Fantasy', 'Horror', 'Mystery', 'Romance', 'Science Fiction', 'Thriller', 'History', 'Music']
+            : state.availableGenres;
         if (available.isEmpty && state.genreFilter == null) {
           return const SizedBox.shrink();
         }
@@ -2429,7 +2468,7 @@ class _SearchFilterSheet extends StatelessWidget {
                   _filterLabel('GENRE'),
                   const SizedBox(width: 6),
                   Text(
-                    '· from your results',
+                    state.catalogSource == SearchCatalogSource.tmdb ? '' : '· from your results',
                     style: AppText.caption.copyWith(
                       color: AppColors.textTertiary,
                       fontWeight: FontWeight.w400,
