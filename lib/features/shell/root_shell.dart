@@ -280,8 +280,10 @@ class _RootShellState extends State<RootShell>
   }
 }
 
-/// Apple-style floating navigation capsule with a translucent surface and
-/// compact active pill. Labels can be hidden in Appearance settings.
+/// The frosted floating capsule: blurred surface, hairline border, five
+/// items. Active tab = the icon's solid accent twin + accent label — the
+/// state change lives in the icon itself (deliberately not the Material
+/// pill/indicator look).
 class _FloatingDock extends StatelessWidget {
   const _FloatingDock({
     required this.tabs,
@@ -299,29 +301,28 @@ class _FloatingDock extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     return Padding(
-      padding: EdgeInsets.fromLTRB(12, 0, 12, bottomInset + 10),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 460),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(30),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.surface.withValues(alpha: 0.88),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                ),
-                child: Row(
-                  children: [
+      padding: EdgeInsets.fromLTRB(16, 0, 16, bottomInset + 12),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+            decoration: BoxDecoration(
+              // Light enough that content ghosts through even on dark
+              // screens (My List / Settings) — 0.75 read as a solid slab
+              // anywhere the page behind wasn't bright.
+              color: AppColors.surface.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+            ),
+            child: Row(
+              children: [
                 for (final t in tabs)
                   if (t == DockTab.profile)
                     _ProfileDockItem(
                       selected: active == t,
                       onTap: () => onSelected(t),
-                      showLabel: sl<NavPrefs>().showNavigationLabels,
                     )
                   else
                     _DockItem(
@@ -330,11 +331,8 @@ class _FloatingDock extends StatelessWidget {
                       icon: _iconFor(t),
                       selected: active == t,
                       onTap: () => onSelected(t),
-                      showLabel: sl<NavPrefs>().showNavigationLabels,
                     ),
-                  ],
-                ),
-              ),
+              ],
             ),
           ),
         ),
@@ -385,7 +383,6 @@ class _DockItem extends StatelessWidget {
     required this.icon,
     required this.selected,
     required this.onTap,
-    this.showLabel = true,
   });
 
   final String label;
@@ -397,7 +394,6 @@ class _DockItem extends StatelessWidget {
   final (IconData, IconData)? icon;
   final bool selected;
   final VoidCallback onTap;
-  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -406,18 +402,8 @@ class _DockItem extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: EdgeInsets.symmetric(
-            horizontal: showLabel ? 11 : 13,
-            vertical: showLabel ? 5 : 7,
-          ),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white.withValues(alpha: 0.09) : Colors.transparent,
-            borderRadius: BorderRadius.circular(24),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -436,8 +422,8 @@ class _DockItem extends StatelessWidget {
                   ),
                 ),
               ),
-              if (showLabel) const SizedBox(height: 3),
-              if (showLabel) Text(
+              const SizedBox(height: 3),
+              Text(
                 label,
                 style: TextStyle(
                   fontSize: 10,
@@ -458,15 +444,10 @@ class _DockItem extends StatelessWidget {
 /// active), a plain person glyph otherwise. Opens the same Settings screen
 /// the gear used to.
 class _ProfileDockItem extends StatelessWidget {
-  const _ProfileDockItem({
-    required this.selected,
-    required this.onTap,
-    this.showLabel = true,
-  });
+  const _ProfileDockItem({required this.selected, required this.onTap});
 
   final bool selected;
   final VoidCallback onTap;
-  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -475,18 +456,8 @@ class _ProfileDockItem extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: EdgeInsets.symmetric(
-            horizontal: showLabel ? 11 : 13,
-            vertical: showLabel ? 5 : 7,
-          ),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white.withValues(alpha: 0.09) : Colors.transparent,
-            borderRadius: BorderRadius.circular(24),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -555,8 +526,8 @@ class _ProfileDockItem extends StatelessWidget {
                   ),
                 ),
               ),
-              if (showLabel) const SizedBox(height: 3),
-              if (showLabel) Text(
+              const SizedBox(height: 3),
+              Text(
                 'Profile',
                 style: TextStyle(
                   fontSize: 10,

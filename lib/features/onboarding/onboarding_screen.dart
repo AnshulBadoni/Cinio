@@ -84,39 +84,9 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                 ),
               ),
-              // Wordmark — wipe reveal (left→right) + fade + slight scale settle.
-              Center(
-                child: FractionallySizedBox(
-                  widthFactor: 0.62,
-                  child: Opacity(
-                    opacity: _fade.value,
-                    child: Transform.scale(
-                      scale: 0.94 + 0.06 * r,
-                      child: ShaderMask(
-                        blendMode: BlendMode.dstIn,
-                        shaderCallback: (rect) => LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: const [
-                            Colors.white,
-                            Colors.white,
-                            Colors.transparent,
-                          ],
-                          stops: [
-                            0.0,
-                            (r - 0.07).clamp(0.0, 1.0),
-                            r.clamp(0.0001, 1.0),
-                          ],
-                        ).createShader(rect),
-                        child: Image.asset(
-                          'assets/icon/wordmark.png',
-                          fit: BoxFit.contain,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              // Keep the native/Flutter splash background and glow, but do not
+              // render the legacy Zangetsu wordmark during app startup. The
+              // startup path itself remains unchanged.
             ],
           );
         },
