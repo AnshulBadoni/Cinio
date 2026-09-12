@@ -229,7 +229,7 @@ class _DetailView extends StatefulWidget {
 
 class _DetailViewState extends State<_DetailView>
     with SingleTickerProviderStateMixin {
-  static const double _expandedHeight = 320;
+  static const double _expandedHeight = 350;
   bool _showAppBarTitle = false;
 
   // The episode url we've already kicked a background source-prefetch for, so we
@@ -1555,7 +1555,7 @@ class _DetailViewState extends State<_DetailView>
         SliverToBoxAdapter(
           child: RepaintBoundary(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1570,7 +1570,7 @@ class _DetailViewState extends State<_DetailView>
                     ),
                     child: Text(
                       detail.title,
-                      style: AppText.largeTitle.copyWith(fontSize: 28),
+                      style: AppText.largeTitle.copyWith(fontSize: 30, letterSpacing: -0.7),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1596,7 +1596,7 @@ class _DetailViewState extends State<_DetailView>
         // (The hero banner autoplays the trailer; tap it for fullscreen.)
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
             child: Column(
               children: [
                 _PlayButton(

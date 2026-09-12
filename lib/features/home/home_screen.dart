@@ -1335,7 +1335,7 @@ class _HomeViewState extends State<_HomeView>
                         ...rowSections.map(
                           (s) => SliverToBoxAdapter(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
                               child: _sectionRow(s),
                             ),
                           ),
@@ -1347,7 +1347,7 @@ class _HomeViewState extends State<_HomeView>
                       // last row's titles behind the capsule.
                       SliverToBoxAdapter(
                         child: SizedBox(
-                          height: 24 + MediaQuery.paddingOf(context).bottom,
+                          height: 34 + MediaQuery.paddingOf(context).bottom,
                         ),
                       ),
                     ],

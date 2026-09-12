@@ -118,15 +118,15 @@ class _PosterCardState extends State<PosterCard> {
         onTapUp: interactive ? _handleTapUp : null,
         onTapCancel: interactive ? _handleTapCancel : null,
         child: AnimatedScale(
-          scale: _pressed ? 0.97 : 1.0,
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOut,
+          scale: _pressed ? 0.975 : 1.0,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(14),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -221,7 +221,7 @@ class _PosterCardState extends State<PosterCard> {
                 ),
               ),
               if (widget.showTitle) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 7),
                 Text(
                   widget.title,
                   maxLines: 1,

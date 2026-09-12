@@ -312,9 +312,9 @@ class _FloatingDock extends StatelessWidget {
               // Light enough that content ghosts through even on dark
               // screens (My List / Settings) — 0.75 read as a solid slab
               // anywhere the page behind wasn't bright.
-              color: AppColors.surface.withValues(alpha: 0.55),
+              color: AppColors.surface.withValues(alpha: 0.48),
               borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
             ),
             child: Row(
               children: [
@@ -407,26 +407,35 @@ class _DockItem extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
-                height: 25,
-                child: Center(
-                  child: _DockPop(
-                    selected: selected,
-                    child: glyph != null
-                        ? DockIcon(glyph!, color: color, filled: selected)
-                        : Icon(
-                            selected ? icon!.$2 : icon!.$1,
-                            color: color,
-                            size: 23,
-                          ),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: selected ? AppColors.accent.withValues(alpha: 0.14) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: SizedBox(
+                  height: 22,
+                  child: Center(
+                    child: _DockPop(
+                      selected: selected,
+                      child: glyph != null
+                          ? DockIcon(glyph!, color: color, filled: selected)
+                          : Icon(
+                              selected ? icon!.$2 : icon!.$1,
+                              color: color,
+                              size: 22,
+                            ),
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 10.5,
                   letterSpacing: 0.1,
                   color: color,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,

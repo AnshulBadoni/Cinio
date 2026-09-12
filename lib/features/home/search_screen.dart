@@ -411,7 +411,7 @@ class _SearchViewState extends State<_SearchView>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _searchBar(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             // Source line — what's being searched, one line of text, tap to
             // open the source picker. Shown idle too, so scope is always known.
             _sourceLine(),
@@ -463,7 +463,7 @@ class _SearchViewState extends State<_SearchView>
   // ── Search bar ────────────────────────────────────────────────────────────
   Widget _searchBar() {
     return Padding(
-      padding: EdgeInsets.fromLTRB(widget.showBack ? 4 : 16, 12, 16, 0),
+      padding: EdgeInsets.fromLTRB(widget.showBack ? 4 : 16, 14, 16, 0),
       child: Row(
         children: [
           if (widget.showBack)
@@ -479,8 +479,9 @@ class _SearchViewState extends State<_SearchView>
           Expanded(
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: AppColors.surface2,
-                borderRadius: BorderRadius.circular(12),
+                color: AppColors.surface2.withValues(alpha: 0.88),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
               ),
               child: Row(
                 children: [
@@ -501,8 +502,8 @@ class _SearchViewState extends State<_SearchView>
                     },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
-                      minWidth: 36,
-                      minHeight: 36,
+                      minWidth: 44,
+                      minHeight: 44,
                     ),
                   ),
                   const SizedBox(width: 4),

@@ -77,7 +77,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -89,7 +89,7 @@ class _Header extends StatelessWidget {
           if (onSeeAll != null)
             Row(
               children: [
-                Expanded(child: Text(title, style: AppText.headline)),
+                Expanded(child: Text(title, style: AppText.headline.copyWith(fontSize: 18, fontWeight: FontWeight.w600))),
                 GestureDetector(
                   onTap: onSeeAll,
                   behavior: HitTestBehavior.opaque,
@@ -97,14 +97,14 @@ class _Header extends StatelessWidget {
                     padding: const EdgeInsets.only(left: 8),
                     child: Text(
                       'See All',
-                      style: AppText.caption.copyWith(color: AppColors.accent),
+                      style: AppText.caption.copyWith(color: AppColors.textSecondary),
                     ),
                   ),
                 ),
               ],
             )
           else
-            Text(title, style: AppText.headline),
+            Text(title, style: AppText.headline.copyWith(fontSize: 18, fontWeight: FontWeight.w600)),
         ],
       ),
     );

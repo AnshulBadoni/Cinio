@@ -42,7 +42,7 @@ abstract class AppColors {
     begin: Alignment.bottomCenter,
     end: Alignment.topCenter,
     colors: [Color(0xF20B0B0F), Color(0x000B0B0F)],
-    stops: [0.0, 0.65],
+    stops: [0.0, 0.76],
   );
 
   /// Top-down scrim for hero readability under the status bar.
@@ -50,6 +50,6 @@ abstract class AppColors {
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     colors: [Color(0x990B0B0F), Color(0x000B0B0F)],
-    stops: [0.0, 0.5],
+    stops: [0.0, 0.58],
   );
 }

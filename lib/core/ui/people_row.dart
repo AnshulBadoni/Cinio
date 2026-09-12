@@ -80,9 +80,9 @@ class _PersonCardState extends State<_PersonCard> {
         onTapUp: (_) => setState(() => _pressed = false),
         onTapCancel: () => setState(() => _pressed = false),
         child: AnimatedScale(
-          scale: _pressed ? 0.97 : 1,
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOut,
+          scale: _pressed ? 0.975 : 1,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -90,7 +90,7 @@ class _PersonCardState extends State<_PersonCard> {
                 width: widget.square ? 136 : 124,
                 height: widget.square ? 136 : 124,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(widget.square ? 12 : 999),
+                  borderRadius: BorderRadius.circular(widget.square ? 14 : 999),
                   child: widget.item.cover == null
                       ? ColoredBox(color: AppColors.surface2)
                       : CachedNetworkImage(
@@ -103,7 +103,7 @@ class _PersonCardState extends State<_PersonCard> {
                         ),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 7),
               Text(
                 widget.item.title,
                 maxLines: 1,
