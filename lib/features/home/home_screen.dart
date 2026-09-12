@@ -644,6 +644,7 @@ class _HomeViewState extends State<_HomeView>
     final t = title.trim().toLowerCase();
     const peopleTitles = {
       'actor', 'actors', 'actress', 'actresses',
+      'model', 'models',
       'cast', 'casts', 'performer', 'performers',
       'voice actor', 'voice actors', 'voice cast', 'staff',
     };
