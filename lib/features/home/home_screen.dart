@@ -660,12 +660,7 @@ class _HomeViewState extends State<_HomeView>
         t.startsWith('$label ') || t.startsWith('$label:') || t.startsWith('$label -'));
   }
 
-  double _posterScale() => switch (sl<PlaybackPrefs>().posterSize) {
-        'small' => 0.86,
-        'large' => 1.14,
-        'extra_large' => 1.30,
-        _ => 1.0,
-      };
+  double _posterScale() => sl<PlaybackPrefs>().posterScale;
 
   /// Builds one provider-defined Home row. People/cast rows use PeopleCard;
   /// normal rows honor the user's Poster/Landscape/Adaptive setting.

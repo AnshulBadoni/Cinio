@@ -414,7 +414,6 @@ class _SearchViewState extends State<_SearchView>
             const SizedBox(height: 12),
             // Source line — what's being searched, one line of text, tap to
             // open the source picker. Shown idle too, so scope is always known.
-            _sourceLine(),
             // Control row — ecosystem tabs (or a result count once scoped to a
             // single source) on the left, sort + filter actions on the right.
             _controlRow(modeSources),
@@ -567,71 +566,6 @@ class _SearchViewState extends State<_SearchView>
           ),
         ],
       ),
-    );
-  }
-
-  // ── Source line (search scope) ─────────────────────────────────────────────
-  /// Replaces the old scope pill + hint sentence: one line of text —
-  /// "Searching" + the value — with the value in accent when scoped to a
-  /// single source. The whole row opens the source picker sheet. Shown in
-  /// idle state too, so the scope is always visible up front. Follows the
-  /// active source live via [ActiveSourceCubit], same as the old pill did.
-  Widget _sourceLine() {
-    return BlocBuilder<SearchBloc, SearchState>(
-      buildWhen: (p, c) => p.currentSourceOnly != c.currentSourceOnly,
-      builder: (context, state) {
-        final currentOnly = state.currentSourceOnly;
-        return BlocBuilder<ActiveSourceCubit, String>(
-          builder: (context, activeId) {
-            final value = currentOnly
-                ? _repo.displayName(activeId)
-                : 'All sources';
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _openSourcePicker(context),
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                // Tighter above than below: the search field already carries
-                // its own bottom gap, so an even 11/11 left the line sitting
-                // lower than it looked like it should.
-                padding: const EdgeInsets.only(top: 5, bottom: 11),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: AppColors.hairline)),
-                ),
-                child: Row(
-                  children: [
-                    Text(
-                      'Searching',
-                      style: AppText.caption.copyWith(fontSize: 12.5),
-                    ),
-                    const SizedBox(width: 5),
-                    Flexible(
-                      child: Text(
-                        value,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.caption.copyWith(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: currentOnly
-                              ? AppColors.accent
-                              : AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      size: 16,
-                      color: AppColors.textTertiary,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
     );
   }
 

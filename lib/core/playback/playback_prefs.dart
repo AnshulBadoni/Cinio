@@ -560,15 +560,23 @@ class PlaybackPrefs {
   Future<void> setHomeCardStyle(String value) =>
       _box.put('homeCardStyle', value);
 
-  /// User-controlled size for normal poster cards on browse rows/grids.
-  /// Values: small, medium, large, extra_large. Medium preserves the
-  /// established default dimensions.
-  String get posterSize =>
-      _box.get('posterSize', defaultValue: 'medium') as String;
+  /// User-controlled poster scale for normal browse rows/grids.
+  /// Stored as a continuous Material slider value rather than a handful of
+  /// hard-coded size presets. The old string values are migrated lazily.
+  double get posterScale {
+    final raw = _box.get('posterScale');
+    if (raw is num) return raw.toDouble().clamp(0.80, 1.35);
+    return switch (raw) {
+      'small' => 0.86,
+      'large' => 1.14,
+      'extra_large' => 1.30,
+      _ => 1.0,
+    };
+  }
   static final ValueNotifier<int> posterRevision = ValueNotifier<int>(0);
 
-  Future<void> setPosterSize(String value) async {
-    await _box.put('posterSize', value);
+  Future<void> setPosterScale(double value) async {
+    await _box.put('posterScale', value.clamp(0.80, 1.35));
     posterRevision.value++;
   }
 

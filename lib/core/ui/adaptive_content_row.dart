@@ -103,12 +103,7 @@ class _AdaptiveContentRowState extends State<AdaptiveContentRow> {
   @override
   Widget build(BuildContext context) {
     final landscape = _landscape;
-    final scale = switch (sl<PlaybackPrefs>().posterSize) {
-      'small' => 0.86,
-      'large' => 1.14,
-      'extra_large' => 1.30,
-      _ => 1.0,
-    };
+    final scale = sl<PlaybackPrefs>().posterScale;
     final width = landscape ? 210.0 : 140.0 * scale;
     final height = landscape ? 150.0 : 236.0 * scale;
     return ContentRow(

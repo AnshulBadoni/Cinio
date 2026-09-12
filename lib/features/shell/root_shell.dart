@@ -280,8 +280,8 @@ class _RootShellState extends State<RootShell>
   }
 }
 
-/// Minimal bottom navigation: a quiet translucent bar with restrained
-/// active-state treatment. Labels can be hidden in Appearance settings.
+/// Apple-style floating navigation capsule with a translucent surface and
+/// compact active pill. Labels can be hidden in Appearance settings.
 class _FloatingDock extends StatelessWidget {
   const _FloatingDock({
     required this.tabs,
@@ -299,22 +299,23 @@ class _FloatingDock extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     return Padding(
-      padding: EdgeInsets.fromLTRB(8, 0, 8, bottomInset),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-            decoration: BoxDecoration(
-              color: AppColors.surface.withValues(alpha: 0.82),
-              borderRadius: BorderRadius.circular(20),
-              border: Border(
-                top: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
-              ),
-            ),
-            child: Row(
-              children: [
+      padding: EdgeInsets.fromLTRB(12, 0, 12, bottomInset + 10),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.surface.withValues(alpha: 0.88),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                ),
+                child: Row(
+                  children: [
                 for (final t in tabs)
                   if (t == DockTab.profile)
                     _ProfileDockItem(
@@ -331,7 +332,9 @@ class _FloatingDock extends StatelessWidget {
                       onTap: () => onSelected(t),
                       showLabel: sl<NavPrefs>().showNavigationLabels,
                     ),
-              ],
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -403,8 +406,18 @@ class _DockItem extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          padding: EdgeInsets.symmetric(
+            horizontal: showLabel ? 11 : 13,
+            vertical: showLabel ? 5 : 7,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white.withValues(alpha: 0.09) : Colors.transparent,
+            borderRadius: BorderRadius.circular(24),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -462,8 +475,18 @@ class _ProfileDockItem extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          padding: EdgeInsets.symmetric(
+            horizontal: showLabel ? 11 : 13,
+            vertical: showLabel ? 5 : 7,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white.withValues(alpha: 0.09) : Colors.transparent,
+            borderRadius: BorderRadius.circular(24),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

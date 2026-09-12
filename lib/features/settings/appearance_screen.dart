@@ -186,29 +186,35 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                 ),
                 onTap: () async {
                   final current = sl<PlaybackPrefs>().homeCardStyle;
-                  final picked = await showDialog<String>(
+                  final picked = await showModalBottomSheet<String>(
                     context: context,
-                    builder: (ctx) => SimpleDialog(
-                      backgroundColor: AppColors.surface,
-                      title: Text('Card style', style: AppText.headline),
-                      children: [
-                        for (final option in const [
-                          ('adaptive', 'Adaptive'),
-                          ('poster', 'Poster'),
-                          ('landscape', 'Landscape'),
-                        ])
-                          SimpleDialogOption(
-                            onPressed: () => Navigator.pop(ctx, option.$1),
-                            child: Text(
-                              option.$2,
-                              style: TextStyle(
-                                color: current == option.$1
-                                    ? AppColors.accent
-                                    : AppColors.textPrimary,
+                    backgroundColor: AppColors.surface,
+                    showDragHandle: true,
+                    builder: (ctx) => SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Card style', style: AppText.headline),
+                            const SizedBox(height: 8),
+                            for (final option in const [
+                              ('adaptive', 'Adaptive'),
+                              ('poster', 'Poster'),
+                              ('landscape', 'Landscape'),
+                            ])
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(option.$2),
+                                trailing: current == option.$1
+                                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                                    : null,
+                                onTap: () => Navigator.pop(ctx, option.$1),
                               ),
-                            ),
-                          ),
-                      ],
+                          ],
+                        ),
+                      ),
                     ),
                   );
                   if (picked != null) {
@@ -229,35 +235,31 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                 ),
                 onTap: () async {
                   final current = sl<PlaybackPrefs>().peopleCardStyle;
-                  final picked = await showDialog<String>(
+                  final picked = await showModalBottomSheet<String>(
                     context: context,
-                    builder: (ctx) => SimpleDialog(
-                      backgroundColor: AppColors.surface,
-                      title: Text('People card style', style: AppText.headline),
-                      children: [
-                        SimpleDialogOption(
-                          onPressed: () => Navigator.pop(ctx, 'circle'),
-                          child: Text(
-                            'Circle',
-                            style: TextStyle(
-                              color: current == 'circle'
-                                  ? AppColors.accent
-                                  : AppColors.textPrimary,
-                            ),
-                          ),
+                    backgroundColor: AppColors.surface,
+                    showDragHandle: true,
+                    builder: (ctx) => SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('People card style', style: AppText.headline),
+                            const SizedBox(height: 8),
+                            for (final option in const [('circle', 'Circle'), ('square', 'Square')])
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(option.$2),
+                                trailing: current == option.$1
+                                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                                    : null,
+                                onTap: () => Navigator.pop(ctx, option.$1),
+                              ),
+                          ],
                         ),
-                        SimpleDialogOption(
-                          onPressed: () => Navigator.pop(ctx, 'square'),
-                          child: Text(
-                            'Square',
-                            style: TextStyle(
-                              color: current == 'square'
-                                  ? AppColors.accent
-                                  : AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   );
                   if (picked != null) {
@@ -271,46 +273,19 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                 title: 'Poster size',
                 subtitle: 'Size of normal poster cards in browse rows',
                 trailing: Text(
-                  switch (sl<PlaybackPrefs>().posterSize) {
-                    'small' => 'Small',
-                    'large' => 'Large',
-                    'extra_large' => 'Extra Large',
-                    _ => 'Medium',
-                  },
+                  '${(sl<PlaybackPrefs>().posterScale * 100).round()}%',
                   style: AppText.caption,
                 ),
                 onTap: () async {
-                  final current = sl<PlaybackPrefs>().posterSize;
-                  final picked = await showDialog<String>(
+                  await showModalBottomSheet<void>(
                     context: context,
-                    builder: (ctx) => SimpleDialog(
-                      backgroundColor: AppColors.surface,
-                      title: Text('Poster size', style: AppText.headline),
-                      children: [
-                        for (final option in const [
-                          ('small', 'Small'),
-                          ('medium', 'Medium'),
-                          ('large', 'Large'),
-                          ('extra_large', 'Extra Large'),
-                        ])
-                          SimpleDialogOption(
-                            onPressed: () => Navigator.pop(ctx, option.$1),
-                            child: Text(
-                              option.$2,
-                              style: TextStyle(
-                                color: current == option.$1
-                                    ? AppColors.accent
-                                    : AppColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                      ],
+                    backgroundColor: AppColors.surface,
+                    showDragHandle: true,
+                    builder: (ctx) => _PosterSizeSheet(
+                      initialScale: sl<PlaybackPrefs>().posterScale,
                     ),
                   );
-                  if (picked != null) {
-                    await sl<PlaybackPrefs>().setPosterSize(picked);
-                    if (mounted) setState(() {});
-                  }
+                  if (mounted) setState(() {});
                 },
               ),
               _switchTile(
@@ -790,6 +765,67 @@ class _AppIconCard extends StatelessWidget {
                 color: selected ? AppColors.accent : AppColors.textSecondary,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class _PosterSizeSheet extends StatefulWidget {
+  const _PosterSizeSheet({required this.initialScale});
+
+  final double initialScale;
+
+  @override
+  State<_PosterSizeSheet> createState() => _PosterSizeSheetState();
+}
+
+class _PosterSizeSheetState extends State<_PosterSizeSheet> {
+  late double _value = widget.initialScale;
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = (_value * 100).round();
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text('Poster size', style: AppText.headline)),
+                Text('$percent%', style: AppText.caption.copyWith(color: AppColors.accent)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 4,
+                overlayShape: SliderComponentShape.noOverlay,
+              ),
+              child: Slider(
+                value: _value,
+                min: 0.80,
+                max: 1.35,
+                divisions: 55,
+                label: '$percent%',
+                onChanged: (v) async {
+                  setState(() => _value = v);
+                  await sl<PlaybackPrefs>().setPosterScale(v);
+                },
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Smaller', style: AppText.caption),
+                Text('Larger', style: AppText.caption),
+              ],
             ),
           ],
         ),
