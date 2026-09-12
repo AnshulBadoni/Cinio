@@ -6,23 +6,23 @@ abstract class AppText {
   static const _f = 'Inter';
   static const largeTitle = TextStyle(
     fontFamily: _f,
-    fontSize: 34,
-    height: 1.08,
+    fontSize: 32,
+    height: 1.1,
     fontWeight: FontWeight.w700,
-    letterSpacing: -0.7,
+    letterSpacing: -0.5,
     color: AppColors.textPrimary,
   );
   static const title = TextStyle(
     fontFamily: _f,
-    fontSize: 21,
+    fontSize: 22,
     height: 1.15,
     fontWeight: FontWeight.w600,
-    letterSpacing: -0.35,
+    letterSpacing: -0.3,
     color: AppColors.textPrimary,
   );
   static const headline = TextStyle(
     fontFamily: _f,
-    fontSize: 18,
+    fontSize: 17,
     height: 1.2,
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,

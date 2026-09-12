@@ -10,6 +10,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/ui/animation_prefs.dart';
+import '../../core/ui/nav_prefs.dart';
 
 /// Dedicated Appearance page (Aniyomi-style): accent colour as preview cards
 /// (+ a Custom colour picker), a pure-black AMOLED toggle, and the Home banner
@@ -264,6 +265,60 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                     if (mounted) setState(() {});
                   }
                 },
+              ),
+              SettingsTile(
+                icon: Icons.photo_size_select_large_outlined,
+                title: 'Poster size',
+                subtitle: 'Size of normal poster cards in browse rows',
+                trailing: Text(
+                  switch (sl<PlaybackPrefs>().posterSize) {
+                    'small' => 'Small',
+                    'large' => 'Large',
+                    'extra_large' => 'Extra Large',
+                    _ => 'Medium',
+                  },
+                  style: AppText.caption,
+                ),
+                onTap: () async {
+                  final current = sl<PlaybackPrefs>().posterSize;
+                  final picked = await showDialog<String>(
+                    context: context,
+                    builder: (ctx) => SimpleDialog(
+                      backgroundColor: AppColors.surface,
+                      title: Text('Poster size', style: AppText.headline),
+                      children: [
+                        for (final option in const [
+                          ('small', 'Small'),
+                          ('medium', 'Medium'),
+                          ('large', 'Large'),
+                          ('extra_large', 'Extra Large'),
+                        ])
+                          SimpleDialogOption(
+                            onPressed: () => Navigator.pop(ctx, option.$1),
+                            child: Text(
+                              option.$2,
+                              style: TextStyle(
+                                color: current == option.$1
+                                    ? AppColors.accent
+                                    : AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                  if (picked != null) {
+                    await sl<PlaybackPrefs>().setPosterSize(picked);
+                    if (mounted) setState(() {});
+                  }
+                },
+              ),
+              _switchTile(
+                icon: Icons.label_outline_rounded,
+                title: 'Show navigation labels',
+                subtitle: 'Show text below bottom navigation icons',
+                value: sl<NavPrefs>().showNavigationLabels,
+                onChanged: sl<NavPrefs>().setShowNavigationLabels,
               ),
               _switchTile(
                 icon: Icons.auto_awesome_motion_outlined,

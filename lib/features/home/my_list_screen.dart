@@ -161,11 +161,11 @@ class _MyListViewState extends State<_MyListView> {
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.28),
-                  blurRadius: 30,
-                  offset: const Offset(0, 8),
+                  blurRadius: 24,
+                  offset: const Offset(0, 4),
                 ),
                 BoxShadow(
-                  color: AppColors.accent.withValues(alpha: 0.06),
+                  color: AppColors.accent.withValues(alpha: 0.10),
                   blurRadius: 40,
                   spreadRadius: -8,
                   offset: const Offset(0, 8),
@@ -178,7 +178,7 @@ class _MyListViewState extends State<_MyListView> {
                 filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: AppColors.surface.withValues(alpha: 0.64),
+                    color: AppColors.surface.withValues(alpha: 0.72),
                     borderRadius: BorderRadius.circular(26),
                     border: Border.all(
                         color: Colors.white.withValues(alpha: 0.09),

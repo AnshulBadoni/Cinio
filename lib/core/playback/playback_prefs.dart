@@ -560,6 +560,19 @@ class PlaybackPrefs {
   Future<void> setHomeCardStyle(String value) =>
       _box.put('homeCardStyle', value);
 
+  /// User-controlled size for normal poster cards on browse rows/grids.
+  /// Values: small, medium, large, extra_large. Medium preserves the
+  /// established default dimensions.
+  String get posterSize =>
+      _box.get('posterSize', defaultValue: 'medium') as String;
+  static final ValueNotifier<int> posterRevision = ValueNotifier<int>(0);
+
+  Future<void> setPosterSize(String value) async {
+    await _box.put('posterSize', value);
+    posterRevision.value++;
+  }
+
+
   bool get qualityBadges =>
       _box.get('qualityBadges', defaultValue: true) as bool;
 

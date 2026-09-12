@@ -280,10 +280,8 @@ class _RootShellState extends State<RootShell>
   }
 }
 
-/// The frosted floating capsule: blurred surface, hairline border, five
-/// items. Active tab = the icon's solid accent twin + accent label — the
-/// state change lives in the icon itself (deliberately not the Material
-/// pill/indicator look).
+/// Minimal bottom navigation: a quiet translucent bar with restrained
+/// active-state treatment. Labels can be hidden in Appearance settings.
 class _FloatingDock extends StatelessWidget {
   const _FloatingDock({
     required this.tabs,
@@ -301,20 +299,19 @@ class _FloatingDock extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, bottomInset + 12),
+      padding: EdgeInsets.fromLTRB(8, 0, 8, bottomInset),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(20),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
             decoration: BoxDecoration(
-              // Light enough that content ghosts through even on dark
-              // screens (My List / Settings) — 0.75 read as a solid slab
-              // anywhere the page behind wasn't bright.
-              color: AppColors.surface.withValues(alpha: 0.48),
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+              color: AppColors.surface.withValues(alpha: 0.82),
+              borderRadius: BorderRadius.circular(20),
+              border: Border(
+                top: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+              ),
             ),
             child: Row(
               children: [
@@ -323,6 +320,7 @@ class _FloatingDock extends StatelessWidget {
                     _ProfileDockItem(
                       selected: active == t,
                       onTap: () => onSelected(t),
+                      showLabel: sl<NavPrefs>().showNavigationLabels,
                     )
                   else
                     _DockItem(
@@ -331,6 +329,7 @@ class _FloatingDock extends StatelessWidget {
                       icon: _iconFor(t),
                       selected: active == t,
                       onTap: () => onSelected(t),
+                      showLabel: sl<NavPrefs>().showNavigationLabels,
                     ),
               ],
             ),
@@ -383,6 +382,7 @@ class _DockItem extends StatelessWidget {
     required this.icon,
     required this.selected,
     required this.onTap,
+    this.showLabel = true,
   });
 
   final String label;
@@ -394,6 +394,7 @@ class _DockItem extends StatelessWidget {
   final (IconData, IconData)? icon;
   final bool selected;
   final VoidCallback onTap;
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -407,35 +408,26 @@ class _DockItem extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: selected ? AppColors.accent.withValues(alpha: 0.14) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: SizedBox(
-                  height: 22,
-                  child: Center(
-                    child: _DockPop(
-                      selected: selected,
-                      child: glyph != null
-                          ? DockIcon(glyph!, color: color, filled: selected)
-                          : Icon(
-                              selected ? icon!.$2 : icon!.$1,
-                              color: color,
-                              size: 22,
-                            ),
-                    ),
+              SizedBox(
+                height: 25,
+                child: Center(
+                  child: _DockPop(
+                    selected: selected,
+                    child: glyph != null
+                        ? DockIcon(glyph!, color: color, filled: selected)
+                        : Icon(
+                            selected ? icon!.$2 : icon!.$1,
+                            color: color,
+                            size: 23,
+                          ),
                   ),
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
+              if (showLabel) const SizedBox(height: 3),
+              if (showLabel) Text(
                 label,
                 style: TextStyle(
-                  fontSize: 10.5,
+                  fontSize: 10,
                   letterSpacing: 0.1,
                   color: color,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
@@ -453,10 +445,15 @@ class _DockItem extends StatelessWidget {
 /// active), a plain person glyph otherwise. Opens the same Settings screen
 /// the gear used to.
 class _ProfileDockItem extends StatelessWidget {
-  const _ProfileDockItem({required this.selected, required this.onTap});
+  const _ProfileDockItem({
+    required this.selected,
+    required this.onTap,
+    this.showLabel = true,
+  });
 
   final bool selected;
   final VoidCallback onTap;
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -535,8 +532,8 @@ class _ProfileDockItem extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
+              if (showLabel) const SizedBox(height: 3),
+              if (showLabel) Text(
                 'Profile',
                 style: TextStyle(
                   fontSize: 10,

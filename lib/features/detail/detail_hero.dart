@@ -93,6 +93,25 @@ class _Hero extends StatelessWidget {
             decoration: BoxDecoration(gradient: AppColors.scrim),
           ),
         ),
+        // Long lower fade: artwork/trailer dissolves into the app background
+        // instead of ending with a visible edge.
+        IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  AppColors.bg.withValues(alpha: 0.22),
+                  AppColors.bg.withValues(alpha: 0.72),
+                  AppColors.bg,
+                ],
+                stops: const [0.42, 0.68, 0.86, 1.0],
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }

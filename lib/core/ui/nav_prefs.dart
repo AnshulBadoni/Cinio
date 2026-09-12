@@ -70,6 +70,13 @@ class NavPrefs extends ChangeNotifier {
   /// value written by an older build can name a tab that no longer exists, and
   /// a half-written list could otherwise leave the app with a dock it can't
   /// navigate out of.
+  bool get showNavigationLabels =>
+      _box?.get('showNavigationLabels', defaultValue: true) as bool? ?? true;
+  Future<void> setShowNavigationLabels(bool value) async {
+    await _box?.put('showNavigationLabels', value);
+    notifyListeners();
+  }
+
   List<DockTab> get tabs {
     final raw = _box?.get(_tabsKey);
     if (raw is! List || raw.isEmpty) return defaultTabs;

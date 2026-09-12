@@ -660,15 +660,21 @@ class _HomeViewState extends State<_HomeView>
         t.startsWith('$label ') || t.startsWith('$label:') || t.startsWith('$label -'));
   }
 
+  double _posterScale() => switch (sl<PlaybackPrefs>().posterSize) {
+        'small' => 0.86,
+        'large' => 1.14,
+        'extra_large' => 1.30,
+        _ => 1.0,
+      };
+
   /// Builds one provider-defined Home row. People/cast rows use PeopleCard;
   /// normal rows honor the user's Poster/Landscape/Adaptive setting.
   Widget _sectionRow(HomeSection section) {
-    final items = section.items;
     if (_isPeopleSection(section.title)) {
       return _animated(
         PeopleRow(
           title: section.title,
-          items: items,
+          items: section.items,
           onSeeAll: () => _openSeeAll(section),
           onTap: (item) => _openDetail(
             item,
@@ -679,6 +685,14 @@ class _HomeViewState extends State<_HomeView>
       );
     }
 
+    return ValueListenableBuilder<int>(
+      valueListenable: PlaybackPrefs.posterRevision,
+      builder: (context, _, __) => _buildSizeAwareSectionRow(section),
+    );
+  }
+
+  Widget _buildSizeAwareSectionRow(HomeSection section) {
+    final items = section.items;
     if (_isStudioOrChannelSection(section.title)) {
       return _animated(_studioRow(section));
     }
@@ -704,8 +718,9 @@ class _HomeViewState extends State<_HomeView>
   Widget _studioRow(HomeSection section) {
     // Studio/channel artwork is commonly square. Keep the image area square
     // so logos and complete branding are not cropped into poster cards.
-    const width = 160.0;
-    const rowHeight = 188.0; // square art + title + spacing
+    final scale = _posterScale();
+    final width = 160.0 * scale;
+    final rowHeight = 188.0 * scale; // square art + title + spacing
     return ContentRow(
       title: section.title,
       itemWidth: width,
@@ -735,8 +750,9 @@ class _HomeViewState extends State<_HomeView>
   }
 
   Widget _fixedContentRow(HomeSection section, {required bool landscape}) {
-    final width = landscape ? 210.0 : 140.0;
-    final height = landscape ? 150.0 : 236.0;
+    final scale = _posterScale();
+    final width = landscape ? 210.0 : 140.0 * scale;
+    final height = landscape ? 150.0 : 236.0 * scale;
     return ContentRow(
       title: section.title,
       itemWidth: width,
@@ -1335,7 +1351,7 @@ class _HomeViewState extends State<_HomeView>
                         ...rowSections.map(
                           (s) => SliverToBoxAdapter(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
                               child: _sectionRow(s),
                             ),
                           ),
@@ -1347,7 +1363,7 @@ class _HomeViewState extends State<_HomeView>
                       // last row's titles behind the capsule.
                       SliverToBoxAdapter(
                         child: SizedBox(
-                          height: 34 + MediaQuery.paddingOf(context).bottom,
+                          height: 24 + MediaQuery.paddingOf(context).bottom,
                         ),
                       ),
                     ],
