@@ -2,8 +2,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
 
-/// Holds the id of the currently-active content source (e.g. 'allanime',
-/// 'netmirror_pv') and **persists** it so the user's pick survives restarts.
+/// Holds the id of the currently-active content source and **persists** it
+/// so the user's pick survives restarts. An empty id means no provider has
+/// been selected yet; it is a deliberate first-run state, not a fake fallback.
 ///
 /// The chosen id is written to a tiny Hive box on every change and read back at
 /// construction. If the saved id is no longer valid (the provider was disabled
@@ -12,7 +13,7 @@ import 'package:hive/hive.dart';
 class ActiveSourceCubit extends Cubit<String> {
   ActiveSourceCubit({
     Box? box,
-    String fallback = 'allanime',
+    String fallback = '',
     Set<String>? valid,
   })  : _box = box,
         super(_restore(box, fallback, valid));

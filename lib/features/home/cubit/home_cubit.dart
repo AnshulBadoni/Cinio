@@ -79,7 +79,10 @@ class HomeCubit extends Cubit<HomeState> {
       reset ? const HomeState(loading: true) : state.copyWith(loading: true),
     );
 
-    if (isAppleTv && !_repo.hasSource(sourceId)) {
+    // An empty active id means the user has not selected a provider yet.
+    // Do not call the repository with an invalid source: that turns a normal
+    // first-run setup state into a misleading generic load failure.
+    if (!_repo.hasSource(sourceId)) {
       if (isClosed || gen != _gen) return;
       emit(const HomeState(sections: [], loading: false));
       return;

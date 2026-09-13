@@ -645,6 +645,9 @@ Future<void> initDependencies() async {
         sl<ActiveSourceCubit>()
             .reapplySaved((id) => manager.installedIds.contains(id));
       }
+      if (sl.isRegistered<ContentModeCubit>()) {
+        sl<ContentModeCubit>().ensureSourceForMode();
+      }
       if (!isAppleTv &&
           sl.isRegistered<HomeCubit>() &&
           sl.isRegistered<SourceRepository>() &&
@@ -724,8 +727,14 @@ Future<void> initDependencies() async {
           if (p is AniyomiProvider && p.info.nsfw && !showNsfw) return false;
           return true;
         });
-        if (changed && sl.isRegistered<HomeCubit>()) {
-          sl<HomeCubit>().load(); // reload Home for the restored source
+        if (sl.isRegistered<ContentModeCubit>()) {
+          sl<ContentModeCubit>().ensureSourceForMode();
+        }
+        if (sl.isRegistered<SourceRepository>() &&
+            (changed || sl<SourceRepository>().hasSource(
+                sl<ActiveSourceCubit>().state)) &&
+            sl.isRegistered<HomeCubit>()) {
+          sl<HomeCubit>().load(); // reload Home for the restored/selected source
         }
       }
     } catch (e, st) {
@@ -785,8 +794,14 @@ Future<void> initDependencies() async {
           if (p.info.nsfw && !showNsfw) return false;
           return true;
         });
-        if (changed && sl.isRegistered<HomeCubit>()) {
-          sl<HomeCubit>().load(); // reload Home for the restored source
+        if (sl.isRegistered<ContentModeCubit>()) {
+          sl<ContentModeCubit>().ensureSourceForMode();
+        }
+        if (sl.isRegistered<SourceRepository>() &&
+            (changed || sl<SourceRepository>().hasSource(
+                sl<ActiveSourceCubit>().state)) &&
+            sl.isRegistered<HomeCubit>()) {
+          sl<HomeCubit>().load(); // reload Home for the restored/selected source
         }
       }
     } catch (e, st) {
@@ -919,8 +934,14 @@ Future<void> initDependencies() async {
       if (sl.isRegistered<ActiveSourceCubit>()) {
         final changed = sl<ActiveSourceCubit>()
             .reapplySaved((id) => csManager.get(id) != null);
-        if (changed && sl.isRegistered<HomeCubit>()) {
-          sl<HomeCubit>().load(); // reload Home for the restored source
+        if (sl.isRegistered<ContentModeCubit>()) {
+          sl<ContentModeCubit>().ensureSourceForMode();
+        }
+        if (sl.isRegistered<SourceRepository>() &&
+            (changed || sl<SourceRepository>().hasSource(
+                sl<ActiveSourceCubit>().state)) &&
+            sl.isRegistered<HomeCubit>()) {
+          sl<HomeCubit>().load(); // reload Home for the restored/selected source
         }
       }
     } catch (e, st) {

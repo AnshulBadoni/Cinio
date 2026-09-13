@@ -359,6 +359,9 @@ class SourceSwitcher extends StatelessWidget {
   /// the old "CS · " name prefix: still text (a colored dot alone was too
   /// cryptic), but tiny and tinted per ecosystem.
   (String, Color, String) get _tagAndName {
+    if (currentId.trim().isEmpty) {
+      return ('PROV', AppColors.accent, 'Select provider');
+    }
     if (currentId.startsWith('cs:')) {
       final name = sl<CloudStreamManager>().get(currentId)?.displayName;
       return (

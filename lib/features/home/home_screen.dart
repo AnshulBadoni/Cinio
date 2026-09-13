@@ -1193,20 +1193,17 @@ class _HomeViewState extends State<_HomeView>
                       !state.loading &&
                       state.sections != null &&
                       state.sections!.isEmpty;
-                  // Manga/novel with nothing installed: the mode-switch fallback
-                  // sets a matching source when one exists, so a reading mode
-                  // still on a non-matching (usually stale anime) active id means
-                  // nothing's installed for it — show the install guide and drop
-                  // the leaking anime rows/hero. Cheap DI-free prefix check, so
-                  // it's safe to run every build (unlike categorizedSources()).
-                  // Anime's own zero-source case (skipped setup) has no source to
-                  // load and flows through `loadedEmpty` → HomeLoadedEmptyView.
+                  // A mode with no installed source gets a dedicated setup state.
+                  // Do not infer this from the active id: an empty/stale active id
+                  // is possible on first run or after uninstalling a provider.
+                  // `hasSourcesFor` is the single mode-aware source availability
+                  // check used by the Home empty state and source picker.
                   final activeId = context.read<ActiveSourceCubit>().state;
-                  final noSourceForMode = switch (sl<ContentModeCubit>().state) {
-                    ContentMode.manga => !activeId.startsWith('mihon:'),
-                    ContentMode.novel => !activeId.startsWith('lnr:'),
-                    ContentMode.anime => false,
-                  };
+                  final mode = sl<ContentModeCubit>().state;
+                  final noSourceForMode = !hasSourcesFor(mode);
+                  final activeSourceValid =
+                      activeId.isNotEmpty && _repo.hasSource(activeId);
+                  final showSourceSwitcher = !noSourceForMode;
                   return CustomScrollView(
                     slivers: [
                       // ── Hero + floating header (first sliver) ─────────────────
@@ -1217,7 +1214,7 @@ class _HomeViewState extends State<_HomeView>
                             final hasHero = heroItems.isNotEmpty;
                             if (hasHero) _prewarmHeroMeta(heroItems);
 
-                            if (hasHero && !noSourceForMode) {
+                            if (hasHero && !noSourceForMode && activeSourceValid) {
                               return Stack(
                                 children: [
                                   // Full-bleed hero: the artwork starts at the
@@ -1263,13 +1260,63 @@ class _HomeViewState extends State<_HomeView>
                               );
                             }
 
-                            // While loading/error there is no hero to overlay;
-                            // keep the page visually quiet rather than restoring
-                            // the old floating header.
-                            return const SizedBox(height: kHeroHeight);
+                            // Never reserve the hero's 540px frame when there is
+                            // no hero. On a fresh install this keeps the provider
+                            // setup CTA near the top instead of pushing it below a
+                            // blank carousel. If a source exists but has no hero,
+                            // keep the provider picker visible in a small header.
+                            if (showSourceSwitcher) {
+                              return Padding(
+                                padding: EdgeInsets.only(
+                                  top: MediaQuery.paddingOf(context).top + 8,
+                                  right: 16,
+                                  bottom: 8,
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: BlocBuilder<ActiveSourceCubit, String>(
+                                    builder: (context, id) => SourceSwitcher(
+                                      currentId: id,
+                                      compact: false,
+                                      onChanged: (newId) => context
+                                          .read<ActiveSourceCubit>()
+                                          .setSource(newId),
+                                      onInstallSources: () => Navigator.of(context)
+                                          .push(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) =>
+                                              const ZangetsuSourcesScreen(
+                                                openToRepos: true,
+                                              ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            return const SizedBox.shrink();
                           },
                         ),
                       ),
+
+                      // A fresh install has no provider and therefore no hero.
+                      // Put the setup guide immediately after the header instead
+                      // of making the user scroll through mode/history sections.
+                      if (noSourceForMode)
+                        SliverToBoxAdapter(
+                          child: HomeLoadedEmptyView(
+                            mode: mode,
+                            sourceName: 'No provider selected',
+                            onRetry: () =>
+                                context.read<HomeCubit>().load(reset: true),
+                            onInstallSources: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const ProvidersHubScreen(),
+                              ),
+                            ),
+                          ),
+                        ),
 
                       // ── Mode cards (switch Anime / Manga / Novel) ─────────────
                       SliverToBoxAdapter(child: _modeCards()),
@@ -1308,7 +1355,7 @@ class _HomeViewState extends State<_HomeView>
                             ),
                           ),
                         )
-                      else if (noSourceForMode || loadedEmpty)
+                      else if (loadedEmpty && !noSourceForMode)
                         SliverFillRemaining(
                           hasScrollBody: false,
                           child: HomeLoadedEmptyView(

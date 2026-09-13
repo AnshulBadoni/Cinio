@@ -65,13 +65,20 @@ class ContentModeCubit extends Cubit<ContentMode> {
   /// source alone.
   void _fallBackToModeSource(ContentMode m) {
     if (!sl.isRegistered<SourceRepository>()) return;
-    if (_sourceInMode(_active.state, m)) return; // already fits — keep it
-    for (final s in sl<SourceRepository>().loadedSources) {
-      if (_sourceInMode(s.id, m)) {
+    final repo = sl<SourceRepository>();
+    if (_sourceInMode(_active.state, m) && repo.hasSource(_active.state)) {
+      return; // already fits the mode and is actually installed
+    }
+    for (final s in repo.loadedSources) {
+      if (_sourceInMode(s.id, m) && repo.hasSource(s.id)) {
         _active.setSource(s.id);
         return;
       }
     }
+    // Nothing is installed for this mode. Clear a stale cross-mode/removed
+    // source rather than leaving a fake provider id such as the old allanime
+    // fallback in the UI. Home will then render its setup state.
+    if (_active.state.isNotEmpty) _active.setSource('');
   }
 
   /// Boot safety net: make the restored mode's active source belong to that
