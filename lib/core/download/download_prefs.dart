@@ -55,4 +55,12 @@ class DownloadPrefs {
 
   Future<void> setConnectionsPerDownload(int n) =>
       _box.put('connections', n.clamp(connectionsMin, connectionsMax));
+
+  /// Video-download presentation: 'list' or 'cards'. Default is the existing
+  /// compact grouped list. Chapter downloads keep their own list screens.
+  String get presentation =>
+      _box.get('presentation', defaultValue: 'list') as String;
+
+  Future<void> setPresentation(String value) =>
+      _box.put('presentation', value == 'cards' ? 'cards' : 'list');
 }

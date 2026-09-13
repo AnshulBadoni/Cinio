@@ -38,10 +38,7 @@ class _SplashScreenState extends State<SplashScreen>
     duration: const Duration(milliseconds: 1600),
   )..forward();
 
-  // Glow eases in; the wordmark fades in and "draws" left→right (wipe reveal)
-  // while settling up to full scale; the loader appears last.
-  late final Animation<double> _glow =
-      CurvedAnimation(parent: _c, curve: const Interval(0.0, 0.55, curve: Curves.easeOut));
+  // The supplied watermark fades in and settles into place while boot runs.
   late final Animation<double> _fade =
       CurvedAnimation(parent: _c, curve: const Interval(0.12, 0.5, curve: Curves.easeOut));
   late final Animation<double> _reveal =
@@ -63,28 +60,9 @@ class _SplashScreenState extends State<SplashScreen>
           final r = _reveal.value;
           return Stack(
             children: [
-              // Soft coral glow behind the wordmark — echoes the logo's circle.
-              Center(
-                child: Opacity(
-                  opacity: _glow.value,
-                  child: Container(
-                    width: 460,
-                    height: 460,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          AppColors.accent.withValues(alpha: 0.18),
-                          AppColors.accent.withValues(alpha: 0.05),
-                          Colors.transparent,
-                        ],
-                        stops: const [0.0, 0.45, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // Cinio wordmark: replaces the legacy Zangetsu brand moment.
+              // Supplied Cinio watermark: the splash contains only the
+              // transparent wordmark on the app background — no old brand and
+              // no additional glow.
               Center(
                 child: Opacity(
                   opacity: _fade.value,

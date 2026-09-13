@@ -149,9 +149,11 @@ class TmdbDiscoverService {
         : type == 'series' || type == 'anime'
         ? 'tv'
         : 'all';
+    // TMDB's trending endpoint is a single ranked batch; unlike Discover it
+    // does not expose page-based pagination. Do not send a synthetic `page`
+    // parameter here — it is not part of the endpoint contract.
     final response = await _dio.get<dynamic>(
       '${Tmdb.base}/trending/$path/week',
-      queryParameters: {'page': page},
     );
     final rows = response.data is Map ? response.data['results'] : null;
     if (rows is! List) return const [];

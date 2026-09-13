@@ -247,6 +247,55 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     );
   }
 
+  Future<void> _openPresentationPicker() async {
+    final prefs = sl<DownloadPrefs>();
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      showDragHandle: true,
+      builder: (ctx) {
+        final current = prefs.presentation;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Downloads view', style: AppText.headline),
+                const SizedBox(height: 8),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.view_list_rounded),
+                  title: const Text('List'),
+                  subtitle: const Text('Group episodes by show.'),
+                  trailing: current == 'list'
+                      ? Icon(Icons.check_rounded, color: AppColors.accent)
+                      : null,
+                  onTap: () => Navigator.pop(ctx, 'list'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.grid_view_rounded),
+                  title: const Text('Cards'),
+                  subtitle: const Text('Show downloaded episodes as cards.'),
+                  trailing: current == 'cards'
+                      ? Icon(Icons.check_rounded, color: AppColors.accent)
+                      : null,
+                  onTap: () => Navigator.pop(ctx, 'cards'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (picked != null) {
+      await prefs.setPresentation(picked);
+      if (mounted) setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const DownloadsScreenTv();
@@ -258,6 +307,17 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         showBack: widget.showBack,
         'Downloads',
         actions: [
+          IconButton(
+            tooltip: sl<DownloadPrefs>().presentation == 'cards'
+                ? 'Use list view'
+                : 'Use card view',
+            icon: Icon(
+              sl<DownloadPrefs>().presentation == 'cards'
+                  ? Icons.view_list_rounded
+                  : Icons.grid_view_rounded,
+            ),
+            onPressed: _openPresentationPicker,
+          ),
           IconButton(
             tooltip: 'Download settings',
             icon: const Icon(Icons.tune_rounded),
@@ -422,6 +482,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
 
     final showIds = groups.keys.toList();
     final rows = <Widget>[];
+    final cardRecords = <DownloadRecord>[];
     for (final id in showIds) {
       final recs = [...groups[id]!]
         ..sort((a, b) => (a.episodeNumber ?? 0).compareTo(b.episodeNumber ?? 0));
@@ -435,19 +496,70 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           episodes = recs
               .where((r) => _episodeSearchText(r).contains(q))
               .toList();
-          if (episodes.isEmpty) continue; // this show has no match — hide it
+          if (episodes.isEmpty) continue;
         }
-        forceExpand = true; // reveal matches while searching
+        forceExpand = true;
       }
 
-      rows.add(
-        _ShowGroup(
-          records: recs,
-          episodes: episodes,
-          manager: manager,
-          expanded: forceExpand || _expanded.contains(id),
-          onToggle: () => _toggle(id),
-        ),
+      if (sl<DownloadPrefs>().presentation == 'cards') {
+        // Card mode is episode-oriented so every card has a useful action
+        // target (play/status/menu) while the same search semantics are kept.
+        cardRecords.addAll(episodes);
+      } else {
+        rows.add(
+          _ShowGroup(
+            records: recs,
+            episodes: episodes,
+            manager: manager,
+            expanded: forceExpand || _expanded.contains(id),
+            onToggle: () => _toggle(id),
+          ),
+        );
+      }
+    }
+
+    if (sl<DownloadPrefs>().presentation == 'cards') {
+      if (cardRecords.isEmpty) {
+        return const EmptyState(
+          icon: Icons.search_off_rounded,
+          message: 'No downloads match your search',
+        );
+      }
+      return ListView(
+        padding: const EdgeInsets.only(bottom: 32),
+        children: [
+          _summaryStrip(
+            count: done.length,
+            bytes: totalBytes,
+            anyExpanded: false,
+            onToggleAll: () {},
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth >= 520 ? 3 : 2;
+                final gap = 12.0;
+                final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: cardRecords.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    crossAxisSpacing: gap,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: width / 248,
+                  ),
+                  itemBuilder: (context, i) => _DownloadCard(
+                    record: cardRecords[i],
+                    manager: manager,
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       );
     }
 
@@ -523,6 +635,149 @@ class _DownloadsScreenState extends State<DownloadsScreen>
 String _episodeSearchText(DownloadRecord r) {
   final n = r.episodeNumber?.toInt();
   return 'e${n ?? ''} ${r.episodeTitle}'.toLowerCase();
+}
+
+class _DownloadCard extends StatelessWidget {
+  const _DownloadCard({required this.record, required this.manager});
+
+  final DownloadRecord record;
+  final DownloadManager manager;
+
+  static String subtitleFor(DownloadRecord record, DownloadManager manager) {
+    if (record.isTorrent &&
+        manager.torrentProgress[record.id]?.status == 'copying') {
+      return 'Saving to your folder…';
+    }
+    return switch (record.status) {
+      DownloadStatus.done =>
+        record.bytesTotal > 0 ? fmtDownloadSize(record.bytesTotal) : 'Downloaded',
+      DownloadStatus.downloading =>
+        '${(record.progress * 100).round()}%'
+            '${record.bytesTotal > 0 ? ' of ${fmtDownloadSize(record.bytesTotal)}' : ''}'
+            '${_torrentSuffixFor(record, manager)}',
+      DownloadStatus.paused => 'Paused · ${(record.progress * 100).round()}%',
+      DownloadStatus.queued => 'Queued',
+      DownloadStatus.resolving => 'Preparing…',
+      DownloadStatus.unsupported => record.error ?? 'Not available offline yet',
+      DownloadStatus.failed => record.error ?? 'Failed',
+      DownloadStatus.canceled => 'Canceled',
+    };
+  }
+
+  static String _torrentSuffixFor(DownloadRecord record, DownloadManager manager) {
+    if (!record.isTorrent) return '';
+    final TorrentDownloadProgress? p = manager.torrentProgress[record.id];
+    if (p == null) return '';
+    final parts = <String>[];
+    if (p.peers > 0) parts.add('${p.peers} peers');
+    if (p.downSpeedBps > 0) {
+      final mb = p.downSpeedBps / (1024 * 1024);
+      parts.add(mb >= 1
+          ? '${mb.toStringAsFixed(1)} MB/s'
+          : '${(p.downSpeedBps / 1024).round()} KB/s');
+    }
+    return parts.isEmpty ? '' : ' · ${parts.join(' · ')}';
+  }
+
+  Future<void> _play(BuildContext context) =>
+      launchDownloadedEpisode(context, record);
+
+  @override
+  Widget build(BuildContext context) {
+    final done = record.status == DownloadStatus.done;
+    final active = record.status == DownloadStatus.downloading ||
+        record.status == DownloadStatus.paused;
+    final n = record.episodeNumber?.toInt();
+    final episode = n != null ? 'E$n' : 'Episode';
+    final title = record.episodeTitle.trim();
+    final label = title.isEmpty || title == episode ? episode : '$episode · $title';
+
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: done ? () => _play(context) : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (record.cover != null && record.cover!.isNotEmpty)
+                    CachedNetworkImage(
+                      imageUrl: record.cover!,
+                      httpHeaders: record.coverHeaders,
+                      fit: BoxFit.cover,
+                      errorWidget: (c, u, e) =>
+                          const ColoredBox(color: AppColors.surface2),
+                    )
+                  else
+                    const ColoredBox(color: AppColors.surface2),
+                  Positioned(
+                    left: 10,
+                    top: 10,
+                    child: _StatusGlyph(record: record),
+                  ),
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: _TileMenu(record: record, manager: manager),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 9, 10, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    record.showTitle,
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    style: AppText.body.copyWith(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _DownloadCard.subtitleFor(record, manager),
+                    style: AppText.caption,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (active) ...[
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: record.progress > 0 ? record.progress : null,
+                        minHeight: 3,
+                        color: AppColors.accent,
+                        backgroundColor: AppColors.surface2,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ShowGroup extends StatelessWidget {
@@ -749,43 +1004,7 @@ class DownloadTile extends StatelessWidget {
     return (t.isEmpty || t == base) ? base : '$base · $t';
   }
 
-  String get _subtitle {
-    // A finished torrent is streamed into the user's folder — surface that phase.
-    if (record.isTorrent &&
-        manager.torrentProgress[record.id]?.status == 'copying') {
-      return 'Saving to your folder…';
-    }
-    return switch (record.status) {
-      DownloadStatus.done =>
-        record.bytesTotal > 0 ? fmtDownloadSize(record.bytesTotal) : 'Downloaded',
-      DownloadStatus.downloading =>
-        '${(record.progress * 100).round()}%'
-            '${record.bytesTotal > 0 ? ' of ${fmtDownloadSize(record.bytesTotal)}' : ''}'
-            '$_torrentSuffix',
-      DownloadStatus.paused => 'Paused · ${(record.progress * 100).round()}%',
-      DownloadStatus.queued => 'Queued',
-      DownloadStatus.resolving => 'Preparing…',
-      DownloadStatus.unsupported => record.error ?? 'Not available offline yet',
-      DownloadStatus.failed => record.error ?? 'Failed',
-      DownloadStatus.canceled => 'Canceled',
-    };
-  }
-
-  /// " · N peers · X MB/s" for an active torrent download (empty otherwise).
-  String get _torrentSuffix {
-    if (!record.isTorrent) return '';
-    final TorrentDownloadProgress? p = manager.torrentProgress[record.id];
-    if (p == null) return '';
-    final parts = <String>[];
-    if (p.peers > 0) parts.add('${p.peers} peers');
-    if (p.downSpeedBps > 0) {
-      final mb = p.downSpeedBps / (1024 * 1024);
-      parts.add(mb >= 1
-          ? '${mb.toStringAsFixed(1)} MB/s'
-          : '${(p.downSpeedBps / 1024).round()} KB/s');
-    }
-    return parts.isEmpty ? '' : ' · ${parts.join(' · ')}';
-  }
+  String get _subtitle => _DownloadCard.subtitleFor(record, manager);
 
   Future<void> _play(BuildContext context) =>
       launchDownloadedEpisode(context, record);

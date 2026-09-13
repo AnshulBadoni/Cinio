@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.9.31+11127
+version: 1.9.32+11128
 
 environment:
   sdk: ^3.11.5
@@ -262,6 +262,8 @@ flutter:
     - assets/js/lnreader_harness.js
     # Brand wordmark extracted from the logo (exact lettering) for header/splash.
     - assets/icon/wordmark.png
+    # Cinio splash watermark/wordmark shown during dependency boot.
+    - assets/icon/splash_wordmark.png
     # Square app icon — shown on the About screen.
     - assets/icon/app_icon.png
     # Launcher-icon previews for the Appearance picker (mipmaps are not

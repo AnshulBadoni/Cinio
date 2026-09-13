@@ -113,6 +113,7 @@ const settingsLeaves = <SettingsLeaf>[
   SettingsLeaf('Card style', 'Appearance', keywords: 'poster landscape adaptive home cards'),
     SettingsLeaf('People card style', 'Appearance', keywords: 'cast actor performer people circle square'),
   SettingsLeaf('Poster size', 'Appearance', keywords: 'cards posters small medium large size'),
+  SettingsLeaf('Search poster size', 'Appearance', keywords: 'discover search grid follow global fixed poster cards'),
   SettingsLeaf('Show navigation labels', 'Appearance', keywords: 'bottom navigation icons text labels hide'),
   SettingsLeaf('Animate lists', 'Appearance', keywords: 'fade scroll animation'),
   SettingsLeaf('Animation style', 'Appearance', keywords: 'transition motion'),

@@ -434,12 +434,43 @@ class _SearchViewState extends State<_SearchView>
     }
   }
 
+  /// Search/Discover normally use the global Poster size setting. Because a
+  /// grid has a discrete number of columns, the continuous slider maps to
+  /// four columns at the small end, three at the default, and two at the large
+  /// end. The separate Search poster-size setting can lock this back to the
+  /// existing three-column layout.
+  int _searchGridColumns() {
+    final prefs = sl<PlaybackPrefs>();
+    if (!prefs.searchPosterFollowsGlobal) return 3;
+    final scale = prefs.posterScale;
+    if (scale <= 0.92) return 4;
+    if (scale >= 1.18) return 2;
+    return 3;
+  }
+
+  double _searchGridCellWidth(int columns) {
+    final width = MediaQuery.sizeOf(context).width;
+    const horizontal = 32.0;
+    const gap = 12.0;
+    return (width - horizontal - (gap * (columns - 1))) / columns;
+  }
+
+  /// Rebuilds the search grid immediately when either the global poster size
+  /// or its Search/Discover follow/fixed switch changes.
+  Widget _posterSettingBuilder(Widget Function() builder) {
+    return ValueListenableBuilder<int>(
+      valueListenable: PlaybackPrefs.posterRevision,
+      builder: (_, __, ___) => builder(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // sizeOf (not MediaQuery.of) so this rebuilds only when the screen size
     // actually changes, not on every viewInsets change (e.g. every keyboard
     // animation frame).
-    final cellW = (MediaQuery.sizeOf(context).width - 40 - 24) / 3;
+    final columns = _searchGridColumns();
+    final cellW = _searchGridCellWidth(columns);
     // Computed once per outer build, not once per BlocBuilder rebuild below
     // (each fires on every search state emission during a live fan-out).
     final modeSources = _modeSources;
@@ -1244,7 +1275,7 @@ class _SearchViewState extends State<_SearchView>
     // row is cramped — regardless of the All-view layout setting. 3 columns
     // (grouped-by-source sections below are the denser 4-up grid).
     if (singleSource) {
-      return _resultsGrid(state.visibleResults, cellW);
+      return _resultsGrid(state.visibleResults);
     }
 
     final sections = <Widget>[
@@ -1704,44 +1735,47 @@ class _SearchViewState extends State<_SearchView>
   }
 
   // ── Flat results grid (single-source / vertical) ──────────────────────────
-  Widget _resultsGrid(List<MediaItem> items, double cellW) {
-    return GridView.builder(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        6,
-        16,
-        24 + MediaQuery.paddingOf(context).bottom,
-      ),
-      cacheExtent: 800,
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 0.62,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 16,
-      ),
-      itemCount: items.length,
-      itemBuilder: (context, i) {
-        final item = items[i];
-        return PosterCard(
-          title: item.title,
-          imageUrl: item.cover,
-          headers: item.coverHeaders,
-          tags: _tagsFor(item),
-          qualityBadge: item.quality,
-          dubBadge: item.dubBadge,
-          cellWidth: cellW,
-          onTap: () => _openDetail(item),
-          onLongPress: () => _showInfo(item),
-        );
-      },
-    );
+  Widget _resultsGrid(List<MediaItem> items) {
+    return _posterSettingBuilder(() {
+      final columns = _searchGridColumns();
+      final width = _searchGridCellWidth(columns);
+      return GridView.builder(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          6,
+          16,
+          24 + MediaQuery.paddingOf(context).bottom,
+        ),
+        cacheExtent: 800,
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          childAspectRatio: 0.62,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 16,
+        ),
+        itemCount: items.length,
+        itemBuilder: (context, i) {
+          final item = items[i];
+          return PosterCard(
+            title: item.title,
+            imageUrl: item.cover,
+            headers: item.coverHeaders,
+            tags: _tagsFor(item),
+            qualityBadge: item.quality,
+            dubBadge: item.dubBadge,
+            cellWidth: width,
+            onTap: () => _openDetail(item),
+            onLongPress: () => _showInfo(item),
+          );
+        },
+      );
+    });
   }
 
   // ── Idle view: endless Discover feed ───────────────────────────────────────
   Widget _idleView(SearchState state) {
     final items = state.discoverItems;
-    final cellW = (MediaQuery.sizeOf(context).width - 40 - 24) / 3;
     if (items.isEmpty && state.status == SearchStatus.loading) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2));
     }
@@ -1757,45 +1791,49 @@ class _SearchViewState extends State<_SearchView>
         ),
       );
     }
-    return NotificationListener<ScrollNotification>(
-      onNotification: (n) {
-        if (n.metrics.axis == Axis.vertical &&
-            n.metrics.pixels >= n.metrics.maxScrollExtent - 800 &&
-            !state.discoverLoadingMore &&
-            !state.discoverAtEnd) {
-          context.read<SearchBloc>().add(const SearchDiscoverMore());
-        }
-        return false;
-      },
-      child: GridView.builder(
-        padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          childAspectRatio: 0.62,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 16,
-        ),
-        itemCount: items.length + (state.discoverLoadingMore ? 3 : 0),
-        itemBuilder: (context, i) {
-          if (i >= items.length) {
-            return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    return _posterSettingBuilder(() {
+      final columns = _searchGridColumns();
+      final width = _searchGridCellWidth(columns);
+      return NotificationListener<ScrollNotification>(
+        onNotification: (n) {
+          if (n.metrics.axis == Axis.vertical &&
+              n.metrics.pixels >= n.metrics.maxScrollExtent - 800 &&
+              !state.discoverLoadingMore &&
+              !state.discoverAtEnd) {
+            context.read<SearchBloc>().add(const SearchDiscoverMore());
           }
-          final item = items[i];
-          return PosterCard(
-            title: item.title,
-            imageUrl: item.cover,
-            headers: item.coverHeaders,
-            tags: _tagsFor(item),
-            qualityBadge: item.quality,
-            dubBadge: item.dubBadge,
-            cellWidth: cellW,
-            onTap: () => _openDetail(item),
-            onLongPress: () => _showInfo(item),
-          );
+          return false;
         },
-      ),
-    );
+        child: GridView.builder(
+          padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            childAspectRatio: 0.62,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 16,
+          ),
+          itemCount: items.length + (state.discoverLoadingMore ? columns : 0),
+          itemBuilder: (context, i) {
+            if (i >= items.length) {
+              return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+            }
+            final item = items[i];
+            return PosterCard(
+              title: item.title,
+              imageUrl: item.cover,
+              headers: item.coverHeaders,
+              tags: _tagsFor(item),
+              qualityBadge: item.quality,
+              dubBadge: item.dubBadge,
+              cellWidth: width,
+              onTap: () => _openDetail(item),
+              onLongPress: () => _showInfo(item),
+            );
+          },
+        ),
+      );
+    });
   }
 
   // ── Type-ahead suggestion list (history + live titles) ────────────────────
@@ -2209,7 +2247,11 @@ class _SearchFilterSheet extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: Text('Show $n result${n == 1 ? '' : 's'}'),
+                    child: Text(
+                      state.query.trim().isEmpty
+                          ? 'Apply'
+                          : 'Show $n result${n == 1 ? '' : 's'}',
+                    ),
                   ),
                 ),
               ],

@@ -288,6 +288,67 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+              SettingsTile(
+                icon: Icons.grid_view_rounded,
+                title: 'Search poster size',
+                subtitle: 'Follow Poster size or keep Search/Discover fixed',
+                trailing: Text(
+                  sl<PlaybackPrefs>().searchPosterFollowsGlobal
+                      ? 'Follow Poster size'
+                      : 'Fixed',
+                  style: AppText.caption,
+                ),
+                onTap: () async {
+                  final prefs = sl<PlaybackPrefs>();
+                  final picked = await showModalBottomSheet<bool>(
+                    context: context,
+                    backgroundColor: AppColors.surface,
+                    showDragHandle: true,
+                    builder: (ctx) {
+                      final current = prefs.searchPosterFollowsGlobal;
+                      return SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Search poster size', style: AppText.headline),
+                              const SizedBox(height: 8),
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: const Text('Follow Poster size'),
+                                subtitle: const Text(
+                                  'Search and Discover use the global Poster size setting.',
+                                ),
+                                trailing: current
+                                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                                    : null,
+                                onTap: () => Navigator.pop(ctx, true),
+                              ),
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: const Text('Fixed'),
+                                subtitle: const Text(
+                                  'Search and Discover always use the default 3-column grid.',
+                                ),
+                                trailing: !current
+                                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                                    : null,
+                                onTap: () => Navigator.pop(ctx, false),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                  if (picked != null) {
+                    await prefs.setSearchPosterFollowsGlobal(picked);
+                    if (mounted) setState(() {});
+                  }
+                },
+              ),
               _switchTile(
                 icon: Icons.label_outline_rounded,
                 title: 'Show navigation labels',

@@ -179,6 +179,11 @@ class WatchApp extends StatefulWidget {
 }
 
 class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
+  /// Keep the Cinio watermark on screen long enough to actually be seen even
+  /// when dependency boot completes almost instantly.
+  static const Duration _minimumSplashDuration = Duration(milliseconds: 1600);
+  DateTime _splashStartedAt = DateTime.now();
+
   /// Startup, with a watchdog. NOT `late final` — Try again reassigns it.
   late Future<void> _boot = _startBoot();
   bool _bootReady = false;
@@ -213,7 +218,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
             });
           } else {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              _pushShellRouteIfNeeded();
+              unawaited(_pushShellRouteIfNeeded());
             });
           }
           if (!_handledLaunchTaps) {
@@ -264,6 +269,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       );
     }
     setState(() {
+      _splashStartedAt = DateTime.now();
       _bootReady = false;
       _depsReady = false;
       _shellRoutePushed = false;
@@ -352,7 +358,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       setState(() => _depsReady = true);
       if (_bootReady) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _pushShellRouteIfNeeded();
+          unawaited(_pushShellRouteIfNeeded());
         });
       }
     }
@@ -478,9 +484,17 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         }
 
   /// Swaps the splash route for the real shell (phone / Android TV only).
-  void _pushShellRouteIfNeeded() {
+  Future<void> _pushShellRouteIfNeeded() async {
     if (isAppleTv) return;
     if (_shellRoutePushed || !_bootReady || _bootFailed || !_depsReady) return;
+    final elapsed = DateTime.now().difference(_splashStartedAt);
+    final remaining = _minimumSplashDuration - elapsed;
+    if (remaining > Duration.zero) {
+      await Future<void>.delayed(remaining);
+    }
+    if (!mounted || _shellRoutePushed || !_bootReady || _bootFailed || !_depsReady) {
+      return;
+    }
     final nav = rootNavigatorKey.currentState;
     if (nav == null) return;
     nav.pushReplacement(

@@ -270,13 +270,37 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       groups: const [],
     ));
     try {
-      final items = await _fetchDiscoverPage(1);
+      List<MediaItem>? items;
+      Object? lastError;
+      // A cold-start network/TMDB request can occasionally race the first
+      // rendered Search frame. Retry once without changing the visible
+      // catalog or filter selection; persistent failures still surface the
+      // normal retryable error state.
+      for (var attempt = 0; attempt < 2; attempt++) {
+        try {
+          items = await _fetchDiscoverPage(1);
+          lastError = null;
+          break;
+        } catch (e) {
+          lastError = e;
+          if (attempt == 0) {
+            await Future<void>.delayed(const Duration(milliseconds: 350));
+            if (isClosed || gen != _discoverGen) return;
+          }
+        }
+      }
+      if (lastError != null || items == null) {
+        throw lastError ?? StateError('Discovery returned no data');
+      }
       if (isClosed || gen != _discoverGen) return;
+      final loaded = items;
       emit(state.copyWith(
         status: SearchStatus.success,
-        discoverItems: _dedupe(items),
+        discoverItems: _dedupe(loaded),
         discoverPage: 1,
-        discoverAtEnd: items.isEmpty,
+        // Trending is one TMDB batch. Other catalogs can continue through
+        // page-based pagination.
+        discoverAtEnd: loaded.isEmpty || state.catalog == SearchCatalog.trending,
       ));
     } catch (_) {
       // A catalog switch can start another request while this one is still
@@ -350,7 +374,9 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         discoverItems: merged,
         discoverPage: next,
         discoverLoadingMore: false,
-        discoverAtEnd: items.isEmpty || merged.length == state.discoverItems.length,
+        discoverAtEnd: items.isEmpty ||
+            merged.length == state.discoverItems.length ||
+            state.catalog == SearchCatalog.trending,
       ));
     } catch (_) {
       if (!isClosed) emit(state.copyWith(discoverLoadingMore: false));

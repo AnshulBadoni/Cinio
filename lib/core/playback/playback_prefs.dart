@@ -580,6 +580,16 @@ class PlaybackPrefs {
     posterRevision.value++;
   }
 
+  /// Whether Search/Discover grids follow the global Poster size setting.
+  /// Default true; when false the Search grid keeps its fixed 3-column layout.
+  bool get searchPosterFollowsGlobal =>
+      _box.get('searchPosterFollowsGlobal', defaultValue: true) as bool;
+
+  Future<void> setSearchPosterFollowsGlobal(bool value) async {
+    await _box.put('searchPosterFollowsGlobal', value);
+    posterRevision.value++;
+  }
+
 
   bool get qualityBadges =>
       _box.get('qualityBadges', defaultValue: true) as bool;
