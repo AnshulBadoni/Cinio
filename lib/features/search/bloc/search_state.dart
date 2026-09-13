@@ -285,6 +285,11 @@ class SearchState extends Equatable {
   final bool discoverLoadingMore;
   final bool discoverAtEnd;
 
+  /// Pagination state for TMDB catalog search results.
+  final int searchPage;
+  final bool searchLoadingMore;
+  final bool searchAtEnd;
+
   final String? error;
 
   /// Trending titles for the idle screen (loaded once).
@@ -392,6 +397,9 @@ class SearchState extends Equatable {
     this.discoverPage = 1,
     this.discoverLoadingMore = false,
     this.discoverAtEnd = false,
+    this.searchPage = 1,
+    this.searchLoadingMore = false,
+    this.searchAtEnd = false,
     this.suggestions = const [],
     this.aniFiltersBySource = const {},
     this.mihonFiltersBySource = const {},
@@ -765,6 +773,9 @@ class SearchState extends Equatable {
     int? discoverPage,
     bool? discoverLoadingMore,
     bool? discoverAtEnd,
+    int? searchPage,
+    bool? searchLoadingMore,
+    bool? searchAtEnd,
   }) => SearchState(
     status: status ?? this.status,
     query: query ?? this.query,
@@ -799,6 +810,9 @@ class SearchState extends Equatable {
     discoverPage: discoverPage ?? this.discoverPage,
     discoverLoadingMore: discoverLoadingMore ?? this.discoverLoadingMore,
     discoverAtEnd: discoverAtEnd ?? this.discoverAtEnd,
+    searchPage: searchPage ?? this.searchPage,
+    searchLoadingMore: searchLoadingMore ?? this.searchLoadingMore,
+    searchAtEnd: searchAtEnd ?? this.searchAtEnd,
   );
 
   @override
@@ -834,5 +848,8 @@ class SearchState extends Equatable {
     discoverPage,
     discoverLoadingMore,
     discoverAtEnd,
+    searchPage,
+    searchLoadingMore,
+    searchAtEnd,
   ];
 }

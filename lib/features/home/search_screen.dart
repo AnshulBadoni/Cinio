@@ -181,13 +181,22 @@ class _SearchViewState extends State<_SearchView>
   void _onDiscoverScroll() {
     if (!_discoverScrollController.hasClients || !mounted) return;
     final position = _discoverScrollController.position;
-    if (position.pixels < position.maxScrollExtent - 900) return;
+    // Use extentAfter rather than maxScrollExtent - threshold. The latter can
+    // fail on short grids because the threshold becomes negative; extentAfter
+    // directly answers the question we care about: how much content remains?
+    if (position.extentAfter > 900) return;
     final bloc = context.read<SearchBloc>();
     final state = bloc.state;
-    if (state.query.trim().isEmpty &&
+    final canDiscover = state.query.trim().isEmpty &&
         !state.discoverLoadingMore &&
         !state.discoverAtEnd &&
-        state.status != SearchStatus.loading) {
+        state.status != SearchStatus.loading;
+    final canSearch = state.query.trim().isNotEmpty &&
+        state.catalogSource == SearchCatalogSource.tmdb &&
+        !state.searchLoadingMore &&
+        !state.searchAtEnd &&
+        state.status != SearchStatus.loading;
+    if (canDiscover || canSearch) {
       bloc.add(const SearchDiscoverMore());
     }
   }
@@ -1319,7 +1328,7 @@ class _SearchViewState extends State<_SearchView>
     // row is cramped — regardless of the All-view layout setting. 3 columns
     // (grouped-by-source sections below are the denser 4-up grid).
     if (singleSource) {
-      return _resultsGrid(state.visibleResults);
+      return _resultsGrid(state.visibleResults, loadingMore: state.searchLoadingMore);
     }
 
     final sections = <Widget>[
@@ -1779,11 +1788,12 @@ class _SearchViewState extends State<_SearchView>
   }
 
   // ── Flat results grid (single-source / vertical) ──────────────────────────
-  Widget _resultsGrid(List<MediaItem> items) {
+  Widget _resultsGrid(List<MediaItem> items, {bool loadingMore = false}) {
     return _posterSettingBuilder(() {
       final columns = _searchGridColumns();
       final width = _searchGridCellWidth(columns);
       return GridView.builder(
+        controller: _discoverScrollController,
         padding: EdgeInsets.fromLTRB(
           16,
           6,
@@ -1798,8 +1808,11 @@ class _SearchViewState extends State<_SearchView>
           crossAxisSpacing: 12,
           mainAxisSpacing: 16,
         ),
-        itemCount: items.length,
+        itemCount: items.length + (loadingMore ? columns : 0),
         itemBuilder: (context, i) {
+          if (i >= items.length) {
+            return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+          }
           final item = items[i];
           return PosterCard(
             title: item.title,

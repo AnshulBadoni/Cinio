@@ -502,9 +502,10 @@ class _DownloadsScreenState extends State<DownloadsScreen>
       }
 
       if (sl<DownloadPrefs>().presentation == 'cards') {
-        // Card mode is episode-oriented so every card has a useful action
-        // target (play/status/menu) while the same search semantics are kept.
-        cardRecords.addAll(episodes);
+        // Card mode is show-oriented, matching Home/Search poster cards. Keep
+        // the whole group together so tapping a show reveals all of its
+        // downloaded episodes instead of opening one arbitrary episode.
+        cardRecords.add(head);
       } else {
         rows.add(
           _ShowGroup(
@@ -540,7 +541,6 @@ class _DownloadsScreenState extends State<DownloadsScreen>
               builder: (context, constraints) {
                 final columns = constraints.maxWidth >= 520 ? 3 : 2;
                 final gap = 12.0;
-                final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
                 return GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -548,13 +548,19 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: columns,
                     crossAxisSpacing: gap,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: width / 248,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 0.62,
                   ),
-                  itemBuilder: (context, i) => _DownloadCard(
-                    record: cardRecords[i],
-                    manager: manager,
-                  ),
+                  itemBuilder: (context, i) {
+                    final showId = cardRecords[i].showId;
+                    final records = [...groups[showId]!]
+                      ..sort((a, b) => (a.episodeNumber ?? 0)
+                          .compareTo(b.episodeNumber ?? 0));
+                    return _DownloadShowCard(
+                      records: records,
+                      manager: manager,
+                    );
+                  },
                 );
               },
             ),
@@ -637,144 +643,216 @@ String _episodeSearchText(DownloadRecord r) {
   return 'e${n ?? ''} ${r.episodeTitle}'.toLowerCase();
 }
 
-class _DownloadCard extends StatelessWidget {
-  const _DownloadCard({required this.record, required this.manager});
+class _DownloadShowCard extends StatelessWidget {
+  const _DownloadShowCard({required this.records, required this.manager});
 
-  final DownloadRecord record;
+  final List<DownloadRecord> records;
   final DownloadManager manager;
 
-  static String subtitleFor(DownloadRecord record, DownloadManager manager) {
-    if (record.isTorrent &&
-        manager.torrentProgress[record.id]?.status == 'copying') {
-      return 'Saving to your folder…';
-    }
-    return switch (record.status) {
-      DownloadStatus.done =>
-        record.bytesTotal > 0 ? fmtDownloadSize(record.bytesTotal) : 'Downloaded',
-      DownloadStatus.downloading =>
-        '${(record.progress * 100).round()}%'
-            '${record.bytesTotal > 0 ? ' of ${fmtDownloadSize(record.bytesTotal)}' : ''}'
-            '${_torrentSuffixFor(record, manager)}',
-      DownloadStatus.paused => 'Paused · ${(record.progress * 100).round()}%',
-      DownloadStatus.queued => 'Queued',
-      DownloadStatus.resolving => 'Preparing…',
-      DownloadStatus.unsupported => record.error ?? 'Not available offline yet',
-      DownloadStatus.failed => record.error ?? 'Failed',
-      DownloadStatus.canceled => 'Canceled',
-    };
+  Future<void> _openEpisodes(BuildContext context) async {
+    final title = records.first.showTitle;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.bg,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: FractionallySizedBox(
+          heightFactor: 0.82,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: AppText.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Delete all episodes',
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      onPressed: () async {
+                        final ok = await showDialog<bool>(
+                          context: sheetContext,
+                          builder: (dctx) => AlertDialog(
+                            backgroundColor: AppColors.surface,
+                            title: Text(
+                              'Delete all downloads?',
+                              style: AppText.headline,
+                            ),
+                            content: Text(
+                              'Remove all ${records.length} '
+                              '${records.length == 1 ? 'episode' : 'episodes'} '
+                              'of “$title” from this device?',
+                              style: AppText.body,
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(dctx, false),
+                                child: Text(
+                                  'Cancel',
+                                  style: AppText.button.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(dctx, true),
+                                child: Text(
+                                  'Delete all',
+                                  style: AppText.button.copyWith(
+                                    color: AppColors.accent,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (ok == true) {
+                          await manager.deleteAll(records);
+                          if (sheetContext.mounted) {
+                            Navigator.of(sheetContext).pop();
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                child: Text(
+                  '${records.where((r) => r.status == DownloadStatus.done).length} '
+                  'of ${records.length} downloaded',
+                  style: AppText.caption,
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  itemCount: records.length,
+                  itemBuilder: (_, i) => DownloadTile(
+                    record: records[i],
+                    manager: manager,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
-
-  static String _torrentSuffixFor(DownloadRecord record, DownloadManager manager) {
-    if (!record.isTorrent) return '';
-    final TorrentDownloadProgress? p = manager.torrentProgress[record.id];
-    if (p == null) return '';
-    final parts = <String>[];
-    if (p.peers > 0) parts.add('${p.peers} peers');
-    if (p.downSpeedBps > 0) {
-      final mb = p.downSpeedBps / (1024 * 1024);
-      parts.add(mb >= 1
-          ? '${mb.toStringAsFixed(1)} MB/s'
-          : '${(p.downSpeedBps / 1024).round()} KB/s');
-    }
-    return parts.isEmpty ? '' : ' · ${parts.join(' · ')}';
-  }
-
-  Future<void> _play(BuildContext context) =>
-      launchDownloadedEpisode(context, record);
 
   @override
   Widget build(BuildContext context) {
-    final done = record.status == DownloadStatus.done;
-    final active = record.status == DownloadStatus.downloading ||
-        record.status == DownloadStatus.paused;
-    final n = record.episodeNumber?.toInt();
-    final episode = n != null ? 'E$n' : 'Episode';
-    final title = record.episodeTitle.trim();
-    final label = title.isEmpty || title == episode ? episode : '$episode · $title';
+    if (records.isEmpty) return const SizedBox.shrink();
+    final head = records.first;
+    final done = records.where((r) => r.status == DownloadStatus.done).length;
+    final active = records.where((r) => r.isActive).toList();
+    final hasActive = active.isNotEmpty;
+    final aggregate = records.isEmpty
+        ? 0.0
+        : ((done + (hasActive ? active.first.progress : 0.0)) /
+                records.length)
+            .clamp(0.0, 1.0);
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final width = MediaQuery.sizeOf(context).width;
+    final columns = width >= 520 ? 3 : 2;
+    final gap = 12.0;
+    final cellWidth = (width - 32 - gap * (columns - 1)) / columns;
+    final memW = (cellWidth * dpr).round();
 
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(14),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: done ? () => _play(context) : null,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
+    return GestureDetector(
+      onTap: () => _openEpisodes(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (record.cover != null && record.cover!.isNotEmpty)
+                  if (head.cover != null && head.cover!.isNotEmpty)
                     CachedNetworkImage(
-                      imageUrl: record.cover!,
-                      httpHeaders: record.coverHeaders,
+                      imageUrl: head.cover!,
+                      httpHeaders: head.coverHeaders,
+                      memCacheWidth: memW,
                       fit: BoxFit.cover,
-                      errorWidget: (c, u, e) =>
-                          ColoredBox(color: AppColors.surface2),
+                      errorWidget: (_, __, ___) =>
+                          const ColoredBox(color: AppColors.surface2),
                     )
                   else
-                    ColoredBox(color: AppColors.surface2),
-                  Positioned(
-                    left: 10,
-                    top: 10,
-                    child: _StatusGlyph(record: record),
-                  ),
-                  Positioned(
-                    right: 4,
-                    top: 4,
-                    child: _TileMenu(record: record, manager: manager),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 9, 10, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    record.showTitle,
-                    style: AppText.caption.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    style: AppText.body.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _DownloadCard.subtitleFor(record, manager),
-                    style: AppText.caption,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (active) ...[
-                    const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(2),
-                      child: LinearProgressIndicator(
-                        value: record.progress > 0 ? record.progress : null,
-                        minHeight: 3,
-                        color: AppColors.accent,
-                        backgroundColor: AppColors.surface2,
+                    const ColoredBox(color: AppColors.surface2),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Color(0x700B0B0F),
+                          Color(0x000B0B0F),
+                        ],
+                        stops: [0.0, 0.35],
                       ),
                     ),
-                  ],
+                  ),
+                  Positioned(
+                    left: 8,
+                    bottom: 8,
+                    child: SizedBox(
+                      width: 34,
+                      height: 34,
+                      child: hasActive
+                          ? CircularProgressIndicator(
+                              value: aggregate > 0 ? aggregate : null,
+                              strokeWidth: 2.8,
+                              color: AppColors.accent,
+                              backgroundColor: AppColors.surface2,
+                            )
+                          : done == records.length
+                              ? const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: AppColors.accent,
+                                  size: 32,
+                                )
+                              : CircularProgressIndicator(
+                                  value: aggregate,
+                                  strokeWidth: 2.8,
+                                  color: AppColors.accent,
+                                  backgroundColor: AppColors.surface2,
+                                ),
+                    ),
+                  ),
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            head.showTitle,
+            style: AppText.body.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '$done of ${records.length} downloaded',
+            style: AppText.caption,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }

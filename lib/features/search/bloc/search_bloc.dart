@@ -364,7 +364,11 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     SearchDiscoverMore event,
     Emitter<SearchState> emit,
   ) async {
-    if (state.query.trim().isNotEmpty || state.discoverLoadingMore || state.discoverAtEnd) return;
+    if (state.query.trim().isNotEmpty) {
+      await _onSearchMore(event, emit);
+      return;
+    }
+    if (state.discoverLoadingMore || state.discoverAtEnd) return;
     emit(state.copyWith(discoverLoadingMore: true));
     try {
       final next = state.discoverPage + 1;
@@ -375,11 +379,63 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         discoverPage: next,
         discoverLoadingMore: false,
         discoverAtEnd: items.isEmpty ||
-            merged.length == state.discoverItems.length ||
             state.catalog == SearchCatalog.trending,
       ));
     } catch (_) {
       if (!isClosed) emit(state.copyWith(discoverLoadingMore: false));
+    }
+  }
+
+  Future<void> _onSearchMore(
+    SearchDiscoverMore event,
+    Emitter<SearchState> emit,
+  ) async {
+    if (state.catalogSource != SearchCatalogSource.tmdb ||
+        state.query.trim().isEmpty ||
+        state.searchLoadingMore ||
+        state.searchAtEnd) {
+      return;
+    }
+
+    final next = state.searchPage + 1;
+    emit(state.copyWith(searchLoadingMore: true));
+    try {
+      final type = switch (state.discoverType) {
+        SearchDiscoverType.anime => 'anime',
+        SearchDiscoverType.movies => 'movies',
+        SearchDiscoverType.series => 'series',
+        SearchDiscoverType.all => 'all',
+      };
+      final items = await _tmdb.search(
+        query: state.query.trim(),
+        type: type,
+        genre: state.genreFilter,
+        page: next,
+      );
+      if (isClosed) return;
+
+      final existing = state.groups
+          .where((g) => g.sourceId == 'tmdb:catalog')
+          .expand((g) => g.items)
+          .toList();
+      final merged = _dedupe([...existing, ...items]);
+      emit(state.copyWith(
+        status: SearchStatus.success,
+        groups: [
+          SourceResultGroup(
+            sourceId: 'tmdb:catalog',
+            sourceName: 'TMDB',
+            items: merged,
+          ),
+        ],
+        searchPage: next,
+        searchLoadingMore: false,
+        // Do not use items.length < 20 here: genre/type filtering can reduce
+        // a perfectly valid TMDB page below 20 while later pages still match.
+        searchAtEnd: items.isEmpty,
+      ));
+    } catch (_) {
+      if (!isClosed) emit(state.copyWith(searchLoadingMore: false));
     }
   }
 
@@ -595,7 +651,15 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       final gen = ++_runGen;
       _lastRunQuery = q;
       _history.add(q);
-      emit(state.copyWith(status: SearchStatus.loading, groups: const [], discoverItems: const [], clearError: true));
+      emit(state.copyWith(
+          status: SearchStatus.loading,
+          groups: const [],
+          discoverItems: const [],
+          searchPage: 1,
+          searchLoadingMore: false,
+          searchAtEnd: false,
+          clearError: true,
+        ));
       try {
         final type = switch (state.discoverType) {
           SearchDiscoverType.anime => 'anime',
@@ -605,7 +669,14 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         };
         final items = await _tmdb.search(query: q, type: type, genre: state.genreFilter);
         if (isClosed || gen != _runGen) return;
-        emit(state.copyWith(status: SearchStatus.success, groups: [SourceResultGroup(sourceId: 'tmdb:catalog', sourceName: 'TMDB', items: items)], discoverItems: const []));
+        emit(state.copyWith(
+          status: SearchStatus.success,
+          groups: [SourceResultGroup(sourceId: 'tmdb:catalog', sourceName: 'TMDB', items: items)],
+          discoverItems: const [],
+          searchPage: 1,
+          searchLoadingMore: false,
+          searchAtEnd: items.isEmpty,
+        ));
       } catch (_) {
         if (!isClosed && gen == _runGen) emit(state.copyWith(status: SearchStatus.error, groups: const [], error: 'TMDB search failed'));
       }
