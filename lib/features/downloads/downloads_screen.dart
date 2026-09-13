@@ -787,10 +787,10 @@ class _DownloadShowCard extends StatelessWidget {
                       memCacheWidth: memW,
                       fit: BoxFit.cover,
                       errorWidget: (_, __, ___) =>
-                          const ColoredBox(color: AppColors.surface2),
+                          ColoredBox(color: AppColors.surface2),
                     )
                   else
-                    const ColoredBox(color: AppColors.surface2),
+                    ColoredBox(color: AppColors.surface2),
                   const DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -818,7 +818,7 @@ class _DownloadShowCard extends StatelessWidget {
                               backgroundColor: AppColors.surface2,
                             )
                           : done == records.length
-                              ? const Icon(
+                              ? Icon(
                                   Icons.check_circle_rounded,
                                   color: AppColors.accent,
                                   size: 32,
@@ -1070,6 +1070,42 @@ Future<void> launchDownloadedEpisode(
   );
 }
 
+String _downloadSubtitleFor(DownloadRecord record, DownloadManager manager) {
+  if (record.isTorrent &&
+      manager.torrentProgress[record.id]?.status == 'copying') {
+    return 'Saving to your folder…';
+  }
+  return switch (record.status) {
+    DownloadStatus.done =>
+      record.bytesTotal > 0 ? fmtDownloadSize(record.bytesTotal) : 'Downloaded',
+    DownloadStatus.downloading =>
+      '${(record.progress * 100).round()}%'
+          '${record.bytesTotal > 0 ? ' of ${fmtDownloadSize(record.bytesTotal)}' : ''}'
+          '${_torrentSuffixFor(record, manager)}',
+    DownloadStatus.paused => 'Paused · ${(record.progress * 100).round()}%',
+    DownloadStatus.queued => 'Queued',
+    DownloadStatus.resolving => 'Preparing…',
+    DownloadStatus.unsupported => record.error ?? 'Not available offline yet',
+    DownloadStatus.failed => record.error ?? 'Failed',
+    DownloadStatus.canceled => 'Canceled',
+  };
+}
+
+String _torrentSuffixFor(DownloadRecord record, DownloadManager manager) {
+  if (!record.isTorrent) return '';
+  final TorrentDownloadProgress? p = manager.torrentProgress[record.id];
+  if (p == null) return '';
+  final parts = <String>[];
+  if (p.peers > 0) parts.add('${p.peers} peers');
+  if (p.downSpeedBps > 0) {
+    final mb = p.downSpeedBps / (1024 * 1024);
+    parts.add(mb >= 1
+        ? '${mb.toStringAsFixed(1)} MB/s'
+        : '${(p.downSpeedBps / 1024).round()} KB/s');
+  }
+  return parts.isEmpty ? '' : ' · ${parts.join(' · ')}';
+}
+
 class DownloadTile extends StatelessWidget {
   const DownloadTile({super.key, required this.record, required this.manager});
   final DownloadRecord record;
@@ -1082,7 +1118,7 @@ class DownloadTile extends StatelessWidget {
     return (t.isEmpty || t == base) ? base : '$base · $t';
   }
 
-  String get _subtitle => _DownloadCard.subtitleFor(record, manager);
+  String get _subtitle => _downloadSubtitleFor(record, manager);
 
   Future<void> _play(BuildContext context) =>
       launchDownloadedEpisode(context, record);
