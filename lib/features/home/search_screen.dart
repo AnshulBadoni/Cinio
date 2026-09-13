@@ -497,28 +497,23 @@ class _SearchViewState extends State<_SearchView>
     }
   }
 
-  /// Search/Discover normally use the global Poster size setting. Because a
-  /// grid has a discrete number of columns, the continuous slider maps to
-  /// four columns at the small end, three at the default, and two at the large
-  /// end. The separate Search poster-size setting can lock this back to the
-  /// existing three-column layout.
+  /// Search/Discover uses the same poster-size baseline as Home when it is
+  /// configured to follow the global setting. The grid adapts its column
+  /// count around that target width, rather than stretching cards to fill
+  /// every grid cell.
+  double _searchPosterWidth() {
+    final prefs = sl<PlaybackPrefs>();
+    if (!prefs.searchPosterFollowsGlobal) return 0;
+    return 140.0 * prefs.posterScale;
+  }
+
   int _searchGridColumns() {
     final prefs = sl<PlaybackPrefs>();
     if (!prefs.searchPosterFollowsGlobal) return 3;
-    final scale = prefs.posterScale;
-    if (scale <= 0.92) return 4;
-    if (scale >= 1.18) return 2;
-    return 3;
-  }
-
-  // Search deliberately starts from its own, slightly smaller card size than
-  // Home. Follow Global scales that Search baseline rather than replacing it
-  // with Home's dimensions. The clamp keeps the continuous visual change from
-  // overflowing a grid cell; column changes still provide the larger jumps.
-  double _searchPosterVisualScale() {
-    final prefs = sl<PlaybackPrefs>();
-    if (!prefs.searchPosterFollowsGlobal) return 1.0;
-    return prefs.posterScale.clamp(0.86, 1.08);
+    final target = _searchPosterWidth();
+    final available = MediaQuery.sizeOf(context).width - 32.0;
+    const gap = 12.0;
+    return ((available + gap) / (target + gap)).floor().clamp(1, 8);
   }
 
   double _searchGridCellWidth(int columns) {
@@ -526,6 +521,12 @@ class _SearchViewState extends State<_SearchView>
     const horizontal = 32.0;
     const gap = 12.0;
     return (width - horizontal - (gap * (columns - 1))) / columns;
+  }
+
+  double _searchCardWidth(int columns) {
+    final prefs = sl<PlaybackPrefs>();
+    if (!prefs.searchPosterFollowsGlobal) return _searchGridCellWidth(columns);
+    return _searchPosterWidth();
   }
 
   /// Rebuilds the search grid immediately when either the global poster size
@@ -1812,6 +1813,7 @@ class _SearchViewState extends State<_SearchView>
     return _posterSettingBuilder(() {
       final columns = _searchGridColumns();
       final width = _searchGridCellWidth(columns);
+      final cardWidth = _searchCardWidth(columns);
       return GridView.builder(
         controller: _discoverScrollController,
         padding: EdgeInsets.fromLTRB(
@@ -1834,19 +1836,21 @@ class _SearchViewState extends State<_SearchView>
             return const Center(child: CircularProgressIndicator(strokeWidth: 2));
           }
           final item = items[i];
-          return Transform.scale(
-            scale: _searchPosterVisualScale(),
-            child: PosterCard(
+          return Center(
+            child: SizedBox(
+              width: cardWidth,
+              child: PosterCard(
               title: item.title,
               imageUrl: item.cover,
               headers: item.coverHeaders,
               tags: _tagsFor(item),
               qualityBadge: item.quality,
               dubBadge: item.dubBadge,
-              cellWidth: width,
+              cellWidth: cardWidth,
               onTap: () => _openDetail(item),
               onLongPress: () => _showInfo(item),
-            ),
+                ),
+              ),
           );
         },
       );
@@ -1874,6 +1878,7 @@ class _SearchViewState extends State<_SearchView>
     return _posterSettingBuilder(() {
       final columns = _searchGridColumns();
       final width = _searchGridCellWidth(columns);
+      final cardWidth = _searchCardWidth(columns);
       return GridView.builder(
         controller: _discoverScrollController,
           padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
@@ -1890,19 +1895,21 @@ class _SearchViewState extends State<_SearchView>
             return const Center(child: CircularProgressIndicator(strokeWidth: 2));
           }
           final item = items[i];
-          return Transform.scale(
-            scale: _searchPosterVisualScale(),
-            child: PosterCard(
+          return Center(
+            child: SizedBox(
+              width: cardWidth,
+              child: PosterCard(
               title: item.title,
               imageUrl: item.cover,
               headers: item.coverHeaders,
               tags: _tagsFor(item),
               qualityBadge: item.quality,
               dubBadge: item.dubBadge,
-              cellWidth: width,
+              cellWidth: cardWidth,
               onTap: () => _openDetail(item),
               onLongPress: () => _showInfo(item),
-            ),
+                ),
+              ),
           );
         },
       );

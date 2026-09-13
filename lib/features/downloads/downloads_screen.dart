@@ -534,11 +534,16 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                   builder: (context, constraints) {
                     final follow = sl<DownloadPrefs>().posterFollowsGlobal;
                     final scale = sl<PlaybackPrefs>().posterScale;
-                    final baseColumns = constraints.maxWidth >= 520 ? 3 : 2;
-                    final columns = follow && scale <= 0.92
-                        ? baseColumns + 1
-                        : baseColumns;
-                    final visualScale = follow ? scale.clamp(0.88, 1.08) : 1.0;
+                    const gap = 12.0;
+                    final targetWidth = 140.0 * scale;
+                    final columns = follow
+                        ? ((constraints.maxWidth + gap) / (targetWidth + gap))
+                            .floor()
+                            .clamp(1, 8)
+                        : (constraints.maxWidth >= 520 ? 3 : 2);
+                    final cellWidth = (constraints.maxWidth - gap * (columns - 1)) / columns;
+                    final cardWidth = follow ? targetWidth : cellWidth;
+                    final cardHeight = cardWidth / 0.62;
                     return GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -554,9 +559,12 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                         final records = [...groups[showId]!]
                           ..sort((a, b) => (a.episodeNumber ?? 0)
                               .compareTo(b.episodeNumber ?? 0));
-                        return Transform.scale(
-                          scale: visualScale,
-                          child: _DownloadShowCard(records: records, manager: manager),
+                        return Center(
+                          child: SizedBox(
+                            width: cardWidth,
+                            height: cardHeight,
+                            child: _DownloadShowCard(records: records, manager: manager),
+                          ),
                         );
                       },
                     );
