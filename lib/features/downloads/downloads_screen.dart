@@ -711,10 +711,10 @@ class _DownloadCard extends StatelessWidget {
                       httpHeaders: record.coverHeaders,
                       fit: BoxFit.cover,
                       errorWidget: (c, u, e) =>
-                          const ColoredBox(color: AppColors.surface2),
+                          ColoredBox(color: AppColors.surface2),
                     )
                   else
-                    const ColoredBox(color: AppColors.surface2),
+                    ColoredBox(color: AppColors.surface2),
                   Positioned(
                     left: 10,
                     top: 10,
