@@ -305,7 +305,7 @@ class _BrandPage extends StatelessWidget {
                     FractionallySizedBox(
                       widthFactor: 0.62,
                       child: Image.asset(
-                        'assets/icon/wordmark.png',
+                        'assets/icon/splash_wordmark.png',
                         fit: BoxFit.contain,
                       ),
                     ),

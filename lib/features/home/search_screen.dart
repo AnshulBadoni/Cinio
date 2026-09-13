@@ -1849,24 +1849,24 @@ class _SearchViewState extends State<_SearchView>
             mainAxisSpacing: 16,
           ),
           itemCount: items.length + (state.discoverLoadingMore ? columns : 0),
-          itemBuilder: (context, i) {
-            if (i >= items.length) {
-              return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-            }
-            final item = items[i];
-            return PosterCard(
-              title: item.title,
-              imageUrl: item.cover,
-              headers: item.coverHeaders,
-              tags: _tagsFor(item),
-              qualityBadge: item.quality,
-              dubBadge: item.dubBadge,
-              cellWidth: width,
-              onTap: () => _openDetail(item),
-              onLongPress: () => _showInfo(item),
-            );
-          },
-        ),
+        itemBuilder: (context, i) {
+          if (i >= items.length) {
+            return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+          }
+          final item = items[i];
+          return PosterCard(
+            title: item.title,
+            imageUrl: item.cover,
+            headers: item.coverHeaders,
+            tags: _tagsFor(item),
+            qualityBadge: item.quality,
+            dubBadge: item.dubBadge,
+            cellWidth: width,
+            onTap: () => _openDetail(item),
+            onLongPress: () => _showInfo(item),
+          );
+        },
+      );
     });
   }
 
