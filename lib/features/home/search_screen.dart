@@ -139,6 +139,7 @@ class _SearchViewState extends State<_SearchView>
   final _myList = sl<MyListStore>();
   final _history = sl<SearchHistory>();
   final _searchPrefs = sl<SearchPrefs>();
+  final _discoverScrollController = ScrollController();
 
   /// Owns the ecosystem [TabBar]'s controller — see [_ecoTabControllerFor].
   TabController? _ecoTabController;
@@ -163,6 +164,7 @@ class _SearchViewState extends State<_SearchView>
   @override
   void initState() {
     super.initState();
+    _discoverScrollController.addListener(_onDiscoverScroll);
     _controller = TextEditingController(text: widget.initialQuery ?? '');
     widget.focusSignal?.addListener(_onFocusSignal);
   }
@@ -176,9 +178,24 @@ class _SearchViewState extends State<_SearchView>
     });
   }
 
+  void _onDiscoverScroll() {
+    if (!_discoverScrollController.hasClients || !mounted) return;
+    final position = _discoverScrollController.position;
+    if (position.pixels < position.maxScrollExtent - 900) return;
+    final bloc = context.read<SearchBloc>();
+    final state = bloc.state;
+    if (state.query.trim().isEmpty &&
+        !state.discoverLoadingMore &&
+        !state.discoverAtEnd &&
+        state.status != SearchStatus.loading) {
+      bloc.add(const SearchDiscoverMore());
+    }
+  }
+
   @override
   void dispose() {
     widget.focusSignal?.removeListener(_onFocusSignal);
+    _discoverScrollController.dispose();
     _controller.dispose();
     _focusNode.dispose();
     _ecoTabController?.dispose();
@@ -323,14 +340,41 @@ class _SearchViewState extends State<_SearchView>
 
   Future<MediaItem?> _resolveCatalogItem(MediaItem item) async {
     if (item.sourceId != 'tmdb:catalog') return item;
-    final sourceId = sl<ActiveSourceCubit>().state;
+
+    // TMDB is catalog-only. Resolve back to the currently selected streaming
+    // provider, but never pass the synthetic TMDB item into DetailScreen.
+    final active = sl<ActiveSourceCubit>();
+    var sourceId = active.state;
+    if (sourceId.isEmpty || !_repo.hasSource(sourceId)) {
+      final candidates = _modeSources;
+      if (candidates.isEmpty) return null;
+      sourceId = candidates.first.id;
+      active.setSource(sourceId);
+    }
+
     try {
-      final results = await _repo.search(item.title, sourceId: sourceId);
-      for (final result in results) {
-        if (item.tmdbId != null &&
-            result.tmdbId == item.tmdbId &&
-            result.tmdbIsTv == item.tmdbIsTv) {
-          return result;
+      // Keep the provider's normal search path used by the old Search screen.
+      // Some providers expose a title under a different audio/category bucket,
+      // so try the default category first and then the alternate one before
+      // declaring the TMDB title unavailable.
+      var results = await _repo.search(item.title, sourceId: sourceId);
+      if (results.isEmpty) {
+        results = await _repo.search(
+          item.title,
+          category: 'dub',
+          sourceId: sourceId,
+        );
+      }
+
+      // Prefer a provider result carrying the same TMDB identity when one is
+      // available. Otherwise use the same tolerant title matcher used by the
+      // existing relation/detail flows.
+      if (item.tmdbId != null) {
+        for (final result in results) {
+          if (result.tmdbId == item.tmdbId &&
+              result.tmdbIsTv == item.tmdbIsTv) {
+            return result;
+          }
         }
       }
       return bestTitleMatch(results, item.title);
@@ -1794,17 +1838,8 @@ class _SearchViewState extends State<_SearchView>
     return _posterSettingBuilder(() {
       final columns = _searchGridColumns();
       final width = _searchGridCellWidth(columns);
-      return NotificationListener<ScrollNotification>(
-        onNotification: (n) {
-          if (n.metrics.axis == Axis.vertical &&
-              n.metrics.pixels >= n.metrics.maxScrollExtent - 800 &&
-              !state.discoverLoadingMore &&
-              !state.discoverAtEnd) {
-            context.read<SearchBloc>().add(const SearchDiscoverMore());
-          }
-          return false;
-        },
-        child: GridView.builder(
+      return GridView.builder(
+        controller: _discoverScrollController,
           padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -1832,7 +1867,6 @@ class _SearchViewState extends State<_SearchView>
             );
           },
         ),
-      );
     });
   }
 
