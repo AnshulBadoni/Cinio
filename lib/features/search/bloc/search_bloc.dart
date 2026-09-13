@@ -298,9 +298,9 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         status: SearchStatus.success,
         discoverItems: _dedupe(loaded),
         discoverPage: 1,
-        // Trending is one TMDB batch. Other catalogs can continue through
-        // page-based pagination.
-        discoverAtEnd: loaded.isEmpty || state.catalog == SearchCatalog.trending,
+        // All discovery catalogs are page-based. Trending combines TMDB's
+        // paginated Now Playing and On The Air feeds, so it can continue too.
+        discoverAtEnd: loaded.isEmpty,
       ));
     } catch (_) {
       // A catalog switch can start another request while this one is still
@@ -378,8 +378,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         discoverItems: merged,
         discoverPage: next,
         discoverLoadingMore: false,
-        discoverAtEnd: items.isEmpty ||
-            state.catalog == SearchCatalog.trending,
+        discoverAtEnd: items.isEmpty,
       ));
     } catch (_) {
       if (!isClosed) emit(state.copyWith(discoverLoadingMore: false));

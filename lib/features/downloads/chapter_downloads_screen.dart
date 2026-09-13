@@ -23,9 +23,14 @@ import '../reader/novel_reader_screen.dart';
 /// are text, they're browsed in different places, and mixing them under the
 /// episode downloads made the video screen read like a dumping ground.
 class ChapterDownloadsScreen extends StatefulWidget {
-  const ChapterDownloadsScreen({super.key, required this.mode});
+  const ChapterDownloadsScreen({
+    super.key,
+    required this.mode,
+    this.embedded = false,
+  });
 
   final ContentMode mode;
+  final bool embedded;
 
   @override
   State<ChapterDownloadsScreen> createState() => _ChapterDownloadsScreenState();
@@ -59,14 +64,7 @@ class _ChapterDownloadsScreenState extends State<ChapterDownloadsScreen> {
   Widget build(BuildContext context) {
     final store = sl<ChapterDownloadStore>();
     final isNovel = widget.mode == ContentMode.novel;
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      appBar: settingsAppBar(isNovel ? 'Novel downloads' : 'Manga downloads'),
-      // Only the box is watched here. The downloader fires per page, and
-      // rebuilding a few thousand rows twice a second for a progress bar on one
-      // of them is what made this screen crawl — the progress tiles subscribe
-      // to it themselves instead.
-      body: ValueListenableBuilder<Box<Map>>(
+    final body = ValueListenableBuilder<Box<Map>>(
         valueListenable: store.listenable(),
         builder: (context, box, _) {
           final all = store.all();
@@ -94,7 +92,12 @@ class _ChapterDownloadsScreenState extends State<ChapterDownloadsScreen> {
             ],
           );
         },
-      ),
+      );
+    if (widget.embedded) return ColoredBox(color: AppColors.bg, child: body);
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: settingsAppBar(isNovel ? 'Novel downloads' : 'Manga downloads'),
+      body: body,
     );
   }
 

@@ -2,12 +2,10 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
 import '../../core/ui/settings_widgets.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
-import '../../core/download/chapter_download_store.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_prefs.dart';
 import '../../core/download/download_record.dart';
@@ -15,6 +13,7 @@ import '../../core/mode/content_mode.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/torrent/torrent_download_service.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
@@ -139,6 +138,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     // release (onCommit).
     int parallel = prefs.parallelDownloads;
     int connections = prefs.connectionsPerDownload;
+    bool posterFollowsGlobal = prefs.posterFollowsGlobal;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.surface,
@@ -238,6 +238,65 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                   onChanged: (n) => connections = n,
                   onCommit: (n) => prefs.setConnectionsPerDownload(n),
                 ),
+                ListTile(
+                  contentPadding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                  leading: const Icon(Icons.photo_size_select_large_outlined),
+                  title: const Text('Download poster size'),
+                  subtitle: Text(
+                    posterFollowsGlobal ? 'Follow global Poster size' : 'Fixed',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () async {
+                    final picked = await showModalBottomSheet<bool>(
+                      context: ctx,
+                      backgroundColor: AppColors.surface,
+                      showDragHandle: true,
+                      builder: (pickerContext) => SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const ListTile(title: Text('Download poster size')),
+                            RadioListTile<bool>(
+                              value: true,
+                              groupValue: posterFollowsGlobal,
+                              title: const Text('Follow Global'),
+                              subtitle: const Text('Scale with the global Poster size setting.'),
+                              onChanged: (v) => Navigator.pop(pickerContext, v),
+                            ),
+                            RadioListTile<bool>(
+                              value: false,
+                              groupValue: posterFollowsGlobal,
+                              title: const Text('Fixed'),
+                              subtitle: const Text('Keep the current Downloads card size.'),
+                              onChanged: (v) => Navigator.pop(pickerContext, v),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                        ),
+                      ),
+                    );
+                    if (picked != null) {
+                      await prefs.setPosterFollowsGlobal(picked);
+                      setSheet(() => posterFollowsGlobal = picked);
+                      if (ctx.mounted) setSheet(() {});
+                    }
+                  },
+                ),
+                ListTile(
+                  contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                  leading: const Icon(Icons.folder_outlined),
+                  title: const Text('Download directory'),
+                  subtitle: Text(prefs.locationLabel ?? 'Default Downloads folder'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () async {
+                    await Navigator.of(ctx).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const DownloadLocationScreen(),
+                      ),
+                    );
+                    setSheet(() {});
+                  },
+                ),
                 const SizedBox(height: 12),
               ],
             ),
@@ -300,7 +359,6 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const DownloadsScreenTv();
     final manager = sl<DownloadManager>();
-    final store = sl<ChapterDownloadStore>();
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(
@@ -331,103 +389,35 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           final groups = manager.byShow;
           return Column(
             children: [
-              _locationHeader(),
-              _chapterLinks(store),
-              if (groups.isEmpty)
-                const Expanded(
-                  child: EmptyState(
-                    icon: Icons.download_outlined,
-                    message: 'Episodes you download appear here',
-                  ),
-                )
-              else ...[
-                _searchField(),
-                Expanded(child: _list(groups, manager)),
-              ],
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  /// Manga and novel downloads get their own screens — they're chapters, not
-  /// episodes, and listing them here made this screen a dumping ground. These
-  /// two rows are just the way in, with a count so you can see there's
-  /// something there without opening it.
-  ///
-  /// Only these rows watch the chapter box. It's written twice a second while
-  /// a chapter downloads, and the video list below has no reason to rebuild
-  /// for that.
-  Widget _chapterLinks(ChapterDownloadStore store) {
-    return ValueListenableBuilder<Box<Map>>(
-      valueListenable: store.listenable(),
-      builder: (context, box, _) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-        child: Row(
-          children: [
-            for (final m in const [ContentMode.manga, ContentMode.novel]) ...[
-              Expanded(child: _chapterCard(m, store.countDone(m))),
-              if (m == ContentMode.manga) const SizedBox(width: 10),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Side by side rather than two full-width rows: they're a way into the other
-  /// two screens, not content, and stacked they pushed the episode list most of
-  /// a screen down.
-  Widget _chapterCard(ContentMode mode, int count) {
-    final novel = mode == ContentMode.novel;
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(12),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ChapterDownloadsScreen(mode: mode),
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 11, 10, 11),
-          child: Row(
-            children: [
-              Icon(chapterIcon(mode), color: AppColors.accent, size: 20),
-              const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+                child: PageView(
                   children: [
-                    Text(
-                      novel ? 'Novels' : 'Manga',
-                      style: AppText.body.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w600,
+                    if (groups.isEmpty)
+                      const EmptyState(
+                        icon: Icons.download_outlined,
+                        message: 'Episodes you download appear here',
+                      )
+                    else
+                      Column(
+                        children: [
+                          _searchField(),
+                          Expanded(child: _list(groups, manager)),
+                        ],
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    ChapterDownloadsScreen(
+                      mode: ContentMode.manga,
+                      embedded: true,
                     ),
-                    Text(
-                      '$count ${count == 1 ? 'chapter' : 'chapters'}',
-                      style: AppText.caption,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    ChapterDownloadsScreen(
+                      mode: ContentMode.novel,
+                      embedded: true,
                     ),
                   ],
                 ),
               ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.textTertiary,
-                size: 20,
-              ),
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -526,49 +516,58 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           message: 'No downloads match your search',
         );
       }
-      return ListView(
-        padding: const EdgeInsets.only(bottom: 32),
-        children: [
-          _summaryStrip(
-            count: done.length,
-            bytes: totalBytes,
-            anyExpanded: false,
-            onToggleAll: () {},
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final columns = constraints.maxWidth >= 520 ? 3 : 2;
-                final gap = 12.0;
-                return GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: cardRecords.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    crossAxisSpacing: gap,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 0.62,
-                  ),
-                  itemBuilder: (context, i) {
-                    final showId = cardRecords[i].showId;
-                    final records = [...groups[showId]!]
-                      ..sort((a, b) => (a.episodeNumber ?? 0)
-                          .compareTo(b.episodeNumber ?? 0));
-                    return _DownloadShowCard(
-                      records: records,
-                      manager: manager,
+      return ValueListenableBuilder<int>(
+        valueListenable: PlaybackPrefs.posterRevision,
+        builder: (context, _, __) {
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 32),
+            children: [
+              _summaryStrip(
+                count: done.length,
+                bytes: totalBytes,
+                anyExpanded: false,
+                onToggleAll: () {},
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final follow = sl<DownloadPrefs>().posterFollowsGlobal;
+                    final scale = sl<PlaybackPrefs>().posterScale;
+                    final baseColumns = constraints.maxWidth >= 520 ? 3 : 2;
+                    final columns = follow && scale <= 0.92
+                        ? baseColumns + 1
+                        : baseColumns;
+                    final visualScale = follow ? scale.clamp(0.88, 1.08) : 1.0;
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: cardRecords.length,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 16,
+                        childAspectRatio: 0.62,
+                      ),
+                      itemBuilder: (context, i) {
+                        final showId = cardRecords[i].showId;
+                        final records = [...groups[showId]!]
+                          ..sort((a, b) => (a.episodeNumber ?? 0)
+                              .compareTo(b.episodeNumber ?? 0));
+                        return Transform.scale(
+                          scale: visualScale,
+                          child: _DownloadShowCard(records: records, manager: manager),
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
-          ),
-        ],
+                ),
+              ),
+            ],
+          );
+        },
       );
     }
-
     if (rows.isEmpty) {
       return const EmptyState(
         icon: Icons.search_off_rounded,

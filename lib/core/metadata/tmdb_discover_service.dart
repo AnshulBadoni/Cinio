@@ -144,29 +144,46 @@ class TmdbDiscoverService {
     String? genre,
     required int page,
   }) async {
-    final path = type == 'movies'
-        ? 'movie'
-        : type == 'series' || type == 'anime'
-        ? 'tv'
-        : 'all';
-    // TMDB's trending endpoint is a single ranked batch; unlike Discover it
-    // does not expose page-based pagination. Do not send a synthetic `page`
-    // parameter here — it is not part of the endpoint contract.
-    final response = await _dio.get<dynamic>(
-      '${Tmdb.base}/trending/$path/week',
-    );
-    final rows = response.data is Map ? response.data['results'] : null;
-    if (rows is! List) return const [];
-    return [
-      for (final row in rows)
-        if (row is Map)
-          ..._mapSearchRow(
-            row,
-            type: type,
-            genre: genre,
-            trending: true,
-          ),
-    ];
+    // "Trending" is intentionally a current-content feed rather than TMDB's
+    // /trending endpoint. Now Playing movies and On The Air TV both expose
+    // normal page-based pagination, so the Search screen can keep loading
+    // beyond the first batch. TMDB documents both endpoints as paginated
+    // list/discover calls.
+    Future<List<MediaItem>> fetchKind(
+      String endpoint,
+      String resultType,
+    ) async {
+      final response = await _dio.get<dynamic>(
+        '${Tmdb.base}/$endpoint',
+        queryParameters: {'page': page},
+      );
+      final rows = response.data is Map ? response.data['results'] : null;
+      if (rows is! List) return const [];
+      return [
+        for (final row in rows)
+          if (row is Map)
+            ..._mapSearchRow(
+              row,
+              type: resultType,
+              genre: genre,
+              trending: true,
+            ),
+      ];
+    }
+
+    final movies = type == 'series' || type == 'anime'
+        ? const <MediaItem>[]
+        : await fetchKind('movie/now_playing', 'movies');
+    final shows = type == 'movies'
+        ? const <MediaItem>[]
+        : await fetchKind('tv/on_the_air', type == 'anime' ? 'anime' : 'series');
+
+    final mixed = [...movies, ...shows];
+    mixed.shuffle(math.Random(page * 104729));
+
+    // Keep the Search/Discover pagination batch at roughly the same size as
+    // the other catalogs even though this catalog combines two TMDB pages.
+    return mixed.take(20).toList();
   }
 
   Future<List<MediaItem>> _discoverKind({
@@ -284,6 +301,7 @@ class TmdbDiscoverService {
       sourceId: 'tmdb:catalog',
       tmdbId: id,
       tmdbIsTv: isTv,
+      tmdbIsAnime: type == 'anime',
       genres: genreNames,
     );
   }

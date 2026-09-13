@@ -244,7 +244,17 @@ class _SearchViewState extends State<_SearchView>
     final t = <String>[];
     if ((m.dubCount ?? 0) > 0) t.add('DUB');
     if ((m.subCount ?? 0) > 0 && t.length < 2) t.add('SUB');
-    if (t.isEmpty && m.type == ProviderType.movie) t.add('MOVIE');
+    if (t.isEmpty && m.sourceId == 'tmdb:catalog') {
+      if (m.tmdbIsAnime) {
+        t.add('ANIME');
+      } else if (m.tmdbIsTv) {
+        t.add('SERIES');
+      } else {
+        t.add('MOVIE');
+      }
+    } else if (t.isEmpty && m.type == ProviderType.movie) {
+      t.add('MOVIE');
+    }
     return t;
   }
 
@@ -499,6 +509,16 @@ class _SearchViewState extends State<_SearchView>
     if (scale <= 0.92) return 4;
     if (scale >= 1.18) return 2;
     return 3;
+  }
+
+  // Search deliberately starts from its own, slightly smaller card size than
+  // Home. Follow Global scales that Search baseline rather than replacing it
+  // with Home's dimensions. The clamp keeps the continuous visual change from
+  // overflowing a grid cell; column changes still provide the larger jumps.
+  double _searchPosterVisualScale() {
+    final prefs = sl<PlaybackPrefs>();
+    if (!prefs.searchPosterFollowsGlobal) return 1.0;
+    return prefs.posterScale.clamp(0.86, 1.08);
   }
 
   double _searchGridCellWidth(int columns) {
@@ -1814,16 +1834,19 @@ class _SearchViewState extends State<_SearchView>
             return const Center(child: CircularProgressIndicator(strokeWidth: 2));
           }
           final item = items[i];
-          return PosterCard(
-            title: item.title,
-            imageUrl: item.cover,
-            headers: item.coverHeaders,
-            tags: _tagsFor(item),
-            qualityBadge: item.quality,
-            dubBadge: item.dubBadge,
-            cellWidth: width,
-            onTap: () => _openDetail(item),
-            onLongPress: () => _showInfo(item),
+          return Transform.scale(
+            scale: _searchPosterVisualScale(),
+            child: PosterCard(
+              title: item.title,
+              imageUrl: item.cover,
+              headers: item.coverHeaders,
+              tags: _tagsFor(item),
+              qualityBadge: item.quality,
+              dubBadge: item.dubBadge,
+              cellWidth: width,
+              onTap: () => _openDetail(item),
+              onLongPress: () => _showInfo(item),
+            ),
           );
         },
       );
@@ -1867,16 +1890,19 @@ class _SearchViewState extends State<_SearchView>
             return const Center(child: CircularProgressIndicator(strokeWidth: 2));
           }
           final item = items[i];
-          return PosterCard(
-            title: item.title,
-            imageUrl: item.cover,
-            headers: item.coverHeaders,
-            tags: _tagsFor(item),
-            qualityBadge: item.quality,
-            dubBadge: item.dubBadge,
-            cellWidth: width,
-            onTap: () => _openDetail(item),
-            onLongPress: () => _showInfo(item),
+          return Transform.scale(
+            scale: _searchPosterVisualScale(),
+            child: PosterCard(
+              title: item.title,
+              imageUrl: item.cover,
+              headers: item.coverHeaders,
+              tags: _tagsFor(item),
+              qualityBadge: item.quality,
+              dubBadge: item.dubBadge,
+              cellWidth: width,
+              onTap: () => _openDetail(item),
+              onLongPress: () => _showInfo(item),
+            ),
           );
         },
       );

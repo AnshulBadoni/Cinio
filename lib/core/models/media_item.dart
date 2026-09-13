@@ -47,6 +47,11 @@ class MediaItem extends Equatable {
   final int? tmdbId;
   final bool tmdbIsTv;
 
+  /// True when a TMDB catalog item came from the anime discover scope.
+  /// Browse-time metadata only; it is not persisted to My List.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final bool tmdbIsAnime;
+
   /// IMDb id (e.g. `tt1234567`) for Simkl tracking when no TMDB id is exposed.
   final String? imdbId;
 
@@ -82,6 +87,7 @@ class MediaItem extends Equatable {
     this.malId,
     this.tmdbId,
     this.tmdbIsTv = false,
+    this.tmdbIsAnime = false,
     this.imdbId,
     this.genres = const [],
     this.status,
@@ -114,6 +120,7 @@ class MediaItem extends Equatable {
     malId: malId ?? this.malId,
     tmdbId: tmdbId ?? this.tmdbId,
     tmdbIsTv: tmdbIsTv,
+    tmdbIsAnime: tmdbIsAnime,
     imdbId: imdbId ?? this.imdbId,
   );
 
@@ -133,6 +140,7 @@ class MediaItem extends Equatable {
     malId,
     tmdbId,
     tmdbIsTv,
+    tmdbIsAnime,
     imdbId,
     genres,
     status,
