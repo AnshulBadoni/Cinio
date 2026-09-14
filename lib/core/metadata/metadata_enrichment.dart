@@ -133,7 +133,7 @@ class MetadataEnrichment {
     MediaDetail d,
   ) async {
     final rawId = d.id.replaceFirst('tpdb:movie:', '');
-    if (rawId.isEmpty) return (cast: d.castMembers, relations: const []);
+    if (rawId.isEmpty) return (cast: d.castMembers, relations: <MediaRelation>[]);
     final relations = <MediaRelation>[];
     try {
       final res = await _dio.get<dynamic>(
