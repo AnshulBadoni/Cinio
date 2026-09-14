@@ -71,6 +71,13 @@ class MediaDetail extends Equatable {
   final int? tmdbId;
   final bool tmdbIsTv;
 
+  /// Whether this is an episodic video title (series/anime series).
+  /// Runtime/persistence-safe classification supplied by the source bridge.
+  /// This must not be inferred from [episodes], because movies use a synthetic
+  /// single episode internally for the unified playback/download pipeline.
+  @JsonKey(defaultValue: false)
+  final bool isSeries;
+
   /// IMDb id (e.g. `tt1234567`), when the source exposes it but not a TMDB id.
   /// Also drives Simkl tracking — Simkl accepts an `imdb` id in its ids object.
   final String? imdbId;
@@ -108,6 +115,7 @@ class MediaDetail extends Equatable {
     this.malId,
     this.tmdbId,
     this.tmdbIsTv = false,
+    this.isSeries = false,
     this.imdbId,
     this.castMembers = const [],
     this.relations = const [],
@@ -138,6 +146,7 @@ class MediaDetail extends Equatable {
     int? malId,
     int? tmdbId,
     bool? tmdbIsTv,
+    bool? isSeries,
     String? imdbId,
     List<CastMember>? castMembers,
     List<MediaRelation>? relations,
@@ -162,6 +171,7 @@ class MediaDetail extends Equatable {
     malId: malId ?? this.malId,
     tmdbId: tmdbId ?? this.tmdbId,
     tmdbIsTv: tmdbIsTv ?? this.tmdbIsTv,
+    isSeries: isSeries ?? this.isSeries,
     imdbId: imdbId ?? this.imdbId,
     castMembers: castMembers ?? this.castMembers,
     relations: relations ?? this.relations,
@@ -189,6 +199,7 @@ class MediaDetail extends Equatable {
     malId,
     tmdbId,
     tmdbIsTv,
+    isSeries,
     imdbId,
     castMembers,
     relations,

@@ -284,6 +284,7 @@ class CloudStreamProvider implements BaseProvider {
       malId: ids.malId,
       tmdbId: ids.tmdbId,
       tmdbIsTv: _csTypeIsTv(csType),
+      isSeries: _csTypeIsSeries(csType),
       imdbId: ids.imdbId,
       // Cast/Relations straight from the provider (works without ids).
       castMembers: _castFrom(m['actors']),
@@ -318,6 +319,26 @@ class CloudStreamProvider implements BaseProvider {
 
   /// True for CloudStream types that map to TMDB's `tv` namespace (series),
   /// false for movies — picks the right Simkl/TMDB lookup for [MediaDetail].
+  /// True only for CloudStream responses that are actually episodic.
+  /// Movies intentionally expose a synthetic E1 to the unified playback
+  /// pipeline, so episode presence must never be used as the UI classifier.
+  bool _csTypeIsSeries(String? csType) {
+    switch (csType) {
+      case 'TvSeries':
+      case 'Anime':
+      case 'OVA':
+      case 'Cartoon':
+      case 'AsianDrama':
+      case 'Documentary':
+        return true;
+      case 'Movie':
+      case 'AnimeMovie':
+      case 'Torrent':
+      default:
+        return false;
+    }
+  }
+
   bool _csTypeIsTv(String? csType) {
     switch (csType) {
       case 'Movie':

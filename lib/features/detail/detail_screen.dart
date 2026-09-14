@@ -1050,15 +1050,28 @@ class _DetailViewState extends State<_DetailView>
   /// e.g. "Download S1:E1". Falls back to a plain "Download" when there are no
   /// episodes to reference. (No downloads yet — label only; the button snacks.)
   String _downloadLabel(
+    MediaDetail detail,
     List<Episode> seasonEps,
     bool hasMultipleSeasons,
     int currentSeason,
   ) {
-    if (seasonEps.isEmpty) return 'Download';
+    if (!detail.isSeries || seasonEps.isEmpty) return 'Download';
     final first = seasonEps.first;
     final epNum = first.number?.toInt() ?? 1;
     if (hasMultipleSeasons) return 'Download S$currentSeason:E$epNum';
     return 'Download E$epNum';
+  }
+
+  int? _resumePercent(List<Episode> eps, int index) {
+    if (eps.isEmpty || index < 0 || index >= eps.length) return null;
+    final mark = sl<ResumeStore>().get(
+      widget.item.sourceId,
+      widget.item.url,
+      eps[index].id,
+    );
+    if (mark == null || mark.duration.inMilliseconds <= 0) return null;
+    final fraction = mark.position.inMilliseconds / mark.duration.inMilliseconds;
+    return (fraction.clamp(0.0, 1.0) * 100).round();
   }
 
   /// Whether video progress exists at all for this title — the jump prompt has
@@ -1424,9 +1437,14 @@ class _DetailViewState extends State<_DetailView>
     final episodeNum = eps.isNotEmpty
         ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
         : 1;
+    final resumePercent = detail.isSeries ? null : _resumePercent(eps, resumeIdx);
     final buttonLabel = isReading
         ? (readResume!.hasResume ? 'Continue' : 'Read')
-        : (resume.hasResume ? 'Continue E$episodeNum' : 'Play');
+        : (detail.isSeries
+            ? (resume.hasResume ? 'Continue E$episodeNum' : 'Play E$episodeNum')
+            : (resume.hasResume
+                ? (resumePercent != null ? 'Continue $resumePercent%' : 'Continue')
+                : 'Play'));
 
     // Cover / backdrop.
     final coverUrl = detail.cover ?? item.cover ?? '';
@@ -1469,9 +1487,9 @@ class _DetailViewState extends State<_DetailView>
     if ((detail.year ?? '').isNotEmpty) metaParts.add(detail.year!);
     if (hasMultipleSeasons) {
       metaParts.add('${seasonSet.length} Seasons');
-    } else if (eps.isNotEmpty) {
-      // Manga/novel count chapters. The model stays `Episode`; this is the
-      // user-facing word only, so anime/movie reads exactly as before.
+    } else if (eps.isNotEmpty && (isReading || detail.isSeries)) {
+      // Manga/novel count chapters. Movies have a synthetic E1 internally
+      // for playback, but that implementation detail must not appear in UI.
       final unit = isReading ? 'Chapter' : 'Episode';
       metaParts.add('${eps.length} $unit${eps.length == 1 ? '' : 's'}');
     }
@@ -1481,6 +1499,7 @@ class _DetailViewState extends State<_DetailView>
     // ── Download button label: "Download S{season}:E{n}" when we can derive
     // the first episode of the current season, else a plain "Download". ──────
     final downloadLabel = _downloadLabel(
+      detail,
       seasonEps,
       hasMultipleSeasons,
       currentSeason,

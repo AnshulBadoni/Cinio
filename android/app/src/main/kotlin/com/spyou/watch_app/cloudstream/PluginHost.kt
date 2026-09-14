@@ -954,6 +954,7 @@ class PluginHost(private val context: Context) {
             "plot" to plot,
             "year" to year,
             "type" to type?.name,
+            "isSeries" to (this is TvSeriesLoadResponse || this is AnimeLoadResponse),
             "apiName" to apiName,
             "episodes" to episodes,
             "subCount" to subCount,

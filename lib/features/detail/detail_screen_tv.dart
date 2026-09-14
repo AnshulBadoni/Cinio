@@ -155,6 +155,18 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     return highestMarked;
   }
 
+  int? _resumePercent(List<Episode> eps, int index) {
+    if (eps.isEmpty || index < 0 || index >= eps.length) return null;
+    final mark = sl<ResumeStore>().get(
+      widget.item.sourceId,
+      widget.item.url,
+      eps[index].id,
+    );
+    if (mark == null || mark.duration.inMilliseconds <= 0) return null;
+    final fraction = mark.position.inMilliseconds / mark.duration.inMilliseconds;
+    return (fraction.clamp(0.0, 1.0) * 100).round();
+  }
+
   /// Resume target for Play (mirrors _DetailViewState._resumeTarget): local
   /// playback first, else the connected tracker's watched count (single-season).
   ({int index, bool hasResume}) _resumeTarget(List<Episode> eps) {
@@ -460,7 +472,12 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     final resumeIdx = resume.index;
     final hasAnyMark = eps.any((e) => store.get(item.sourceId, item.url, e.id) != null);
     final episodeNum = eps.isNotEmpty ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1) : 1;
-    final buttonLabel = resume.hasResume ? 'Continue E$episodeNum' : 'Play';
+    final resumePercent = detail.isSeries ? null : _resumePercent(eps, resumeIdx);
+    final buttonLabel = detail.isSeries
+        ? (resume.hasResume ? 'Continue E$episodeNum' : 'Play E$episodeNum')
+        : (resume.hasResume
+            ? (resumePercent != null ? 'Continue $resumePercent%' : 'Continue')
+            : 'Play');
 
     // Cover.
     final coverUrl = detail.cover ?? item.cover ?? '';
