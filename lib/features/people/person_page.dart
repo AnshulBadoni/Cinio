@@ -6,6 +6,7 @@ import '../../core/metadata/people_service.dart';
 import '../../core/metadata/theporndb.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/person.dart';
+import '../../core/models/provider_info.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
