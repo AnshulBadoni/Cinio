@@ -1423,17 +1423,17 @@ class _DetailViewState extends State<_DetailView>
     final category = state.category;
     final selectedSeason = state.selectedSeason;
     final eps = detail.episodes;
+    final store = sl<ResumeStore>();
+    // Manga/novel: no player, no sub/dub, no video downloads — drives the
+    // Play→Read relabel and hides the download affordances below.
+    final isReading =
+        detail.type == ProviderType.novel || detail.type == ProviderType.manga;
     final showEpisodesTab = isReading || detail.isSeries;
     if (_tabShowsEpisodes != showEpisodesTab) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _configureTabController(showEpisodesTab));
       });
     }
-    final store = sl<ResumeStore>();
-    // Manga/novel: no player, no sub/dub, no video downloads — drives the
-    // Play→Read relabel and hides the download affordances below.
-    final isReading =
-        detail.type == ProviderType.novel || detail.type == ProviderType.manga;
     // Kick the (cached, once-per-malId) filler lookup for the "Filler" badge.
     _ensureFiller(detail.malId ?? item.malId);
     // Kick the (once-per-detail) tracker-progress lookup for grey-out.
