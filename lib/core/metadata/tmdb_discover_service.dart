@@ -78,14 +78,11 @@ class TmdbDiscoverService {
   ];
 
   Future<List<HomeSection>> home() async {
-    // Keep Home resilient to one failed TMDB endpoint. Search uses a single
-    // endpoint, while Home fans out to several discover calls; a transient
-    // failure/rate-limit on one row must not blank the entire Home screen.
     final results = await Future.wait([
-      _safeHomeFetch(() => discover(catalog: 'trending', type: 'all', page: 1)),
-      _safeHomeFetch(() => discover(catalog: 'popular', type: 'all', page: 1)),
-      _safeHomeFetch(() => discover(catalog: 'top_rated', type: 'all', page: 1)),
-      _safeHomeFetch(() => discover(catalog: 'discover_new', type: 'all', page: 1)),
+      discover(catalog: 'trending', type: 'all', page: 1),
+      discover(catalog: 'popular', type: 'all', page: 1),
+      discover(catalog: 'top_rated', type: 'all', page: 1),
+      discover(catalog: 'discover_new', type: 'all', page: 1),
     ]);
     return [
       HomeSection(title: 'Trending', items: results[0]),
@@ -93,16 +90,6 @@ class TmdbDiscoverService {
       HomeSection(title: 'Top Rated', items: results[2]),
       HomeSection(title: 'Discover New', items: results[3]),
     ].where((section) => section.items.isNotEmpty).toList();
-  }
-
-  Future<List<MediaItem>> _safeHomeFetch(
-    Future<List<MediaItem>> Function() fetch,
-  ) async {
-    try {
-      return await fetch();
-    } catch (_) {
-      return const <MediaItem>[];
-    }
   }
 
   Future<List<MediaItem>> discover({

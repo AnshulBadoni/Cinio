@@ -72,21 +72,29 @@ class ThePornDb {
 
   Future<List<MediaItem>> performers({
     int page = 1,
-    String orderBy = 'RECENTLY_CREATED',
+    String orderBy = 'MOST_RELEVANT',
     String? query,
   }) async {
     final data = await _get('/performers', queryParameters: {
       'page': page,
-      'per_page': 24,
+      'per_page': 100,
       'orderBy': orderBy,
+      'gender': 'FEMALE',
+      'age': 40,
+      'age_operation': '<',
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
     });
     final rows = data['data'];
     if (rows is! List) return const [];
     return [
       for (final row in rows)
-        if (row is Map) _performer(row),
-    ];
+        if (row is Map && _qualifiesAsActor(row)) _performer(row),
+    ].take(24).toList();
+  }
+
+  bool _qualifiesAsActor(Map row) {
+    final rating = (row['rating'] as num?)?.toDouble();
+    return rating != null && rating > 4.0;
   }
 
   Future<List<MediaItem>> studios({int page = 1}) async {
@@ -103,19 +111,17 @@ class ThePornDb {
     ];
   }
 
-  /// Builds the ThePornDB Home rows. "Trending Performers" is derived from
-  /// performers attached to recently released scenes; the public API does not
-  /// expose a dedicated popularity/trending performer sort.
+  /// Builds the ThePornDB Home rows. Actors are restricted to female performers
+  /// younger than 40 with a rating above 4.0. The API applies the gender/age
+  /// filters server-side; rating is filtered locally because the performer list
+  /// endpoint does not expose a rating filter.
   Future<List<HomeSection>> home() async {
-    // Home uses several independent API endpoints. Keep the rows that succeed
-    // if one endpoint is temporarily unavailable; Search can still work even
-    // when performers/scenes/sites are unavailable.
     final results = await Future.wait([
-      _safeHomeFetch(() => movies(orderBy: 'recently_released')),
-      _safeHomeFetch(() => movies(orderBy: 'most_relevant')),
-      _safeHomeFetch(() => movies(orderBy: 'recently_released')),
-      _safeHomeFetch(trendingPerformers),
-      _safeHomeFetch(studios),
+      movies(orderBy: 'recently_released'),
+      movies(orderBy: 'most_relevant'),
+      movies(orderBy: 'recently_released'),
+      performers(),
+      studios(),
     ]);
 
     final topRated = [...results[2]]
@@ -128,7 +134,7 @@ class ThePornDb {
         more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_recent'),
       ),
       HomeSection(
-        title: 'Trending Performers',
+        title: 'Actors',
         items: results[3],
         more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_performers'),
       ),
@@ -148,16 +154,6 @@ class ThePornDb {
         more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_top_rated'),
       ),
     ].where((section) => section.items.isNotEmpty).toList();
-  }
-
-  Future<List<MediaItem>> _safeHomeFetch(
-    Future<List<MediaItem>> Function() fetch,
-  ) async {
-    try {
-      return await fetch();
-    } catch (_) {
-      return const <MediaItem>[];
-    }
   }
 
   Future<List<MediaItem>> browseMore(String kind, int page) => switch (kind) {
