@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/models/provider_info.dart';
-import 'package:watch_app/core/trailer/nsfw_trailer_service.dart';
 import 'package:watch_app/core/trailer/trailer_service.dart';
 
 class _FakeAdapter implements HttpClientAdapter {

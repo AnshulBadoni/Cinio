@@ -26,6 +26,7 @@ import '../../core/playback/watch_history.dart';
 import '../auth/reconnect.dart';
 import '../../core/privacy/incognito_mode.dart';
 import '../../core/playback/search_prefs.dart';
+import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/playback/subtitle_language.dart';
 import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/mihon/mihon_manager.dart';
@@ -34,6 +35,7 @@ import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_manager.dart';
 import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
+import '../home/cubit/home_cubit.dart';
 import 'appearance_screen.dart';
 import 'nav_tabs_screen.dart';
 import 'reader_settings_screen.dart';
@@ -196,6 +198,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (picked == null || picked == _dnsChoice) return;
     await CsDns.set(picked);
     if (mounted) setState(() => _dnsChoice = picked);
+  }
+
+  Future<void> _pickCatalogSource() async {
+    final prefs = sl<CatalogSourcePrefs>();
+    final picked = await showModalBottomSheet<CatalogSource>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Catalog source', style: AppText.headline),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Controls where Home and Search get catalog content. Providers still resolve playback.',
+                  style: AppText.caption,
+                ),
+              ),
+            ),
+            for (final source in CatalogSource.values)
+              ListTile(
+                title: Text(source.label, style: AppText.body),
+                trailing: source == prefs.source
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                    : null,
+                onTap: () => Navigator.pop(ctx, source),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || picked == prefs.source) return;
+    await prefs.setSource(picked);
+    if (mounted) {
+      setState(() {});
+      sl<HomeCubit>().load(reset: true);
+    }
   }
 
   /// Bottom sheet to pick the search results layout (grid vs CloudStream-style
@@ -836,6 +889,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       _SettingsEntry(
         section: 'Interface',
+        icon: Icons.public_rounded,
+        title: 'Catalog source',
+        subtitle: 'Home and Search catalog',
+        keywords: 'catalog source home search tmdb theporndb provider mixed',
+        trailing: _value(sl<CatalogSourcePrefs>().source.label),
+        onTap: _pickCatalogSource,
+      ),
+      _SettingsEntry(
+        section: 'Interface',
         icon: Icons.download_rounded,
         title: 'Batch download style',
         subtitle: 'How the multi-episode sheet looks',
@@ -1190,7 +1252,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'Reading' => 'Manga & novel reader defaults',
     'History' => 'Shows you\'ve watched',
     'Downloads' => 'Downloads, storage, torrents',
-    'Interface' => 'Appearance, search layout',
+    'Interface' => 'Appearance, catalog source, search layout',
     'Notifications' => 'New-episode alerts',
     'Advanced' => 'DNS, privacy, logs',
     'About' => 'Updates, support, version',

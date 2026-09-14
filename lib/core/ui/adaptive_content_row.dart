@@ -7,8 +7,6 @@ import '../cache/app_image_cache.dart';
 import '../models/media_item.dart';
 import 'content_row.dart';
 import 'poster_card.dart';
-import '../di/injector.dart';
-import '../playback/playback_prefs.dart';
 
 /// Home browse row that can use poster or landscape cards. In adaptive mode it
 /// samples the first few artworks and picks the dominant aspect ratio.
@@ -103,9 +101,8 @@ class _AdaptiveContentRowState extends State<AdaptiveContentRow> {
   @override
   Widget build(BuildContext context) {
     final landscape = _landscape;
-    final scale = sl<PlaybackPrefs>().posterScale;
-    final width = landscape ? 210.0 : 140.0 * scale;
-    final height = landscape ? 150.0 : 236.0 * scale;
+    final width = landscape ? 210.0 : 140.0;
+    const height = 236.0;
     return ContentRow(
       title: widget.title,
       itemWidth: width,

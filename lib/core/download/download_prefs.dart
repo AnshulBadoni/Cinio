@@ -63,11 +63,4 @@ class DownloadPrefs {
 
   Future<void> setPresentation(String value) =>
       _box.put('presentation', value == 'cards' ? 'cards' : 'list');
-
-  /// Whether video download poster cards follow the global Poster size setting.
-  bool get posterFollowsGlobal =>
-      _box.get('posterFollowsGlobal', defaultValue: true) as bool;
-
-  Future<void> setPosterFollowsGlobal(bool value) =>
-      _box.put('posterFollowsGlobal', value);
 }

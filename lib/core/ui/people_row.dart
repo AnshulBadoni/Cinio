@@ -8,7 +8,6 @@ import '../playback/playback_prefs.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'content_row.dart';
-import 'reveal_item.dart';
 
 class PeopleRow extends StatelessWidget {
   const PeopleRow({

@@ -7,7 +7,7 @@ import '../../../core/playback/source_health_store.dart' show SourceOutcome;
 
 enum SearchStatus { idle, loading, success, error }
 
-enum SearchCatalogSource { tmdb, providers }
+enum SearchCatalogSource { tmdb, thePornDb, mixed, providers }
 
 enum SearchCatalog {
   trending('Trending'),

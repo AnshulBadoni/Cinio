@@ -13,7 +13,6 @@ import '../../core/mode/content_mode.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
-import '../../core/playback/playback_prefs.dart';
 import '../../core/torrent/torrent_download_service.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
@@ -75,59 +74,6 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     if (!_expanded.remove(showId)) _expanded.add(showId);
   });
 
-  /// "Saving to: `folder` · Change" — surfaces the download location right here
-  /// (opens the existing picker) instead of only burying it in Settings.
-  Widget _locationHeader() {
-    final label = sl<DownloadPrefs>().locationLabel ?? 'Download/Zangetsu';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 8, 2),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.folder_outlined,
-            size: 18,
-            color: AppColors.textSecondary,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Saving to',
-                  style: AppText.caption.copyWith(color: AppColors.textTertiary),
-                ),
-                Text(
-                  label,
-                  style: AppText.body,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          TextButton(
-            onPressed: () async {
-              await Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const DownloadLocationScreen(),
-                ),
-              );
-              if (mounted) setState(() {}); // refresh the shown folder
-            },
-            child: Text(
-              'Change',
-              style: AppText.body.copyWith(
-                color: AppColors.accent,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// Bottom sheet with the CloudStream-style download concurrency sliders.
   /// Applies to the NEXT downloads started (running HLS jobs aren't retimed).
@@ -138,7 +84,6 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     // release (onCommit).
     int parallel = prefs.parallelDownloads;
     int connections = prefs.connectionsPerDownload;
-    bool posterFollowsGlobal = prefs.posterFollowsGlobal;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.surface,
@@ -237,50 +182,6 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                   max: DownloadPrefs.connectionsMax,
                   onChanged: (n) => connections = n,
                   onCommit: (n) => prefs.setConnectionsPerDownload(n),
-                ),
-                ListTile(
-                  contentPadding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-                  leading: const Icon(Icons.photo_size_select_large_outlined),
-                  title: const Text('Download poster size'),
-                  subtitle: Text(
-                    posterFollowsGlobal ? 'Follow global Poster size' : 'Fixed',
-                  ),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () async {
-                    final picked = await showModalBottomSheet<bool>(
-                      context: ctx,
-                      backgroundColor: AppColors.surface,
-                      showDragHandle: true,
-                      builder: (pickerContext) => SafeArea(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const ListTile(title: Text('Download poster size')),
-                            RadioListTile<bool>(
-                              value: true,
-                              groupValue: posterFollowsGlobal,
-                              title: const Text('Follow Global'),
-                              subtitle: const Text('Scale with the global Poster size setting.'),
-                              onChanged: (v) => Navigator.pop(pickerContext, v),
-                            ),
-                            RadioListTile<bool>(
-                              value: false,
-                              groupValue: posterFollowsGlobal,
-                              title: const Text('Fixed'),
-                              subtitle: const Text('Keep the current Downloads card size.'),
-                              onChanged: (v) => Navigator.pop(pickerContext, v),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                        ),
-                      ),
-                    );
-                    if (picked != null) {
-                      await prefs.setPosterFollowsGlobal(picked);
-                      setSheet(() => posterFollowsGlobal = picked);
-                      if (ctx.mounted) setSheet(() {});
-                    }
-                  },
                 ),
                 ListTile(
                   contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
@@ -516,12 +417,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           message: 'No downloads match your search',
         );
       }
-      return ValueListenableBuilder<int>(
-        valueListenable: PlaybackPrefs.posterRevision,
-        builder: (context, _, __) {
-          return ListView(
-            padding: const EdgeInsets.only(bottom: 32),
-            children: [
+      return ListView(
+        padding: const EdgeInsets.only(bottom: 32),
+        children: [
               _summaryStrip(
                 count: done.length,
                 bytes: totalBytes,
@@ -532,17 +430,10 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final follow = sl<DownloadPrefs>().posterFollowsGlobal;
-                    final scale = sl<PlaybackPrefs>().posterScale;
+                    const columns = 3;
                     const gap = 12.0;
-                    final targetWidth = 140.0 * scale;
-                    final columns = follow
-                        ? ((constraints.maxWidth + gap) / (targetWidth + gap))
-                            .floor()
-                            .clamp(1, 8)
-                        : (constraints.maxWidth >= 520 ? 3 : 2);
-                    final cellWidth = (constraints.maxWidth - gap * (columns - 1)) / columns;
-                    final cardWidth = follow ? targetWidth : cellWidth;
+                    final cardWidth =
+                        (constraints.maxWidth - gap * (columns - 1)) / columns;
                     final cardHeight = cardWidth / 0.62;
                     return GridView.builder(
                       shrinkWrap: true,
@@ -571,9 +462,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                   },
                 ),
               ),
-            ],
-          );
-        },
+        ],
       );
     }
     if (rows.isEmpty) {

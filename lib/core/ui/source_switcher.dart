@@ -341,8 +341,8 @@ class SourceSwitcher extends StatelessWidget {
   /// this up).
   final VoidCallback? onInstallSources;
 
-  /// Compact circular trigger used by the Home hero. The picker and provider
-  /// selection behavior remain identical; only the trigger presentation changes.
+  /// Uses the compact circular source button variant, primarily for the
+  /// full-bleed Home hero.
   final bool compact;
 
   /// Installed + enabled providers bucketed by category (shared helper).
@@ -564,7 +564,6 @@ class _SourcePickerSheet extends StatefulWidget {
     required this.mode,
     required this.onChoose,
     this.onInstallSources,
-    this.compact = false,
   });
 
   final SourceBuckets buckets;
@@ -575,9 +574,6 @@ class _SourcePickerSheet extends StatefulWidget {
   final void Function(String id) onChoose;
   final VoidCallback? onInstallSources;
 
-  /// Compact circular trigger used by the Home hero. The picker and provider
-  /// selection behavior remain identical; only the trigger presentation changes.
-  final bool compact;
 
   @override
   State<_SourcePickerSheet> createState() => _SourcePickerSheetState();

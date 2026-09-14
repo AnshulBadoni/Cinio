@@ -31,6 +31,10 @@ class MediaItem extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final String? quality;
 
+  /// Browse-time catalog rating, when a catalog source exposes one.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final double? rating;
+
   /// "SUB", "DUB" or "SUB DUB" — what an anime listing offers, for the poster
   /// badge. CloudStream anime sources only; null everywhere else, which is the
   /// normal case rather than a failure.
@@ -81,6 +85,7 @@ class MediaItem extends Equatable {
     required this.type,
     required this.sourceId,
     this.quality,
+    this.rating,
     this.dubBadge,
     this.subCount,
     this.dubCount,
@@ -114,6 +119,7 @@ class MediaItem extends Equatable {
     type: type,
     sourceId: sourceId ?? this.sourceId,
     quality: quality,
+    rating: rating,
     dubBadge: dubBadge,
     subCount: subCount ?? this.subCount,
     dubCount: dubCount ?? this.dubCount,
@@ -135,6 +141,7 @@ class MediaItem extends Equatable {
     type,
     sourceId,
     quality,
+    rating,
     subCount,
     dubCount,
     malId,

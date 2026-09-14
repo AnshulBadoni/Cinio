@@ -15,6 +15,7 @@ import '../cache/app_image_cache.dart';
 import '../platform/apple_tv.dart';
 import '../platform/app_paths.dart';
 import '../playback/category_store.dart';
+import '../prefs/catalog_source_prefs.dart';
 import '../playback/list_status_store.dart';
 import '../playback/my_list.dart';
 import '../playback/playback_prefs.dart';
@@ -52,6 +53,7 @@ import '../metadata/episode_metadata_service.dart';
 import '../metadata/metadata_enrichment.dart';
 import '../metadata/people_service.dart';
 import '../metadata/tmdb.dart';
+import '../metadata/theporndb.dart';
 import '../metadata/title_logo_service.dart';
 import '../metadata/tmdb_discover_service.dart';
 import '../mode/content_mode_cubit.dart';
@@ -283,6 +285,8 @@ Future<void> initDependencies() async {
   );
   await TitlePrefsStore.init();
   sl.registerSingleton<TitlePrefsStore>(TitlePrefsStore());
+  await CatalogSourcePrefs.init();
+  sl.registerSingleton<CatalogSourcePrefs>(CatalogSourcePrefs());
   await PlaybackPrefs.init();
   sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
   await ReaderPrefs.init();
@@ -390,6 +394,7 @@ Future<void> initDependencies() async {
   await TitleLogoService.init();
   sl.registerSingleton<TitleLogoService>(TitleLogoService(dio));
   sl.registerSingleton<TmdbDiscoverService>(TmdbDiscoverService(dio));
+  sl.registerSingleton<ThePornDb>(ThePornDb(dio));
 
   // Accurate OP/ED skip times for anime (AniList → MAL id → AniSkip).
   sl.registerSingleton<SkipService>(SkipService(dio));
@@ -853,6 +858,7 @@ Future<void> initDependencies() async {
       // extension installs, so choosing English still returned Hebrew.
       mangaLangs: mangaLangPrefs,
       animeLangs: animeLangPrefs,
+      tpdb: sl<ThePornDb>(),
     ),
   );
 
@@ -917,7 +923,7 @@ Future<void> initDependencies() async {
   // Home data cubit as a singleton so the splash can warm it (preload the
   // rows for the active source) while the intro animation plays — Home then
   // appears already populated instead of flashing skeletons.
-  sl.registerLazySingleton<HomeCubit>(() => HomeCubit(sl<SourceRepository>()));
+  sl.registerLazySingleton<HomeCubit>(() => HomeCubit(sl<SourceRepository>(), sl<CatalogSourcePrefs>(), sl<ThePornDb>(), sl<TmdbDiscoverService>()));
 
   // Guarded CloudStream boot step — load the installed .cs3 plugins OFF the
   // splash path (see the note where csManager is registered) so startup is

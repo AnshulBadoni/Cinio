@@ -3,7 +3,6 @@ import 'package:fluttertoast/fluttertoast.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
-import '../../core/app_icon/app_icon_service.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
@@ -268,87 +267,6 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                   }
                 },
               ),
-              SettingsTile(
-                icon: Icons.photo_size_select_large_outlined,
-                title: 'Poster size',
-                subtitle: 'Size of normal poster cards in browse rows',
-                trailing: Text(
-                  '${(sl<PlaybackPrefs>().posterScale * 100).round()}%',
-                  style: AppText.caption,
-                ),
-                onTap: () async {
-                  await showModalBottomSheet<void>(
-                    context: context,
-                    backgroundColor: AppColors.surface,
-                    showDragHandle: true,
-                    builder: (ctx) => _PosterSizeSheet(
-                      initialScale: sl<PlaybackPrefs>().posterScale,
-                    ),
-                  );
-                  if (mounted) setState(() {});
-                },
-              ),
-              SettingsTile(
-                icon: Icons.grid_view_rounded,
-                title: 'Search poster size',
-                subtitle: 'Follow Poster size or keep Search/Discover fixed',
-                trailing: Text(
-                  sl<PlaybackPrefs>().searchPosterFollowsGlobal
-                      ? 'Follow Poster size'
-                      : 'Fixed',
-                  style: AppText.caption,
-                ),
-                onTap: () async {
-                  final prefs = sl<PlaybackPrefs>();
-                  final picked = await showModalBottomSheet<bool>(
-                    context: context,
-                    backgroundColor: AppColors.surface,
-                    showDragHandle: true,
-                    builder: (ctx) {
-                      final current = prefs.searchPosterFollowsGlobal;
-                      return SafeArea(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Search poster size', style: AppText.headline),
-                              const SizedBox(height: 8),
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: const Text('Follow Poster size'),
-                                subtitle: const Text(
-                                  'Search and Discover use the global Poster size setting.',
-                                ),
-                                trailing: current
-                                    ? Icon(Icons.check_rounded, color: AppColors.accent)
-                                    : null,
-                                onTap: () => Navigator.pop(ctx, true),
-                              ),
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: const Text('Fixed'),
-                                subtitle: const Text(
-                                  'Search and Discover always use the default 3-column grid.',
-                                ),
-                                trailing: !current
-                                    ? Icon(Icons.check_rounded, color: AppColors.accent)
-                                    : null,
-                                onTap: () => Navigator.pop(ctx, false),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                  if (picked != null) {
-                    await prefs.setSearchPosterFollowsGlobal(picked);
-                    if (mounted) setState(() {});
-                  }
-                },
-              ),
               _switchTile(
                 icon: Icons.label_outline_rounded,
                 title: 'Show navigation labels',
@@ -375,17 +293,6 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
             ],
           ),
 
-          // ── App icon ──────────────────────────────────────────────────────
-          // Android-only: iOS has an unrelated API and TV has no icon picker.
-          if (_icons.supported) ...[
-            const SettingsSectionLabel('App icon'),
-            _blurb(
-              'The icon on your home screen. Cinio closes when you change '
-              'it — Android has to swap the launcher entry.',
-            ),
-            const SizedBox(height: 10),
-            _iconPicker(),
-          ],
         ],
       ),
     );
@@ -501,63 +408,6 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     );
     if (picked == null) return;
     await AnimationPrefs.setStyle(picked);
-    if (mounted) setState(() {});
-  }
-
-  final _icons = AppIconService();
-
-  /// Row of selectable launcher icons. Confirms before switching, because
-  /// Android tears the task down when the live launcher component is disabled.
-  Widget _iconPicker() {
-    final current = _icons.selectedId;
-    return SizedBox(
-      height: 100,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        // Same inset as SettingsCard's margin, so the row lines up with the
-        // cards and section labels above it.
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        clipBehavior: Clip.none,
-        itemCount: AppIconService.options.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
-        itemBuilder: (_, i) {
-          final o = AppIconService.options[i];
-          return _AppIconCard(
-            option: o,
-            selected: o.id == current,
-            onTap: o.id == current ? null : () => _pickIcon(o),
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _pickIcon(AppIconOption o) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text('Use the ${o.label} icon?', style: AppText.title),
-        content: const Text(
-          'Cinio will close so Android can apply the new icon. Open it '
-          'again from your home screen afterwards.\n\nIf you have Cinio in '
-          'a folder or dock, you may need to add it again.',
-          style: AppText.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Change', style: TextStyle(color: AppColors.accent)),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    await _icons.select(o.id);
     if (mounted) setState(() {});
   }
 }
@@ -778,119 +628,3 @@ Widget _preview(Color color, bool selected) => Stack(
       ),
   ],
 );
-
-/// A launcher-icon choice: preview, name, and a tick when it's the active one.
-/// Mirrors [_AccentCard]'s shape so the two pickers read as one screen.
-class _AppIconCard extends StatelessWidget {
-  const _AppIconCard({
-    required this.option,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final AppIconOption option;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: 92,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: selected ? AppColors.accent : AppColors.hairline,
-                  width: selected ? 2 : 1,
-                ),
-              ),
-              padding: const EdgeInsets.all(3),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(15),
-                child: Image.asset(option.asset, fit: BoxFit.cover),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              option.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppText.caption.copyWith(
-                color: selected ? AppColors.accent : AppColors.textSecondary,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-
-class _PosterSizeSheet extends StatefulWidget {
-  const _PosterSizeSheet({required this.initialScale});
-
-  final double initialScale;
-
-  @override
-  State<_PosterSizeSheet> createState() => _PosterSizeSheetState();
-}
-
-class _PosterSizeSheetState extends State<_PosterSizeSheet> {
-  late double _value = widget.initialScale;
-
-  @override
-  Widget build(BuildContext context) {
-    final percent = (_value * 100).round();
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Text('Poster size', style: AppText.headline)),
-                Text('$percent%', style: AppText.caption.copyWith(color: AppColors.accent)),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 4,
-                overlayShape: SliderComponentShape.noOverlay,
-              ),
-              child: Slider(
-                value: _value,
-                min: 0.80,
-                max: 1.35,
-                divisions: 55,
-                label: '$percent%',
-                onChanged: (v) async {
-                  setState(() => _value = v);
-                  await sl<PlaybackPrefs>().setPosterScale(v);
-                },
-              ),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Smaller', style: AppText.caption),
-                Text('Larger', style: AppText.caption),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

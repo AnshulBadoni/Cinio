@@ -1,9 +1,9 @@
 import '../aniyomi/aniyomi_filters.dart';
 import '../aniyomi/aniyomi_provider.dart';
 import '../lnreader/lnreader_manager.dart';
-import '../di/injector.dart';
 import '../download/chapter_download.dart';
 import '../download/chapter_download_store.dart';
+import '../di/injector.dart';
 import '../logging/app_logger.dart';
 import '../mihon/mihon_filters.dart';
 import '../mihon/mihon_manager.dart';
@@ -20,6 +20,7 @@ import '../provider/base_provider.dart';
 import '../i18n/source_languages.dart';
 import '../prefs/source_lang_prefs.dart';
 import '../provider/cloudstream_provider.dart';
+import '../metadata/theporndb.dart';
 import '../provider/provider_manager.dart';
 import '../provider/reading_provider.dart';
 import '../state/active_source_cubit.dart';
@@ -41,8 +42,10 @@ class SourceRepository {
     // never picked a language set.
     MangaLangPrefs? mangaLangs,
     AnimeLangPrefs? animeLangs,
+    ThePornDb? tpdb,
   }) : _mangaLangs = mangaLangs,
        _animeLangs = animeLangs,
+       _tpdb = tpdb,
        _manager = manager,
        _csManager = csManager,
        _aniManager = aniManager,
@@ -70,6 +73,7 @@ class SourceRepository {
   final LnReaderManager? _lnrManager;
   final ActiveSourceCubit _active;
   final PlaybackPrefs _prefs;
+  final ThePornDb? _tpdb;
 
   /// Prefetch cache: `sourceId|episodeUrl` → an in-flight/complete fast
   /// resolution started on the detail screen, so "tap Play" reuses work already
@@ -419,6 +423,12 @@ class SourceRepository {
           return (p is CloudStreamProvider && more.categoryId != null)
               ? p.browseMainPage(more.categoryId!, page)
               : const [];
+        case 'tpdb_recent':
+        case 'tpdb_popular':
+        case 'tpdb_top_rated':
+        case 'tpdb_performers':
+        case 'tpdb_studios':
+          return _tpdb?.browseMore(more.kind, page) ?? const [];
         default:
           return const [];
       }

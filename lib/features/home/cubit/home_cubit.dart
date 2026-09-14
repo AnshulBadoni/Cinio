@@ -9,11 +9,14 @@ import '../../../core/error/exceptions.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
 import '../../../core/models/home_section.dart';
 import '../../../core/models/media_item.dart';
+import '../../../core/metadata/theporndb.dart';
+import '../../../core/metadata/tmdb_discover_service.dart';
+import '../../../core/prefs/catalog_source_prefs.dart';
 import '../../../core/repository/source_repository.dart';
 
-/// Immutable view-state for the Home screen. The rows are CloudStream-style:
-/// the active provider decides what sections exist (and what they're named),
-/// so the cubit just holds whatever [SourceRepository.home] returns.
+/// Immutable view-state for the Home screen. Rows are catalog-source-driven:
+/// Provider uses the active provider, while TMDB/ThePornDB/Mixed use their
+/// catalog services and still resolve playback through a provider later.
 ///
 /// A null [sections] means "not yet loaded OR failed". The first section also
 /// feeds the hero carousel via [heroItems]; the screen renders the remaining
@@ -52,14 +55,29 @@ class HomeState extends Equatable {
   List<Object?> get props => [sections, loading, cloudflareUrl];
 }
 
-/// Owns the Home rows. Delegates entirely to [SourceRepository.home], which
-/// returns the active provider's own sections (or a default set for providers
-/// without `getHome`). No `sourceId` is passed — `home` uses the active source
-/// by design, so a source switch simply re-runs [load].
+/// Owns the Home rows and switches between Provider, TMDB, ThePornDB and Mixed
+/// catalog sources without changing the existing provider playback pipeline.
 class HomeCubit extends Cubit<HomeState> {
-  HomeCubit(this._repo) : super(const HomeState());
+  HomeCubit(
+    this._repo, [
+    CatalogSourcePrefs? catalogPrefs,
+    ThePornDb? tpdb,
+    TmdbDiscoverService? tmdb,
+  ]) : _catalogPrefs = catalogPrefs,
+       _tpdb = tpdb,
+       _tmdb = tmdb,
+       super(const HomeState());
 
   final SourceRepository _repo;
+
+  // Optional for lightweight provider-only tests; production DI supplies all
+  // catalog services. When omitted, Home defaults to Provider mode.
+  final CatalogSourcePrefs? _catalogPrefs;
+  final ThePornDb? _tpdb;
+  final TmdbDiscoverService? _tmdb;
+
+  CatalogSource get _catalogSource =>
+      _catalogPrefs?.source ?? CatalogSource.provider;
 
   /// Monotonic load id. Each [load] bumps it; a fetch only emits its result if
   /// it's still the latest. This makes source switches "latest wins" — a slow
@@ -82,7 +100,7 @@ class HomeCubit extends Cubit<HomeState> {
     // An empty active id means the user has not selected a provider yet.
     // Do not call the repository with an invalid source: that turns a normal
     // first-run setup state into a misleading generic load failure.
-    if (!_repo.hasSource(sourceId)) {
+    if (_catalogSource == CatalogSource.provider && !_repo.hasSource(sourceId)) {
       if (isClosed || gen != _gen) return;
       emit(const HomeState(sections: [], loading: false));
       return;
@@ -91,7 +109,13 @@ class HomeCubit extends Cubit<HomeState> {
     List<HomeSection> sections;
     String? cloudflareUrl;
     try {
-      final homeFuture = _repo.home();
+      final source = _catalogSource;
+      final homeFuture = switch (source) {
+        CatalogSource.provider => _repo.home(),
+        CatalogSource.tmdb => _tmdb!.home(),
+        CatalogSource.thePornDb => _tpdb!.home(),
+        CatalogSource.mixed => _mixedHome(),
+      };
       sections = isAppleTv
           ? await homeFuture.timeout(const Duration(seconds: 20))
           : await homeFuture;
@@ -126,5 +150,41 @@ class HomeCubit extends Cubit<HomeState> {
       cloudflareUrl: cloudflareUrl,
       ),
     );
+  }
+
+  Future<List<HomeSection>> _mixedHome() async {
+    final results = await Future.wait([_tmdb!.home(), _tpdb!.home()]);
+    final tmdb = results[0];
+    final tpdb = results[1];
+    final byTitle = <String, List<MediaItem>>{};
+    for (final section in [...tmdb, ...tpdb]) {
+      byTitle.putIfAbsent(section.title.toLowerCase(), () => <MediaItem>[])
+        .addAll(section.items);
+    }
+    return [
+      for (final entry in byTitle.entries)
+        if (entry.value.isNotEmpty)
+          HomeSection(title: _mixedTitle(entry.key, tmdb, tpdb), items: _interleave(entry.value)),
+    ];
+  }
+
+  String _mixedTitle(String key, List<HomeSection> tmdb, List<HomeSection> tpdb) {
+    for (final section in [...tmdb, ...tpdb]) {
+      if (section.title.toLowerCase() == key) return section.title;
+    }
+    return key;
+  }
+
+  List<MediaItem> _interleave(List<MediaItem> items) {
+    final tmdb = items.where((item) => item.sourceId == 'tmdb:catalog').toList();
+    final tpdb = items.where((item) => item.sourceId.startsWith('tpdb:')).toList();
+    final out = <MediaItem>[];
+    var i = 0;
+    while (i < tmdb.length || i < tpdb.length) {
+      if (i < tmdb.length) out.add(tmdb[i]);
+      if (i < tpdb.length) out.add(tpdb[i]);
+      i++;
+    }
+    return out;
   }
 }

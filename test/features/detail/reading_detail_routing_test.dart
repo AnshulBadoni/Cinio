@@ -41,6 +41,7 @@ import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/trailer/trailer_service.dart';
+import 'package:watch_app/core/trailer/nsfw_trailer_service.dart';
 import 'package:watch_app/features/detail/detail_screen.dart';
 import 'package:watch_app/features/player/player_screen.dart';
 import 'package:watch_app/features/reader/novel_reader_screen.dart';
@@ -206,6 +207,7 @@ class _FakeTrailerService extends TrailerService {
     String? englishTitle,
     required ProviderType type,
     String? year,
+    TrailerAlternateContext? alternateContext,
   }) async => null;
 }
 

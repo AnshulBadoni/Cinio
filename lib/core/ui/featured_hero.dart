@@ -159,7 +159,6 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     final item = widget.item;
     final cover = item.cover;
     final hasCover = cover != null && cover.isNotEmpty;
-    final mq = MediaQuery.of(context);
     final tint = _artColor ?? AppColors.surface2;
 
     final provider = hasCover

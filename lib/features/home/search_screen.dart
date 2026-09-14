@@ -358,7 +358,7 @@ class _SearchViewState extends State<_SearchView>
   }
 
   Future<MediaItem?> _resolveCatalogItem(MediaItem item) async {
-    if (item.sourceId != 'tmdb:catalog') return item;
+    if (item.sourceId != 'tmdb:catalog' && !item.sourceId.startsWith('tpdb:')) return item;
 
     // TMDB is catalog-only. Resolve back to the currently selected streaming
     // provider, but never pass the synthetic TMDB item into DetailScreen.
@@ -497,45 +497,17 @@ class _SearchViewState extends State<_SearchView>
     }
   }
 
-  /// Search/Discover uses the same poster-size baseline as Home when it is
-  /// configured to follow the global setting. The grid adapts its column
-  /// count around that target width, rather than stretching cards to fill
-  /// every grid cell.
-  double _searchPosterWidth() {
-    final prefs = sl<PlaybackPrefs>();
-    if (!prefs.searchPosterFollowsGlobal) return 0;
-    return 140.0 * prefs.posterScale;
-  }
+  /// Search/Discover always uses a stable 3-column poster grid. Keeping the
+  /// layout fixed avoids coupling this screen to the global poster-size
+  /// preference and keeps Search/Discover predictable across devices.
+  static const int _searchGridColumns = 3;
 
-  int _searchGridColumns() {
-    final prefs = sl<PlaybackPrefs>();
-    if (!prefs.searchPosterFollowsGlobal) return 3;
-    final target = _searchPosterWidth();
-    final available = MediaQuery.sizeOf(context).width - 32.0;
-    const gap = 12.0;
-    return ((available + gap) / (target + gap)).floor().clamp(1, 8);
-  }
-
-  double _searchGridCellWidth(int columns) {
+  double _searchGridCellWidth() {
     final width = MediaQuery.sizeOf(context).width;
     const horizontal = 32.0;
     const gap = 12.0;
-    return (width - horizontal - (gap * (columns - 1))) / columns;
-  }
-
-  double _searchCardWidth(int columns) {
-    final prefs = sl<PlaybackPrefs>();
-    if (!prefs.searchPosterFollowsGlobal) return _searchGridCellWidth(columns);
-    return _searchPosterWidth();
-  }
-
-  /// Rebuilds the search grid immediately when either the global poster size
-  /// or its Search/Discover follow/fixed switch changes.
-  Widget _posterSettingBuilder(Widget Function() builder) {
-    return ValueListenableBuilder<int>(
-      valueListenable: PlaybackPrefs.posterRevision,
-      builder: (_, __, ___) => builder(),
-    );
+    return (width - horizontal - (gap * (_searchGridColumns - 1))) /
+        _searchGridColumns;
   }
 
   @override
@@ -543,8 +515,7 @@ class _SearchViewState extends State<_SearchView>
     // sizeOf (not MediaQuery.of) so this rebuilds only when the screen size
     // actually changes, not on every viewInsets change (e.g. every keyboard
     // animation frame).
-    final columns = _searchGridColumns();
-    final cellW = _searchGridCellWidth(columns);
+    final cellW = _searchGridCellWidth();
     // Computed once per outer build, not once per BlocBuilder rebuild below
     // (each fires on every search state emission during a live fan-out).
     final modeSources = _modeSources;
@@ -732,99 +703,6 @@ class _SearchViewState extends State<_SearchView>
   /// already-existing event — [SearchScopeChanged] alone no-ops when the
   /// current-source-only flag doesn't change — so that case sets the new
   /// active source then dispatches [SearchSubmitted] to re-run against it.
-  void _openSourcePicker(BuildContext context) {
-    final bloc = context.read<SearchBloc>();
-    final activeCubit = context.read<ActiveSourceCubit>();
-    final currentOnly = bloc.state.currentSourceOnly;
-    final activeId = activeCubit.state;
-    // Active source pinned directly under "All sources" instead of wherever it
-    // happens to fall alphabetically — it's the one row you're most likely to
-    // want, and with a long source list it was otherwise a scroll away.
-    final sources = [..._modeSources]
-      ..sort((a, b) {
-        if (a.id == activeId) return -1;
-        if (b.id == activeId) return 1;
-        return 0;
-      });
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: AppColors.hairline,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('Search in', style: AppText.headline),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: sources.length + 1,
-                  separatorBuilder: (_, _) =>
-                      const Divider(height: 1, color: AppColors.hairline),
-                  itemBuilder: (context, i) {
-                    if (i == 0) {
-                      return _sourcePickerRow(
-                        label: 'All sources',
-                        selected: !currentOnly,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          if (!currentOnly) return;
-                          bloc.add(const SearchScopeChanged(false));
-                        },
-                      );
-                    }
-                    final s = sources[i - 1];
-                    final selected = currentOnly && activeId == s.id;
-                    return _sourcePickerRow(
-                      label: s.name,
-                      selected: selected,
-                      // Point out the active source even when the scope is "All
-                      // sources" — otherwise nothing on this sheet says which
-                      // one "current source" actually means.
-                      hint: activeId == s.id ? 'current' : null,
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        if (selected) return;
-                        activeCubit.setSource(s.id);
-                        // Already scoped (just to a DIFFERENT source): flipping
-                        // currentSourceOnly to `true` again would no-op in the
-                        // bloc, so re-run explicitly instead of re-toggling scope.
-                        if (currentOnly) {
-                          bloc.add(const SearchSubmitted());
-                        } else {
-                          bloc.add(const SearchScopeChanged(true));
-                        }
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   /// [hint] labels the row without selecting it — used to point out the active
   /// source while the scope is "All sources", so it's clear what "current
@@ -1037,7 +915,7 @@ class _SearchViewState extends State<_SearchView>
   /// Per-source filter routing for [sourceId] by [sourceFilterEcosystemOf] —
   /// the tap handler for the section-header tune icon (or null to hide it)
   /// plus whether a selection is already stored (drives the active tint).
-  /// Shared by [_sourceFilterAction] and both source-section headers
+  /// Shared by both source-section headers.
   /// ([_sourceRow]/[_sourceGrid]) so the routing lives in exactly one place.
   ({VoidCallback? onFilter, bool active}) _sourceFilterFor(
     String sourceId,
@@ -1061,35 +939,6 @@ class _SearchViewState extends State<_SearchView>
   /// surfaced it beside itself for the same reason), so it lives here —
   /// shown only when scoped to a source with a per-source filter sheet; see
   /// [sourceFilterEcosystemOf].
-  Widget _sourceFilterAction() {
-    return BlocBuilder<SearchBloc, SearchState>(
-      buildWhen: (p, c) =>
-          p.currentSourceOnly != c.currentSourceOnly ||
-          p.aniFiltersBySource != c.aniFiltersBySource ||
-          p.mihonFiltersBySource != c.mihonFiltersBySource,
-      builder: (context, state) {
-        if (!state.currentSourceOnly) return const SizedBox.shrink();
-        return BlocBuilder<ActiveSourceCubit, String>(
-          builder: (context, activeId) {
-            final filter = _sourceFilterFor(activeId, state);
-            if (filter.onFilter == null) return const SizedBox.shrink();
-            return IconButton(
-              onPressed: filter.onFilter,
-              icon: Icon(
-                Icons.tune_rounded,
-                size: 20,
-                color: filter.active
-                    ? AppColors.accent
-                    : AppColors.textTertiary,
-              ),
-              tooltip: 'Source filters',
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            );
-          },
-        );
-      },
-    );
-  }
 
   // ── Ecosystem tabs (All · Zangetsu · CloudStream · Aniyomi) ────────────────
   /// Real [TabBar]/[TabController] pair — same treatment as the History
@@ -1810,51 +1659,42 @@ class _SearchViewState extends State<_SearchView>
 
   // ── Flat results grid (single-source / vertical) ──────────────────────────
   Widget _resultsGrid(List<MediaItem> items, {bool loadingMore = false}) {
-    return _posterSettingBuilder(() {
-      final columns = _searchGridColumns();
-      final width = _searchGridCellWidth(columns);
-      final cardWidth = _searchCardWidth(columns);
-      return GridView.builder(
-        controller: _discoverScrollController,
-        padding: EdgeInsets.fromLTRB(
-          16,
-          6,
-          16,
-          24 + MediaQuery.paddingOf(context).bottom,
-        ),
-        cacheExtent: 800,
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: columns,
-          childAspectRatio: 0.62,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 16,
-        ),
-        itemCount: items.length + (loadingMore ? columns : 0),
-        itemBuilder: (context, i) {
-          if (i >= items.length) {
-            return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-          }
-          final item = items[i];
-          return Center(
-            child: SizedBox(
-              width: cardWidth,
-              child: PosterCard(
-              title: item.title,
-              imageUrl: item.cover,
-              headers: item.coverHeaders,
-              tags: _tagsFor(item),
-              qualityBadge: item.quality,
-              dubBadge: item.dubBadge,
-              cellWidth: cardWidth,
-              onTap: () => _openDetail(item),
-              onLongPress: () => _showInfo(item),
-                ),
-              ),
-          );
-        },
-      );
-    });
+    final cellW = _searchGridCellWidth();
+    return GridView.builder(
+      controller: _discoverScrollController,
+      padding: EdgeInsets.fromLTRB(
+        16,
+        6,
+        16,
+        24 + MediaQuery.paddingOf(context).bottom,
+      ),
+      cacheExtent: 800,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: _searchGridColumns,
+        childAspectRatio: 0.62,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 16,
+      ),
+      itemCount: items.length + (loadingMore ? _searchGridColumns : 0),
+      itemBuilder: (context, i) {
+        if (i >= items.length) {
+          return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+        }
+        final item = items[i];
+        return PosterCard(
+          title: item.title,
+          imageUrl: item.cover,
+          headers: item.coverHeaders,
+          tags: _tagsFor(item),
+          qualityBadge: item.quality,
+          dubBadge: item.dubBadge,
+          cellWidth: cellW,
+          onTap: () => _openDetail(item),
+          onLongPress: () => _showInfo(item),
+        );
+      },
+    );
   }
 
   // ── Idle view: endless Discover feed ───────────────────────────────────────
@@ -1875,45 +1715,42 @@ class _SearchViewState extends State<_SearchView>
         ),
       );
     }
-    return _posterSettingBuilder(() {
-      final columns = _searchGridColumns();
-      final width = _searchGridCellWidth(columns);
-      final cardWidth = _searchCardWidth(columns);
-      return GridView.builder(
-        controller: _discoverScrollController,
-          padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            childAspectRatio: 0.62,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 16,
-          ),
-          itemCount: items.length + (state.discoverLoadingMore ? columns : 0),
-        itemBuilder: (context, i) {
-          if (i >= items.length) {
-            return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-          }
-          final item = items[i];
-          return Center(
-            child: SizedBox(
-              width: cardWidth,
-              child: PosterCard(
-              title: item.title,
-              imageUrl: item.cover,
-              headers: item.coverHeaders,
-              tags: _tagsFor(item),
-              qualityBadge: item.quality,
-              dubBadge: item.dubBadge,
-              cellWidth: cardWidth,
-              onTap: () => _openDetail(item),
-              onLongPress: () => _showInfo(item),
-                ),
-              ),
-          );
-        },
-      );
-    });
+    final cellW = _searchGridCellWidth();
+    return GridView.builder(
+      controller: _discoverScrollController,
+      padding: EdgeInsets.fromLTRB(
+        16,
+        4,
+        16,
+        24 + MediaQuery.paddingOf(context).bottom,
+      ),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: _searchGridColumns,
+        childAspectRatio: 0.62,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 16,
+      ),
+      itemCount: items.length +
+          (state.discoverLoadingMore ? _searchGridColumns : 0),
+      itemBuilder: (context, i) {
+        if (i >= items.length) {
+          return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+        }
+        final item = items[i];
+        return PosterCard(
+          title: item.title,
+          imageUrl: item.cover,
+          headers: item.coverHeaders,
+          tags: _tagsFor(item),
+          qualityBadge: item.quality,
+          dubBadge: item.dubBadge,
+          cellWidth: cellW,
+          onTap: () => _openDetail(item),
+          onLongPress: () => _showInfo(item),
+        );
+      },
+    );
   }
 
   // ── Type-ahead suggestion list (history + live titles) ────────────────────
@@ -1979,48 +1816,6 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
-  Widget _recentChip(String q) {
-    return GestureDetector(
-      onTap: () => _runQuery(q),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 7, 8, 7),
-        decoration: BoxDecoration(
-          color: AppColors.surface2,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.history_rounded,
-              size: 15,
-              color: AppColors.textTertiary,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              q,
-              style: AppText.caption.copyWith(color: AppColors.textSecondary),
-            ),
-            const SizedBox(width: 4),
-            GestureDetector(
-              onTap: () async {
-                await _history.remove(q);
-                if (mounted) setState(() {});
-              },
-              child: const Padding(
-                padding: EdgeInsets.all(2),
-                child: Icon(
-                  Icons.close_rounded,
-                  size: 14,
-                  color: AppColors.textTertiary,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// The filter sheet's "search in these sources" category list. Anime mode's
@@ -2059,8 +1854,7 @@ bool searchTypeAudioGroupsVisible(ContentMode mode) => !mode.isReading;
 /// Which ecosystem's per-source filter sheet [sourceId] opens — Aniyomi for
 /// `ani:` ids, Mihon for `mihon:` ids, or null for everything else (no
 /// per-source filter button shown). Drives the filter icon on the
-/// single-source control row ([_SearchViewState._sourceFilterAction]) and both
-/// source-section headers. A top-level function (same pattern as
+/// single-source control row and both source-section headers. A top-level function (same pattern as
 /// [searchFilterSections]) so it's unit-testable without pumping the sheet.
 enum SourceFilterEcosystem { aniyomi, mihon }
 
@@ -2402,6 +2196,10 @@ class _SearchFilterSheet extends StatelessWidget {
               children: [
                 _pill(label: 'TMDB', selected: state.catalogSource == SearchCatalogSource.tmdb,
                   onTap: () => context.read<SearchBloc>().add(const SearchCatalogSourceChanged('tmdb'))),
+                _pill(label: 'ThePornDB', selected: state.catalogSource == SearchCatalogSource.thePornDb,
+                  onTap: () => context.read<SearchBloc>().add(const SearchCatalogSourceChanged('theporndb'))),
+                _pill(label: 'Mixed', selected: state.catalogSource == SearchCatalogSource.mixed,
+                  onTap: () => context.read<SearchBloc>().add(const SearchCatalogSourceChanged('mixed'))),
                 _pill(label: 'Providers', selected: state.catalogSource == SearchCatalogSource.providers,
                   onTap: () => context.read<SearchBloc>().add(const SearchCatalogSourceChanged('providers'))),
               ],
@@ -2505,36 +2303,6 @@ class _SearchFilterSheet extends StatelessWidget {
   /// The content-type segmented selector, wired to the bloc so the results
   /// filter updates the moment a chip is tapped. Anime mode only — see
   /// [searchTypeAudioGroupsVisible].
-  Widget _contentTypeSelector(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _filterLabel('TYPE'),
-          const SizedBox(height: 10),
-          BlocBuilder<SearchBloc, SearchState>(
-            buildWhen: (p, c) => p.contentFilter != c.contentFilter,
-            builder: (context, state) => Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final f in SearchContentFilter.values)
-                  _pill(
-                    label: f.label,
-                    selected: state.contentFilter == f,
-                    onTap: () => context.read<SearchBloc>().add(
-                      SearchContentFilterChanged(f),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6),
-        ],
-      ),
-    );
-  }
 
   /// Audio (Subbed/Dubbed) selector — real data, see
   /// [MediaItem.subCount]/[dubCount]. Anime mode only.

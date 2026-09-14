@@ -63,20 +63,9 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
-            <!-- Flutter's `flutter run` / IDE launch parses THIS file (not the
-                 merged APK) and requires an <activity> with MAIN + LAUNCHER. It
-                 ignores <activity-alias>, so putting the phone launcher only on
-                 the aliases below makes the tool fail with "package identifier
-                 or launch activity not found" whenever no built APK is sitting
-                 in build/ yet (first run, after clean, Cursor/VS Code debug).
-
-                 The aliases remain the real home-screen entries (Settings →
-                 Appearance flips them). src/release/AndroidManifest.xml strips
-                 this filter so a shipped APK does not grow a second icon.
-
-                 LEANBACK stays on the activity itself. TV has no icon picker and
-                 uses android:banner, and moving this would risk the app losing
-                 its home entry on a TV entirely. -->
+            <!-- Keep the launcher filter on the activity itself so Flutter tools
+                 can launch the app directly from a clean source tree. LEANBACK
+                 stays here too because TV uses the same activity and banner. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -123,41 +112,6 @@
                 <data android:mimeType="application/vnd.apple.mpegurl"/>
             </intent-filter>
         </activity>
-
-        <!-- Home-screen icon choices. Each alias is the same MainActivity behind a
-             different icon; exactly ONE is ever enabled, and AppIconService flips
-             them via PackageManager.setComponentEnabledSetting.
-
-             Aliases (rather than swapping a drawable) are the only way Android
-             allows this: the launcher icon is baked into the manifest at install
-             time and cannot be changed at runtime.
-
-             Renaming or removing an alias orphans it on users' home screens, so
-             these names are permanent once shipped. -->
-        <activity-alias
-            android:name=".MainActivityDefault"
-            android:targetActivity=".MainActivity"
-            android:exported="true"
-            android:enabled="true"
-            android:icon="@mipmap/ic_launcher"
-            android:label="Cinio">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-        </activity-alias>
-        <activity-alias
-            android:name=".MainActivityClassic"
-            android:targetActivity=".MainActivity"
-            android:exported="true"
-            android:enabled="false"
-            android:icon="@mipmap/ic_launcher_classic"
-            android:label="Cinio">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-        </activity-alias>
 
         <!-- Hosts a CloudStream plugin's own settings UI (it casts the Context to
              AppCompatActivity and shows a BottomSheetDialogFragment). Transparent

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
@@ -29,7 +30,6 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/repository/source_repository.dart';
-import '../../core/privacy/incognito_mode.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -256,17 +256,37 @@ class _HomeViewState extends State<_HomeView>
     sl<TitleLogoService>().prefetch(items);
   }
 
-  void _openDetail(
+  Future<MediaItem?> _resolveCatalogItem(MediaItem item) async {
+    if (item.sourceId != 'tmdb:catalog' && !item.sourceId.startsWith('tpdb:')) {
+      return item;
+    }
+    final sourceId = sl<ActiveSourceCubit>().state;
+    if (!_repo.hasSource(sourceId)) return null;
+    try {
+      final results = await _repo.search(item.title, sourceId: sourceId);
+      return bestTitleMatch(results, item.title);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _openDetail(
     MediaItem item, {
     DetailTrailerContext? trailerContext,
-  }) {
-    Navigator.push(
+  }) async {
+    final resolved = await _resolveCatalogItem(item);
+    if (!mounted) return;
+    if (resolved == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No streaming provider found for this title.')),
+      );
+      return;
+    }
+    await Navigator.push(
       context,
-      DetailScreen.route(item, trailerContext: trailerContext),
-    ).then((_) {
-      // Refresh Continue Watching + My List row when returning from detail.
-      if (mounted) setState(() {});
-    });
+      DetailScreen.route(resolved, trailerContext: trailerContext),
+    );
+    if (mounted) setState(() {});
   }
 
   String _typeLabel(ProviderType t) =>
@@ -274,6 +294,9 @@ class _HomeViewState extends State<_HomeView>
 
   Future<MediaDetail?> _detailOf(String url, String sourceId) async {
     try {
+      if (sourceId == 'tmdb:catalog' || sourceId.startsWith('tpdb:')) {
+        return null;
+      }
       return await _repo.detail(url, sourceId: sourceId);
     } catch (_) {
       return null;
@@ -395,6 +418,16 @@ class _HomeViewState extends State<_HomeView>
   }
 
   Future<void> _playFeatured(MediaItem item) async {
+    final resolved = await _resolveCatalogItem(item);
+    if (resolved == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No streaming provider found for this title.')),
+        );
+      }
+      return;
+    }
+    item = resolved;
     // Manga/novel: the hero's primary action says "Read", so it must not drop
     // into the video player. Route to the title instead — Detail owns the real
     // Read button, which resolves the chapter list, picks up the saved reading
@@ -506,87 +539,6 @@ class _HomeViewState extends State<_HomeView>
   /// untouched. Returns [child] unchanged.
   Widget _animated(Widget child) => child;
 
-  /// Floating brand header — always positioned on top of the hero or bg.
-  Widget _buildHeader() {
-    return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: Row(
-          children: [
-            // Brand wordmark — the actual logo lettering (exact font).
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Image.asset(
-                  'assets/icon/wordmark.png',
-                  height: 22,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
-            // Incognito indicator — visible only while on; tap to exit.
-            ValueListenableBuilder<bool>(
-              valueListenable: IncognitoMode.notifier,
-              builder: (_, on, _) => on
-                  ? GestureDetector(
-                      onTap: () => IncognitoMode.set(false),
-                      behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface2,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.hairline),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.visibility_off_rounded,
-                              size: 13,
-                              color: AppColors.textSecondary,
-                            ),
-                            SizedBox(width: 5),
-                            Text(
-                              'Incognito',
-                              style: TextStyle(
-                                fontFamily: 'Inter',
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            // Header bell is parked for now (design TBD) — re-add
-            // `_notificationBell(context)` here once one is chosen.
-            BlocBuilder<ActiveSourceCubit, String>(
-              builder: (context, id) => SourceSwitcher(
-                currentId: id,
-                onChanged: (newId) =>
-                    context.read<ActiveSourceCubit>().setSource(newId),
-                onInstallSources: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) =>
-                        const ZangetsuSourcesScreen(openToRepos: true),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   /// Flat bell → Notifications screen. The accent dot shows while any
   /// announcement is unseen and clears itself reactively (the screen calls
@@ -661,10 +613,8 @@ class _HomeViewState extends State<_HomeView>
         t.startsWith('$label ') || t.startsWith('$label:') || t.startsWith('$label -'));
   }
 
-  double _posterScale() => sl<PlaybackPrefs>().posterScale;
-
   /// Builds one provider-defined Home row. People/cast rows use PeopleCard;
-  /// normal rows honor the user's Poster/Landscape/Adaptive setting.
+  /// normal rows honor the user's Poster/Landscape/Adaptive card style.
   Widget _sectionRow(HomeSection section) {
     if (_isPeopleSection(section.title)) {
       return _animated(
@@ -672,19 +622,19 @@ class _HomeViewState extends State<_HomeView>
           title: section.title,
           items: section.items,
           onSeeAll: () => _openSeeAll(section),
-          onTap: (item) => _openDetail(
-            item,
-            trailerContext: DetailTrailerContext.model,
-          ),
+          onTap: (item) {
+            if (item.sourceId == 'tpdb:performer' || item.sourceId == 'tpdb:studio') {
+              launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
+            } else {
+              _openDetail(item, trailerContext: DetailTrailerContext.model);
+            }
+          },
           onLongPress: _showInfo,
         ),
       );
     }
 
-    return ValueListenableBuilder<int>(
-      valueListenable: PlaybackPrefs.posterRevision,
-      builder: (context, _, __) => _buildSizeAwareSectionRow(section),
-    );
+    return _buildSizeAwareSectionRow(section);
   }
 
   Widget _buildSizeAwareSectionRow(HomeSection section) {
@@ -714,9 +664,8 @@ class _HomeViewState extends State<_HomeView>
   Widget _studioRow(HomeSection section) {
     // Studio/channel artwork is commonly square. Keep the image area square
     // so logos and complete branding are not cropped into poster cards.
-    final scale = _posterScale();
-    final width = 160.0 * scale;
-    final rowHeight = 188.0 * scale; // square art + title + spacing
+    const width = 160.0;
+    const rowHeight = 188.0; // square art + title + spacing
     return ContentRow(
       title: section.title,
       itemWidth: width,
@@ -734,10 +683,13 @@ class _HomeViewState extends State<_HomeView>
             cellWidth: width,
             qualityBadge: item.quality,
             dubBadge: item.dubBadge,
-            onTap: () => _openDetail(
-              item,
-              trailerContext: DetailTrailerContext.studio,
-            ),
+            onTap: () {
+              if (item.sourceId == 'tpdb:studio') {
+                launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
+              } else {
+                _openDetail(item, trailerContext: DetailTrailerContext.studio);
+              }
+            },
             onLongPress: () => _showInfo(item),
           ),
         );
@@ -746,9 +698,8 @@ class _HomeViewState extends State<_HomeView>
   }
 
   Widget _fixedContentRow(HomeSection section, {required bool landscape}) {
-    final scale = _posterScale();
-    final width = landscape ? 210.0 : 140.0 * scale;
-    final height = landscape ? 150.0 : 236.0 * scale;
+    final width = landscape ? 210.0 : 140.0;
+    const height = 236.0;
     return ContentRow(
       title: section.title,
       itemWidth: width,

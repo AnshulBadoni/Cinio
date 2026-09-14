@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 
+import '../models/home_section.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import 'tmdb.dart';
@@ -75,6 +76,21 @@ class TmdbDiscoverService {
     'History',
     'Music',
   ];
+
+  Future<List<HomeSection>> home() async {
+    final results = await Future.wait([
+      discover(catalog: 'trending', type: 'all', page: 1),
+      discover(catalog: 'popular', type: 'all', page: 1),
+      discover(catalog: 'top_rated', type: 'all', page: 1),
+      discover(catalog: 'discover_new', type: 'all', page: 1),
+    ]);
+    return [
+      HomeSection(title: 'Trending', items: results[0]),
+      HomeSection(title: 'Popular', items: results[1]),
+      HomeSection(title: 'Top Rated', items: results[2]),
+      HomeSection(title: 'Discover New', items: results[3]),
+    ].where((section) => section.items.isNotEmpty).toList();
+  }
 
   Future<List<MediaItem>> discover({
     required String catalog,
@@ -284,7 +300,6 @@ class TmdbDiscoverService {
     final title = (isTv ? row['name'] : row['title'])?.toString().trim();
     if (title == null || title.isEmpty) return;
     final coverPath = row['poster_path']?.toString();
-    final backdrop = row['backdrop_path']?.toString();
     final genreNames = <String>[];
     final ids = (row['genre_ids'] as List?)?.whereType<num>().map((e) => e.toInt()) ?? const <int>[];
     final map = isTv ? _tvGenres : _movieGenres;
