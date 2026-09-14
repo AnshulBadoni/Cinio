@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 
 import '../models/home_section.dart';
 import '../models/media_item.dart';
+import '../models/media_detail.dart';
+import '../models/episode.dart';
+import '../models/media_extras.dart';
 import '../models/provider_info.dart';
 
 /// ThePornDB-backed catalog. It is catalog/metadata only; playback is still
@@ -101,7 +104,7 @@ class ThePornDb {
     final data = await _get('/sites', queryParameters: {
       'page': page,
       'per_page': 24,
-      'orderBy': 'RECENTLY_CREATED',
+      'orderBy': 'MOST_RELEVANT',
     });
     final rows = data['data'];
     if (rows is! List) return const [];
@@ -117,47 +120,28 @@ class ThePornDb {
   /// endpoint does not expose a rating filter.
   Future<List<HomeSection>> home() async {
     final results = await Future.wait([
-      movies(orderBy: 'recently_released'),
-      movies(orderBy: 'most_relevant'),
-      movies(orderBy: 'recently_released'),
-      performers(),
-      studios(),
+      _safe(() => performers()),
+      _safe(() => movies(orderBy: 'recently_released')),
+      _safe(() => movies(orderBy: 'most_relevant')),
+      _safe(() => _topRated(1)),
+      _safe(() => studios()),
     ]);
-
-    final topRated = [...results[2]]
-      ..sort((a, b) => _rating(b).compareTo(_rating(a)));
-
     return [
-      HomeSection(
-        title: 'Recent Movies',
-        items: results[0],
-        more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_recent'),
-      ),
-      HomeSection(
-        title: 'Actors',
-        items: results[3],
-        more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_performers'),
-      ),
-      HomeSection(
-        title: 'Popular',
-        items: results[1],
-        more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_popular'),
-      ),
-      HomeSection(
-        title: 'Studios',
-        items: results[4],
-        more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_studios'),
-      ),
-      HomeSection(
-        title: 'Top Rated',
-        items: topRated,
-        more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_top_rated'),
-      ),
+      HomeSection(title: 'Actors', items: results[0], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_performers')),
+      HomeSection(title: 'Trending', items: results[1], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_trending')),
+      HomeSection(title: 'Popular', items: results[2], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_popular')),
+      HomeSection(title: 'Top Rated', items: results[3], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_top_rated')),
+      HomeSection(title: 'Popular Studios', items: results[4], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_studios')),
     ].where((section) => section.items.isNotEmpty).toList();
+  }
+
+  Future<List<MediaItem>> _safe(Future<List<MediaItem>> Function() loader) async {
+    try { return await loader(); } catch (_) { return const []; }
   }
 
   Future<List<MediaItem>> browseMore(String kind, int page) => switch (kind) {
         'tpdb_recent' => movies(page: page, orderBy: 'recently_released'),
+        'tpdb_trending' => movies(page: page, orderBy: 'recently_released'),
         'tpdb_popular' => movies(page: page, orderBy: 'most_relevant'),
         'tpdb_top_rated' => _topRated(page),
         'tpdb_performers' => performers(page: page),
@@ -167,6 +151,27 @@ class ThePornDb {
 
   Future<List<MediaItem>> search(String query, {int page = 1}) =>
       movies(page: page, query: query, orderBy: 'most_relevant');
+
+  Future<MediaDetail> movieDetail(MediaItem item) async {
+    final rawId = item.id.replaceFirst('tpdb:movie:', '');
+    final data = await _get('/movies/$rawId');
+    final row = data['data'] is Map ? Map<String,dynamic>.from(data['data'] as Map) : data;
+    final performers = row['performers'];
+    final cast = <String>[];
+    final members = <CastMember>[];
+    if (performers is List) {
+      for (final p in performers) {
+        if (p is! Map) continue;
+        final name = (p['name'] ?? p['full_name'])?.toString();
+        if (name == null || name.isEmpty) continue;
+        cast.add(name);
+        members.add(CastMember(name: name, role: null, photo: (p['image'] ?? p['thumbnail'] ?? p['face'])?.toString()));
+      }
+    }
+    final title = (row['title'] ?? row['name'] ?? item.title).toString();
+    final ep = Episode(id: 'tpdb:movie:$rawId', title: title, number: 1, url: 'tpdb://movie/$rawId');
+    return MediaDetail(id: item.id, title: title, cover: item.cover, url: item.url, description: row['description']?.toString() ?? row['synopsis']?.toString(), type: ProviderType.movie, sourceId: 'tpdb:catalog', cast: cast, castMembers: members, episodes: [ep]);
+  }
 
   Future<List<MediaItem>> _topRated(int page) async {
     final items = await movies(page: page, orderBy: 'recently_released');

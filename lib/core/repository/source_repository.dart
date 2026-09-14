@@ -21,6 +21,7 @@ import '../i18n/source_languages.dart';
 import '../prefs/source_lang_prefs.dart';
 import '../provider/cloudstream_provider.dart';
 import '../metadata/theporndb.dart';
+import '../metadata/tmdb_discover_service.dart';
 import '../provider/provider_manager.dart';
 import '../provider/reading_provider.dart';
 import '../state/active_source_cubit.dart';
@@ -423,6 +424,28 @@ class SourceRepository {
           return (p is CloudStreamProvider && more.categoryId != null)
               ? p.browseMainPage(more.categoryId!, page)
               : const [];
+        case 'tmdb_recent':
+        case 'tmdb_trending_movies':
+        case 'tmdb_trending_series':
+        case 'tmdb_popular_movies':
+        case 'tmdb_popular_series':
+        case 'tmdb_trending_anime':
+        case 'tmdb_top_rated_movies':
+          return sl<TmdbDiscoverService>().browseMore(more.kind, page);
+        case 'mixed_recent':
+          return _mixedBrowse('tmdb_recent', 'tpdb_trending', page);
+        case 'mixed_trending_movies':
+          return _mixedBrowse('tmdb_trending_movies', 'tpdb_trending', page);
+        case 'mixed_trending_series':
+          return _mixedBrowse('tmdb_trending_series', 'tpdb_trending', page);
+        case 'mixed_popular_movies':
+          return _mixedBrowse('tmdb_popular_movies', 'tpdb_popular', page);
+        case 'mixed_popular_series':
+          return _mixedBrowse('tmdb_popular_series', 'tpdb_popular', page);
+        case 'mixed_trending_anime':
+          return sl<TmdbDiscoverService>().browseMore('tmdb_trending_anime', page);
+        case 'mixed_top_rated_movies':
+          return _mixedBrowse('tmdb_top_rated_movies', 'tpdb_top_rated', page);
         case 'tpdb_recent':
         case 'tpdb_popular':
         case 'tpdb_top_rated':
@@ -437,11 +460,38 @@ class SourceRepository {
     }
   }
 
+  Future<List<MediaItem>> _mixedBrowse(String tmdbKind, String tpdbKind, int page) async {
+    final results = await Future.wait([
+      sl<TmdbDiscoverService>().browseMore(tmdbKind, page),
+      _tpdb?.browseMore(tpdbKind, page) ?? Future.value(const <MediaItem>[]),
+    ]);
+    final out = <MediaItem>[];
+    final tmdb = results[0];
+    final tpdb = results[1];
+    var i = 0, j = 0;
+    while (i < tmdb.length || j < tpdb.length) {
+      if (i < tmdb.length) out.add(tmdb[i++]);
+      if (j < tpdb.length) out.add(tpdb[j++]);
+    }
+    return out;
+  }
+
   Future<List<MediaItem>> search(
     String query, {
     String category = 'sub',
     String? sourceId,
   }) => _providerFor(sourceId).search(query, 1, category: category);
+
+  /// Searches every currently available streaming provider. Catalog pages use
+  /// this only when the user explicitly requests playback/download.
+  Future<List<MediaItem>> searchAll(String query, {String category = 'sub'}) async {
+    final sources = loadedSources;
+    final results = await Future.wait([
+      for (final source in sources)
+        search(query, category: category, sourceId: source.id).catchError((_) => <MediaItem>[]),
+    ]);
+    return [for (final batch in results) ...batch];
+  }
 
   /// Status-reporting search for the source-health feature (search ordering +
   /// the "Test sources" screen). Unlike [search] it surfaces whether a source

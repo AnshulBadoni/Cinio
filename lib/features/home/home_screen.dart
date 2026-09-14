@@ -23,6 +23,8 @@ import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
+import '../../core/metadata/tmdb_discover_service.dart';
+import '../../core/metadata/theporndb.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
@@ -257,35 +259,23 @@ class _HomeViewState extends State<_HomeView>
   }
 
   Future<MediaItem?> _resolveCatalogItem(MediaItem item) async {
-    if (item.sourceId != 'tmdb:catalog' && !item.sourceId.startsWith('tpdb:')) {
-      return item;
-    }
-    final sourceId = sl<ActiveSourceCubit>().state;
-    if (!_repo.hasSource(sourceId)) return null;
-    try {
-      final results = await _repo.search(item.title, sourceId: sourceId);
-      return bestTitleMatch(results, item.title);
-    } catch (_) {
-      return null;
-    }
+    if (item.sourceId != 'tmdb:catalog' && !item.sourceId.startsWith('tpdb:')) return item;
+    return item;
   }
 
   Future<void> _openDetail(
     MediaItem item, {
     DetailTrailerContext? trailerContext,
   }) async {
-    final resolved = await _resolveCatalogItem(item);
     if (!mounted) return;
-    if (resolved == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No streaming provider found for this title.')),
-      );
-      return;
+    MediaDetail? catalogDetail;
+    if (item.sourceId == 'tmdb:catalog') {
+      try { catalogDetail = await sl<TmdbDiscoverService>().movieDetail(item); } catch (_) {}
+    } else if (item.sourceId == 'tpdb:catalog' && item.id.startsWith('tpdb:movie:')) {
+      try { catalogDetail = await sl<ThePornDb>().movieDetail(item); } catch (_) {}
     }
-    await Navigator.push(
-      context,
-      DetailScreen.route(resolved, trailerContext: trailerContext),
-    );
+    if (!mounted) return;
+    await Navigator.push(context, DetailScreen.route(item, trailerContext: trailerContext, catalogDetail: catalogDetail));
     if (mounted) setState(() {});
   }
 
@@ -615,6 +605,16 @@ class _HomeViewState extends State<_HomeView>
 
   /// Builds one provider-defined Home row. People/cast rows use PeopleCard;
   /// normal rows honor the user's Poster/Landscape/Adaptive card style.
+  Future<void> _openPerformer(MediaItem performer) async {
+    _snack('Finding videos for ${performer.title}…');
+    final results = await _repo.searchAll(performer.title);
+    if (!mounted) return;
+    if (results.isEmpty) { _snack('No provider videos found for ${performer.title}'); return; }
+    Navigator.push(context, MaterialPageRoute(builder: (_) => SeeAllScreen(
+      title: performer.title, items: results, onTap: _openDetail, onLongPress: _showInfo,
+    )));
+  }
+
   Widget _sectionRow(HomeSection section) {
     if (_isPeopleSection(section.title)) {
       return _animated(
@@ -623,7 +623,9 @@ class _HomeViewState extends State<_HomeView>
           items: section.items,
           onSeeAll: () => _openSeeAll(section),
           onTap: (item) {
-            if (item.sourceId == 'tpdb:performer' || item.sourceId == 'tpdb:studio') {
+            if (item.sourceId == 'tpdb:performer') {
+              _openPerformer(item);
+            } else if (item.sourceId == 'tpdb:studio') {
               launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
             } else {
               _openDetail(item, trailerContext: DetailTrailerContext.model);

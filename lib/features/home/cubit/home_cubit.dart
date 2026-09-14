@@ -77,7 +77,7 @@ class HomeCubit extends Cubit<HomeState> {
   final TmdbDiscoverService? _tmdb;
 
   CatalogSource get _catalogSource =>
-      _catalogPrefs?.source ?? CatalogSource.provider;
+      _catalogPrefs?.source ?? CatalogSource.tmdb;
 
   /// Monotonic load id. Each [load] bumps it; a fetch only emits its result if
   /// it's still the latest. This makes source switches "latest wins" — a slow
@@ -153,20 +153,45 @@ class HomeCubit extends Cubit<HomeState> {
   }
 
   Future<List<HomeSection>> _mixedHome() async {
-    final results = await Future.wait([_tmdb!.home(), _tpdb!.home()]);
+    final results = await Future.wait([
+      _tmdb!.home().catchError((_) => <HomeSection>[]),
+      _tpdb!.home().catchError((_) => <HomeSection>[]),
+    ]);
     final tmdb = results[0];
     final tpdb = results[1];
-    final byTitle = <String, List<MediaItem>>{};
-    for (final section in [...tmdb, ...tpdb]) {
-      byTitle.putIfAbsent(section.title.toLowerCase(), () => <MediaItem>[])
-        .addAll(section.items);
+    final tpdbRecent = tpdb.firstWhere((s) => s.title == 'Trending', orElse: () => const HomeSection(title: '', items: []));
+    final tpdbPopular = tpdb.firstWhere((s) => s.title == 'Popular', orElse: () => const HomeSection(title: '', items: []));
+    final tpdbTop = tpdb.firstWhere((s) => s.title == 'Top Rated', orElse: () => const HomeSection(title: '', items: []));
+    if (tmdb.isEmpty) return tpdb;
+    if (tpdb.isEmpty) return tmdb;
+    List<MediaItem> adult(String name) => switch (name) {
+      'Recent Movies & Series' || 'Trending Movies' => tpdbRecent.items,
+      'Popular Movies' => tpdbPopular.items,
+      'Top Rated Movies' => tpdbTop.items,
+      _ => const <MediaItem>[],
+    };
+    final out = <HomeSection>[];
+    for (final section in tmdb) {
+      final extra = adult(section.title);
+      out.add(HomeSection(
+        title: section.title,
+        items: _interleave([...section.items, ...extra]),
+        more: BrowseMore(sourceId: 'mixed:catalog', kind: 'mixed_${_mixedKind(section.title)}'),
+      ));
     }
-    return [
-      for (final entry in byTitle.entries)
-        if (entry.value.isNotEmpty)
-          HomeSection(title: _mixedTitle(entry.key, tmdb, tpdb), items: _interleave(entry.value)),
-    ];
+    return out.where((s) => s.items.isNotEmpty).toList();
   }
+
+  String _mixedKind(String title) => switch (title) {
+    'Recent Movies & Series' => 'recent',
+    'Trending Movies' => 'trending_movies',
+    'Trending Series' => 'trending_series',
+    'Popular Movies' => 'popular_movies',
+    'Popular Series' => 'popular_series',
+    'Trending Anime' => 'trending_anime',
+    'Top Rated Movies' => 'top_rated_movies',
+    _ => 'recent',
+  };
 
   String _mixedTitle(String key, List<HomeSection> tmdb, List<HomeSection> tpdb) {
     for (final section in [...tmdb, ...tpdb]) {
@@ -179,12 +204,12 @@ class HomeCubit extends Cubit<HomeState> {
     final tmdb = items.where((item) => item.sourceId == 'tmdb:catalog').toList();
     final tpdb = items.where((item) => item.sourceId.startsWith('tpdb:')).toList();
     final out = <MediaItem>[];
-    var i = 0;
-    while (i < tmdb.length || i < tpdb.length) {
-      if (i < tmdb.length) out.add(tmdb[i]);
-      if (i < tpdb.length) out.add(tpdb[i]);
-      i++;
+    var i = 0, j = 0;
+    while (i < tmdb.length || j < tpdb.length) {
+      if (i < tmdb.length) out.add(tmdb[i++]);
+      if (j < tpdb.length) out.add(tpdb[j++]);
     }
     return out;
   }
+
 }

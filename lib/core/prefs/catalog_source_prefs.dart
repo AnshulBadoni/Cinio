@@ -24,10 +24,10 @@ class CatalogSourcePrefs extends ChangeNotifier {
   Box get _box => Hive.box(boxName);
 
   CatalogSource get source {
-    final raw = _box.get(_key, defaultValue: CatalogSource.provider.name);
+    final raw = _box.get(_key, defaultValue: CatalogSource.tmdb.name);
     return CatalogSource.values.firstWhere(
       (value) => value.name == raw,
-      orElse: () => CatalogSource.provider,
+      orElse: () => CatalogSource.tmdb,
     );
   }
 

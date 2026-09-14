@@ -18,6 +18,8 @@ import '../../core/di/injector.dart';
 import '../../core/discord/discord_rpc.dart';
 import '../../core/metadata/episode_metadata_service.dart';
 import '../../core/metadata/metadata_enrichment.dart';
+import '../../core/metadata/tmdb_discover_service.dart';
+import '../../core/metadata/theporndb.dart';
 import '../../core/notify/cs_notify.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/notify/subscription_store.dart';
@@ -153,21 +155,24 @@ String? _repoLabelFromUrl(String? repoUrl) {
 enum DetailTrailerContext { model, studio }
 
 class DetailScreen extends StatelessWidget {
-  const DetailScreen({super.key, required this.item, this.trailerContext});
+  const DetailScreen({super.key, required this.item, this.trailerContext, this.catalogDetail});
   final MediaItem item;
   final DetailTrailerContext? trailerContext;
+  final MediaDetail? catalogDetail;
 
   /// Opening transition: the page fades in while sliding up and scaling from
   /// 0.96 — a smooth "rise" into the detail rather than the platform push.
   static Route<void> route(
     MediaItem item, {
     DetailTrailerContext? trailerContext,
+    MediaDetail? catalogDetail,
   }) => PageRouteBuilder<void>(
     transitionDuration: const Duration(milliseconds: 340),
     reverseTransitionDuration: const Duration(milliseconds: 260),
     pageBuilder: (_, _, _) => DetailScreen(
       item: item,
       trailerContext: trailerContext,
+      catalogDetail: catalogDetail,
     ),
     transitionsBuilder: (_, animation, _, child) {
       final curved = CurvedAnimation(
@@ -201,10 +206,12 @@ class DetailScreen extends StatelessWidget {
         prefs: sl<TitlePrefsStore>(),
         seedMalId: item.malId,
         seedType: item.type,
+        catalogDetail: catalogDetail,
       )..load(),
       child: _DetailView(
         item: item,
         trailerContext: trailerContext,
+        catalogDetail: catalogDetail,
       ),
     );
   }
@@ -219,7 +226,7 @@ class DetailScreen extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DetailView extends StatefulWidget {
-  const _DetailView({required this.item, this.trailerContext});
+  const _DetailView({required this.item, this.trailerContext, this.catalogDetail});
   final MediaItem item;
   final DetailTrailerContext? trailerContext;
 
@@ -853,6 +860,23 @@ class _DetailViewState extends State<_DetailView>
     }
   }
 
+  Future<({MediaItem item, MediaDetail detail})?> _resolveCatalogPlayback() async {
+    final catalog = widget.item;
+    if (catalog.sourceId != 'tmdb:catalog' && !catalog.sourceId.startsWith('tpdb:')) return null;
+    var results = await sl<SourceRepository>().searchAll(catalog.title);
+    if (results.isEmpty) {
+      results = await sl<SourceRepository>().searchAll(catalog.title, category: 'dub');
+    }
+    final match = bestTitleMatch(results, catalog.title, altTitle: catalog.englishTitle);
+    if (match == null) return null;
+    try {
+      final d = await sl<SourceRepository>().detail(match.url, sourceId: match.sourceId);
+      return (item: match, detail: d);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _openPlayer(
     List<Episode> episodes,
     int index,
@@ -866,6 +890,15 @@ class _DetailViewState extends State<_DetailView>
     /// adaptive default. One-shot — the cubit clears it after this episode.
     VideoSource? initialSource,
   }) async {
+    if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
+      final resolved = await _resolveCatalogPlayback();
+      if (!mounted) return;
+      if (resolved == null) { _snack('No playable provider result found for ${widget.item.title}'); return; }
+      detail = resolved.detail;
+      episodes = detail.episodes;
+      if (episodes.isEmpty) { _snack('No playable episodes found for ${widget.item.title}'); return; }
+      index = index.clamp(0, episodes.length - 1).toInt();
+    }
     // Opening something other than where they left off? Offer to look at it
     // without moving their place. Asked here, before the reading/video split,
     // so all three kinds behave the same. Dismissing means "never mind" —
@@ -938,7 +971,7 @@ class _DetailViewState extends State<_DetailView>
     // default category, else fall back to the incoming category. Constrain to
     // what's actually offered so single-category titles are a harmless no-op.
     final preferred =
-        sl<TitlePrefsStore>().category(widget.item.sourceId, widget.item.url) ??
+        sl<TitlePrefsStore>().category(detail.sourceId, detail.url) ??
         sl<PlaybackPrefs>().defaultCategory;
     final launchCategory = availableCategories.contains(preferred)
         ? preferred
@@ -968,13 +1001,13 @@ class _DetailViewState extends State<_DetailView>
         builder: (_) => PlayerScreen(
           playerOverride: playerOverride?.package,
           initialSource: initialSource,
-          sourceId: widget.item.sourceId,
+          sourceId: detail.sourceId,
           episodes: episodes,
           startIndex: index,
           resume: sl<ResumeStore>(),
           resolveSources: (u) => sl<SourceRepository>().sources(
             u,
-            sourceId: widget.item.sourceId,
+            sourceId: detail.sourceId,
             fast: true,
           ),
           // The resolve above returns on the first usable link so playback
@@ -982,13 +1015,13 @@ class _DetailViewState extends State<_DetailView>
           // lets the Sources sheet pick them up once they land.
           pollSources: (u) => sl<SourceRepository>().polledSources(
             u,
-            sourceId: widget.item.sourceId,
+            sourceId: detail.sourceId,
           ),
           history: sl<WatchHistory>(),
           showTitle: detail.title,
           cover: detail.cover ?? widget.item.cover,
           coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-          showUrl: widget.item.url,
+          showUrl: detail.url,
           category: launchCategory,
           malId: malId,
           scrobbleTitle: scrobbleTitle,
@@ -1207,6 +1240,15 @@ class _DetailViewState extends State<_DetailView>
     required Map<int, List<Episode>> episodesBySeason,
     required int initialSeason,
   }) async {
+    if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
+      final resolved = await _resolveCatalogPlayback();
+      if (!mounted) return;
+      if (resolved == null) { _snack('No downloadable provider result found for ${widget.item.title}'); return; }
+      detail = resolved.detail;
+      episodesBySeason = <int, List<Episode>>{};
+      for (final e in detail.episodes) { (episodesBySeason[seasonOf(e) ?? 1] ??= <Episode>[]).add(e); }
+      if (episodesBySeason.isEmpty) { _snack('No downloadable episodes found for ${widget.item.title}'); return; }
+    }
     final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
     if (total == 0) {
       _snack('No episodes to download');
@@ -1252,7 +1294,7 @@ class _DetailViewState extends State<_DetailView>
             coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
             resolve: (ep) => sl<SourceRepository>().sources(
               ep.url,
-              sourceId: widget.item.sourceId,
+              sourceId: detail.sourceId,
             ),
             resolveEpisodes: _episodesByCategory,
           ),
@@ -1264,28 +1306,23 @@ class _DetailViewState extends State<_DetailView>
   /// Re-resolve a title's episodes for a given sub/dub [category] (without
   /// touching the detail page's own toggle), grouped by season.
   Future<Map<int, List<Episode>>> _episodesByCategory(String category) async {
-    final d = await sl<SourceRepository>().detail(
-      widget.item.url,
-      category: category,
-      sourceId: widget.item.sourceId,
-    );
-    // Best-effort per-episode descriptions on a category switch. Prefer the
-    // cubit's resolved detail (promoted malId for movie-source anime).
+    MediaDetail d;
+    if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
+      final resolved = await _resolveCatalogPlayback();
+      if (resolved == null) return const {};
+      d = await sl<SourceRepository>().detail(resolved.item.url, category: category, sourceId: resolved.item.sourceId);
+    } else {
+      d = await sl<SourceRepository>().detail(widget.item.url, category: category, sourceId: widget.item.sourceId);
+    }
     var eps = d.episodes;
     if (mounted) {
       final cd = context.read<DetailCubit>().state.detail ?? d;
       eps = await sl<EpisodeMetadataService>().enrich(
-        episodes: eps,
-        type: cd.type,
-        malId: cd.malId,
-        tmdbId: cd.tmdbId,
-        tmdbIsTv: cd.tmdbIsTv,
+        episodes: eps, type: cd.type, malId: cd.malId, tmdbId: cd.tmdbId, tmdbIsTv: cd.tmdbIsTv,
       );
     }
     final byS = <int, List<Episode>>{};
-    for (final e in eps) {
-      (byS[seasonOf(e) ?? 1] ??= <Episode>[]).add(e);
-    }
+    for (final e in eps) { (byS[seasonOf(e) ?? 1] ??= <Episode>[]).add(e); }
     if (byS.isEmpty) byS[1] = eps;
     return byS;
   }
@@ -1324,7 +1361,15 @@ class _DetailViewState extends State<_DetailView>
     MediaDetail detail,
     String category,
   ) async {
-    final item = widget.item;
+    var item = widget.item;
+    if (item.sourceId == 'tmdb:catalog' || item.sourceId.startsWith('tpdb:')) {
+      final resolved = await _resolveCatalogPlayback();
+      if (!mounted) return;
+      if (resolved == null) { _snack('No downloadable provider result found for ${item.title}'); return; }
+      item = resolved.item;
+      detail = resolved.detail;
+      if (detail.episodes.isNotEmpty) ep = detail.episodes.first;
+    }
     final res =
         await showModalBottomSheet<
           ({VideoSource chosen, List<VideoSource> all})
@@ -1338,18 +1383,18 @@ class _DetailViewState extends State<_DetailView>
           builder: (_) => _SourcePickerSheet(
             title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
             resolve: () =>
-                sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId),
+                sl<SourceRepository>().sources(ep.url, sourceId: detail.sourceId),
           ),
         );
     if (res == null || !mounted) return;
     unawaited(
       sl<DownloadManager>().enqueueSource(
-        sourceId: item.sourceId,
-        showId: item.id,
+        sourceId: detail.sourceId,
+        showId: detail.id,
         showTitle: detail.title,
         cover: detail.cover ?? item.cover,
         coverHeaders: detail.coverHeaders ?? item.coverHeaders,
-        showUrl: item.url,
+        showUrl: detail.url,
         category: category,
         episode: ep,
         source: res.chosen,
@@ -1371,12 +1416,12 @@ class _DetailViewState extends State<_DetailView>
     final item = widget.item;
     unawaited(
       sl<DownloadManager>().enqueueEpisodes(
-        sourceId: item.sourceId,
-        showId: item.id,
+        sourceId: detail.sourceId,
+        showId: detail.id,
         showTitle: detail.title,
         cover: detail.cover ?? item.cover,
         coverHeaders: detail.coverHeaders ?? item.coverHeaders,
-        showUrl: item.url,
+        showUrl: detail.url,
         category: category,
         quality: quality,
         episodes: episodes,

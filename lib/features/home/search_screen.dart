@@ -9,6 +9,8 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
+import '../../core/metadata/tmdb_discover_service.dart';
+import '../../core/metadata/theporndb.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
@@ -259,17 +261,15 @@ class _SearchViewState extends State<_SearchView>
   }
 
   Future<void> _openDetail(MediaItem item) async {
-    final resolved = await _resolveCatalogItem(item);
     if (!mounted) return;
-    if (resolved == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No result found for ${item.title}')),
-      );
-      return;
+    MediaDetail? catalogDetail;
+    if (item.sourceId == 'tmdb:catalog') {
+      try { catalogDetail = await sl<TmdbDiscoverService>().movieDetail(item); } catch (_) {}
+    } else if (item.sourceId == 'tpdb:catalog' && item.id.startsWith('tpdb:movie:')) {
+      try { catalogDetail = await sl<ThePornDb>().movieDetail(item); } catch (_) {}
     }
-    Navigator.push(context, DetailScreen.route(resolved)).then((_) {
-      if (mounted) setState(() {});
-    });
+    if (!mounted) return;
+    Navigator.push(context, DetailScreen.route(item, catalogDetail: catalogDetail)).then((_) { if (mounted) setState(() {}); });
   }
 
   /// Opens the full-grid view of ONE source's complete results for the current
@@ -359,47 +359,7 @@ class _SearchViewState extends State<_SearchView>
 
   Future<MediaItem?> _resolveCatalogItem(MediaItem item) async {
     if (item.sourceId != 'tmdb:catalog' && !item.sourceId.startsWith('tpdb:')) return item;
-
-    // TMDB is catalog-only. Resolve back to the currently selected streaming
-    // provider, but never pass the synthetic TMDB item into DetailScreen.
-    final active = sl<ActiveSourceCubit>();
-    var sourceId = active.state;
-    if (sourceId.isEmpty || !_repo.hasSource(sourceId)) {
-      final candidates = _modeSources;
-      if (candidates.isEmpty) return null;
-      sourceId = candidates.first.id;
-      active.setSource(sourceId);
-    }
-
-    try {
-      // Keep the provider's normal search path used by the old Search screen.
-      // Some providers expose a title under a different audio/category bucket,
-      // so try the default category first and then the alternate one before
-      // declaring the TMDB title unavailable.
-      var results = await _repo.search(item.title, sourceId: sourceId);
-      if (results.isEmpty) {
-        results = await _repo.search(
-          item.title,
-          category: 'dub',
-          sourceId: sourceId,
-        );
-      }
-
-      // Prefer a provider result carrying the same TMDB identity when one is
-      // available. Otherwise use the same tolerant title matcher used by the
-      // existing relation/detail flows.
-      if (item.tmdbId != null) {
-        for (final result in results) {
-          if (result.tmdbId == item.tmdbId &&
-              result.tmdbIsTv == item.tmdbIsTv) {
-            return result;
-          }
-        }
-      }
-      return bestTitleMatch(results, item.title);
-    } catch (_) {
-      return null;
-    }
+    return item;
   }
 
   Future<void> _play(MediaItem item) async {

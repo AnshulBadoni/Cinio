@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/injector.dart';
 import '../../../core/metadata/episode_metadata_service.dart';
+import '../../../core/metadata/tmdb_discover_service.dart';
+import '../../../core/metadata/theporndb.dart';
 import '../../../core/metadata/metadata_enrichment.dart';
 import '../../../core/models/episode.dart';
 import '../../../core/models/media_detail.dart';
@@ -90,10 +92,12 @@ class DetailCubit extends Cubit<DetailState> {
     TitlePrefsStore? prefs,
     int? seedMalId,
     ProviderType? seedType,
+    MediaDetail? catalogDetail,
   }) : _repo = repo,
        _url = url,
        _sourceId = sourceId,
        _prefs = prefs ?? sl<TitlePrefsStore>(),
+       _catalogDetail = catalogDetail,
        // Seed the INITIAL category from the per-title remembered choice so the
        // Sub/Dub toggle reflects the saved value on the very first render (no
        // flash from 'sub' → remembered). Falls back to 'sub' when unset.
@@ -117,6 +121,7 @@ class DetailCubit extends Cubit<DetailState> {
   final SourceRepository _repo;
   final String _url;
   final TitlePrefsStore _prefs;
+  final MediaDetail? _catalogDetail;
 
   /// The in-flight (or completed) movie→anime MAL-id resolution for this title,
   /// if it's a movie-typed candidate. The player launch awaits this so a fast
@@ -139,13 +144,11 @@ class DetailCubit extends Cubit<DetailState> {
   Future<void> load() async {
     emit(state.copyWith(status: DetailStatus.loading));
     try {
-      final detail = await _repo.detail(
-        _url,
-        category: state.category,
-        sourceId: _sourceId,
+      final detail = _catalogDetail ?? await _repo.detail(
+        _url, category: state.category, sourceId: _sourceId,
       );
-      emit(state.copyWith(status: DetailStatus.success, detail: detail));
-      _enrich(detail);
+      emit(state.copyWith(status: DetailStatus.success, detail: detail, cast: detail.castMembers));
+      if (_catalogDetail == null) _enrich(detail);
     } catch (_) {
       emit(state.copyWith(status: DetailStatus.error, error: 'load_failed'));
     }

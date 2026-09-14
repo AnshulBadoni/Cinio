@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:dio/dio.dart';
 
 import '../models/home_section.dart';
+import '../models/media_detail.dart';
+import '../models/episode.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import 'tmdb.dart';
@@ -79,17 +81,88 @@ class TmdbDiscoverService {
 
   Future<List<HomeSection>> home() async {
     final results = await Future.wait([
-      discover(catalog: 'trending', type: 'all', page: 1),
-      discover(catalog: 'popular', type: 'all', page: 1),
-      discover(catalog: 'top_rated', type: 'all', page: 1),
-      discover(catalog: 'discover_new', type: 'all', page: 1),
+      _safe(() => _recentMixed(1)),
+      _safe(() => _trendingKind('movie', 1)),
+      _safe(() => _trendingKind('tv', 1)),
+      _safe(() => _discoverKind(kind: 'movie', catalog: 'popular', page: 1)),
+      _safe(() => _discoverKind(kind: 'tv', catalog: 'popular', page: 1)),
+      _safe(() => _discoverKind(kind: 'tv', catalog: 'anime', page: 1, anime: true)),
+      _safe(() => _discoverKind(kind: 'movie', catalog: 'top_rated', page: 1)),
     ]);
+    final kinds = <String>[
+      'tmdb_recent', 'tmdb_trending_movies', 'tmdb_trending_series',
+      'tmdb_popular_movies', 'tmdb_popular_series', 'tmdb_trending_anime',
+      'tmdb_top_rated_movies',
+    ];
+    final titles = <String>[
+      'Recent Movies & Series', 'Trending Movies', 'Trending Series',
+      'Popular Movies', 'Popular Series', 'Trending Anime', 'Top Rated Movies',
+    ];
     return [
-      HomeSection(title: 'Trending', items: results[0]),
-      HomeSection(title: 'Popular', items: results[1]),
-      HomeSection(title: 'Top Rated', items: results[2]),
-      HomeSection(title: 'Discover New', items: results[3]),
-    ].where((section) => section.items.isNotEmpty).toList();
+      for (var i = 0; i < results.length; i++)
+        if (results[i].isNotEmpty) HomeSection(
+          title: titles[i], items: results[i],
+          more: BrowseMore(sourceId: 'tmdb:catalog', kind: kinds[i]),
+        ),
+    ];
+  }
+
+  Future<List<MediaItem>> _safe(Future<List<MediaItem>> Function() loader) async {
+    try { return await loader(); } catch (_) { return const []; }
+  }
+
+  Future<List<MediaItem>> browseMore(String kind, int page) async {
+    switch (kind) {
+      case 'tmdb_recent': return _recentMixed(page);
+      case 'tmdb_trending_movies': return _trendingKind('movie', page);
+      case 'tmdb_trending_series': return _trendingKind('tv', page);
+      case 'tmdb_popular_movies': return _discoverKind(kind: 'movie', catalog: 'popular', page: page);
+      case 'tmdb_popular_series': return _discoverKind(kind: 'tv', catalog: 'popular', page: page);
+      case 'tmdb_trending_anime': return _discoverKind(kind: 'tv', catalog: 'anime', page: page, anime: true);
+      case 'tmdb_top_rated_movies': return _discoverKind(kind: 'movie', catalog: 'top_rated', page: page);
+      default: return const [];
+    }
+  }
+
+  Future<List<MediaItem>> _trendingKind(String kind, int page) async {
+    final response = await _dio.get<dynamic>('${Tmdb.base}/trending/$kind/week', queryParameters: {'page': page});
+    final rows = response.data is Map ? response.data['results'] : null;
+    if (rows is! List) return const [];
+    return [for (final row in rows) if (row is Map) ..._mapSearchRow(row, type: kind == 'tv' ? 'series' : 'movies', trending: true)];
+  }
+
+  Future<List<MediaItem>> _recentMixed(int page) async {
+    final movies = await _discoverKind(kind: 'movie', catalog: 'recent', page: page);
+    final series = await _discoverKind(kind: 'tv', catalog: 'recent', page: page);
+    final out = <MediaItem>[];
+    for (var i = 0; i < movies.length || i < series.length; i++) {
+      if (i < movies.length) out.add(movies[i]);
+      if (i < series.length) out.add(series[i]);
+    }
+    return out;
+  }
+
+  Future<MediaDetail> movieDetail(MediaItem item) async {
+    final id = item.tmdbId;
+    if (id == null) throw StateError('Missing TMDB id');
+    final kind = item.tmdbIsTv ? 'tv' : 'movie';
+    final response = await _dio.get<dynamic>('${Tmdb.base}/$kind/$id', queryParameters: {'append_to_response': 'credits'});
+    final row = response.data is Map ? Map<String,dynamic>.from(response.data as Map) : <String,dynamic>{};
+    final title = (item.tmdbIsTv ? row['name'] : row['title'])?.toString() ?? item.title;
+    final poster = row['poster_path']?.toString();
+    final overview = row['overview']?.toString();
+    final date = (item.tmdbIsTv ? row['first_air_date'] : row['release_date'])?.toString();
+    final castRows = row['credits'] is Map ? row['credits']['cast'] : null;
+    final cast = <String>[];
+    if (castRows is List) { for (final c in castRows) { if (c is Map && c['name'] != null) cast.add(c['name'].toString()); } }
+    final ep = Episode(id: 'tmdb:$kind:$id', title: title, number: 1, url: 'tmdb://$kind/$id');
+    return MediaDetail(
+      id: item.id, title: title, englishTitle: item.englishTitle,
+      cover: poster == null ? item.cover : '${Tmdb.img}/w500$poster',
+      url: item.url, description: overview, year: date != null && date.length >= 4 ? date.substring(0,4) : null,
+      type: ProviderType.movie, sourceId: 'tmdb:catalog', tmdbId: id, tmdbIsTv: item.tmdbIsTv,
+      isSeries: item.tmdbIsTv, genres: item.genres, cast: cast, episodes: [ep],
+    );
   }
 
   Future<List<MediaItem>> discover({
@@ -214,10 +287,12 @@ class TmdbDiscoverService {
       'include_adult': false,
       'sort_by': switch (catalog) {
         'top_rated' => 'vote_average.desc',
+        'recent' => kind == 'tv' ? 'first_air_date.desc' : 'primary_release_date.desc',
         _ => 'popularity.desc',
       },
     };
     if (catalog == 'top_rated') params['vote_count.gte'] = 200;
+    if (catalog == 'recent') params['vote_count.gte'] = 20;
 
     final actualPage = catalog == 'discover_new'
         ? math.Random().nextInt(20) + 1
@@ -318,6 +393,7 @@ class TmdbDiscoverService {
       tmdbIsTv: isTv,
       tmdbIsAnime: type == 'anime',
       genres: genreNames,
+      rating: (row['vote_average'] as num?)?.toDouble(),
     );
   }
 }
