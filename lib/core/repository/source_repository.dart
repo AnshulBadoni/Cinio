@@ -594,13 +594,13 @@ class SourceRepository {
         );
       }
       if (match == null) return null;
-      final detail = await detail(
+      final resolvedDetail = await this.detail(
         match.url,
         category: category,
         sourceId: match.sourceId,
       );
-      if (detail.episodes.isEmpty && catalog.tmdbIsTv) return null;
-      return (item: match, detail: detail);
+      if (resolvedDetail.episodes.isEmpty && catalog.tmdbIsTv) return null;
+      return (item: match, detail: resolvedDetail);
     } catch (_) {
       return null;
     }

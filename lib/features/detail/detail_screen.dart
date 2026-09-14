@@ -891,7 +891,7 @@ class _DetailViewState extends State<_DetailView>
     /// adaptive default. One-shot — the cubit clears it after this episode.
     VideoSource? initialSource,
   }) async {
-    if (_isCatalogDetail(detail)) {
+    if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
       final resolved = await _resolveCatalogPlayback(category: category);
       if (!mounted) return;
       if (resolved == null) { _snack('No playable provider result found for ${widget.item.title}'); return; }
@@ -1241,7 +1241,7 @@ class _DetailViewState extends State<_DetailView>
     required Map<int, List<Episode>> episodesBySeason,
     required int initialSeason,
   }) async {
-    if (_isCatalogDetail(detail)) {
+    if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
       final resolved = await _resolveCatalogPlayback(category: category);
       if (!mounted) return;
       if (resolved == null) { _snack('No downloadable provider result found for ${widget.item.title}'); return; }
@@ -1308,7 +1308,7 @@ class _DetailViewState extends State<_DetailView>
   /// touching the detail page's own toggle), grouped by season.
   Future<Map<int, List<Episode>>> _episodesByCategory(String category) async {
     MediaDetail d;
-    if (_isCatalogDetail(detail)) {
+    if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
       final resolved = await _resolveCatalogPlayback(category: category);
       if (resolved == null) return const {};
       d = await sl<SourceRepository>().detail(resolved.item.url, category: category, sourceId: resolved.item.sourceId);
