@@ -549,8 +549,42 @@ class _DetailViewState extends State<_DetailView>
   /// provider URL), so we search the CURRENT source for the title and open the
   /// first match's detail. Falls back to a snackbar when nothing is found.
   Future<void> _openRelation(MediaRelation r) async {
-    _snack('Finding “${r.title}”…');
+    _snack('Opening “${r.title}”…');
     try {
+      // Catalog relations are catalog-owned. Never search the active streaming
+      // provider for a relation because that can silently open a different
+      // title with a similar name.
+      if (widget.item.sourceId == 'tmdb:catalog' && r.tmdbId != null) {
+        final related = MediaItem(
+          id: 'tmdb:${r.tmdbIsTv ? 'tv' : 'movie'}:${r.tmdbId}',
+          title: r.title,
+          cover: r.cover,
+          url: 'tmdb://${r.tmdbIsTv ? 'tv' : 'movie'}/${r.tmdbId}',
+          type: ProviderType.movie,
+          sourceId: 'tmdb:catalog',
+          tmdbId: r.tmdbId,
+          tmdbIsTv: r.tmdbIsTv,
+        );
+        final catalogDetail = await sl<TmdbDiscoverService>().movieDetail(related);
+        if (!mounted) return;
+        Navigator.of(context).push(DetailScreen.route(related, catalogDetail: catalogDetail));
+        return;
+      }
+      if (widget.item.sourceId == 'tpdb:catalog' && r.catalogId != null) {
+        final related = MediaItem(
+          id: 'tpdb:movie:${r.catalogId}',
+          title: r.title,
+          cover: r.cover,
+          url: 'tpdb://movie/${r.catalogId}',
+          type: ProviderType.movie,
+          sourceId: 'tpdb:catalog',
+        );
+        final catalogDetail = await sl<ThePornDb>().movieDetail(related);
+        if (!mounted) return;
+        Navigator.of(context).push(DetailScreen.route(related, catalogDetail: catalogDetail));
+        return;
+      }
+
       final results = await sl<SourceRepository>().search(
         r.title,
         sourceId: widget.item.sourceId,

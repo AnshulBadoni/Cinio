@@ -576,7 +576,7 @@ class SourceRepository {
         category: category,
         sourceId: providerId,
       );
-      var match = bestTitleMatch(
+      var match = _strictCatalogMatch(
         results,
         catalog.title,
         altTitle: catalog.englishTitle,
@@ -587,7 +587,7 @@ class SourceRepository {
           category: 'dub',
           sourceId: providerId,
         );
-        match = bestTitleMatch(
+        match = _strictCatalogMatch(
           dubResults,
           catalog.title,
           altTitle: catalog.englishTitle,
@@ -604,6 +604,24 @@ class SourceRepository {
     } catch (_) {
       return null;
     }
+  }
+
+  MediaItem? _strictCatalogMatch(
+    List<MediaItem> results,
+    String wanted, {
+    String? altTitle,
+  }) {
+    final wants = <String>{
+      normalizeTitle(wanted),
+      if (altTitle != null && altTitle.isNotEmpty) normalizeTitle(altTitle),
+    }..removeWhere((s) => s.isEmpty);
+    for (final m in results) {
+      if (wants.contains(normalizeTitle(m.title)) ||
+          (m.englishTitle != null && wants.contains(normalizeTitle(m.englishTitle!)))) {
+        return m;
+      }
+    }
+    return null;
   }
 
   /// Status-reporting search for the source-health feature (search ordering +

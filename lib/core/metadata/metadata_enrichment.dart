@@ -26,6 +26,8 @@ class MetadataEnrichment {
   // TMDB v3 — api_key attached by the Dio interceptor (initDependencies).
   static const String _tmdbBase = 'https://api.themoviedb.org/3';
   static const String _img = 'https://image.tmdb.org/t/p';
+  static const String _tpdbBase = 'https://api.theporndb.net';
+  static const String _tpdbKey = '8ABvbgloweVLDeD3HBq6x9eHpL3lMJE8qEuBtdmb213d0c62';
 
   /// Resolve a MAL id for an id-less ANIME from its title (AniList search).
   /// Best-effort, null on miss / non-anime.
@@ -108,6 +110,7 @@ class MetadataEnrichment {
     try {
       if (d.malId != null) return await _anilist.mediaExtras(d.malId!);
       if (d.tmdbId != null) return await _tmdb(d.tmdbId!, d.tmdbIsTv);
+      if (d.sourceId == 'tpdb:catalog') return await _tpdb(d);
       // Id-less anime (Aniyomi, most CloudStream): AniList exposes no id, so
       // resolve cast + relations by title search. Best-effort; a wrong title
       // match just yields slightly-off extras (never a crash).
@@ -123,6 +126,54 @@ class MetadataEnrichment {
       }
     } catch (_) {}
     return (cast: <CastMember>[], relations: <MediaRelation>[]);
+  }
+
+
+  Future<({List<CastMember> cast, List<MediaRelation> relations})> _tpdb(
+    MediaDetail d,
+  ) async {
+    final rawId = d.id.replaceFirst('tpdb:movie:', '');
+    if (rawId.isEmpty) return (cast: d.castMembers, relations: const []);
+    final relations = <MediaRelation>[];
+    try {
+      final res = await _dio.get<dynamic>(
+        '$_tpdbBase/movies/$rawId/similar',
+        options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
+      );
+      final rows = res.data is Map ? res.data['data'] : null;
+      if (rows is List) {
+        for (final r in rows.take(20)) {
+          if (r is! Map) continue;
+          final id = (r['id'] ?? r['_id'] ?? r['uuid'] ?? r['slug'])?.toString();
+          final title = (r['title'] ?? r['name'])?.toString();
+          if (id == null || title == null || title.isEmpty) continue;
+          final image = _tpdbImage(r);
+          relations.add(MediaRelation(
+            title: title,
+            cover: image,
+            relation: 'Recommended',
+            sourceId: 'tpdb:catalog',
+            catalogId: id,
+          ));
+        }
+      }
+    } catch (_) {}
+    return (cast: d.castMembers, relations: relations);
+  }
+
+  String? _tpdbImage(Map row) {
+    for (final key in ['poster', 'poster_image', 'image', 'thumbnail']) {
+      final v = row[key]?.toString();
+      if (v != null && v.isNotEmpty) return v;
+    }
+    final posters = row['posters'];
+    if (posters is Map) {
+      for (final key in ['large', 'medium', 'small', 'full']) {
+        final v = posters[key]?.toString();
+        if (v != null && v.isNotEmpty) return v;
+      }
+    }
+    return null;
   }
 
   Future<({List<CastMember> cast, List<MediaRelation> relations})> _tmdb(

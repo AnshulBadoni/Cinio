@@ -155,13 +155,62 @@ class TmdbDiscoverService {
     final castRows = row['credits'] is Map ? row['credits']['cast'] : null;
     final cast = <String>[];
     if (castRows is List) { for (final c in castRows) { if (c is Map && c['name'] != null) cast.add(c['name'].toString()); } }
-    final ep = Episode(id: 'tmdb:$kind:$id', title: title, number: 1, url: 'tmdb://$kind/$id');
+    final episodes = <Episode>[];
+    if (item.tmdbIsTv) {
+      final seasons = row['seasons'];
+      if (seasons is List) {
+        for (final season in seasons) {
+          if (season is! Map) continue;
+          final seasonNumber = (season['season_number'] as num?)?.toInt();
+          if (seasonNumber == null || seasonNumber <= 0) continue;
+          try {
+            final seasonResponse = await _dio.get<dynamic>(
+              '${Tmdb.base}/tv/$id/season/$seasonNumber',
+            );
+            final seasonRows = seasonResponse.data is Map
+                ? seasonResponse.data['episodes']
+                : null;
+            if (seasonRows is! List) continue;
+            for (final e in seasonRows) {
+              if (e is! Map) continue;
+              final number = (e['episode_number'] as num?)?.toDouble();
+              if (number == null) continue;
+              final eid = (e['id'] as num?)?.toString() ?? '$id-$seasonNumber-${number.toInt()}';
+              final still = e['still_path']?.toString();
+              episodes.add(Episode(
+                id: 'tmdb:tv:$id:s$seasonNumber:e${number.toInt()}:$eid',
+                title: (e['name'] ?? 'Episode ${number.toInt()}').toString(),
+                number: number,
+                url: 'tmdb://tv/$id/season/$seasonNumber/episode/${number.toInt()}',
+                date: e['air_date']?.toString(),
+                thumbnail: still != null && still.isNotEmpty ? '${Tmdb.img}/w342$still' : null,
+                season: seasonNumber,
+                description: e['overview']?.toString(),
+                metaTitle: e['name']?.toString(),
+                rating: (e['vote_average'] as num?)?.toDouble(),
+                runtimeMinutes: (e['runtime'] as num?)?.toInt(),
+              ));
+            }
+          } catch (_) {
+            // One unavailable season must not prevent the rest of the series
+            // metadata from loading.
+          }
+        }
+      }
+    } else {
+      episodes.add(Episode(
+        id: 'tmdb:movie:$id',
+        title: title,
+        number: 1,
+        url: 'tmdb://movie/$id',
+      ));
+    }
     return MediaDetail(
       id: item.id, title: title, englishTitle: item.englishTitle,
       cover: poster == null ? item.cover : '${Tmdb.img}/w500$poster',
       url: item.url, description: overview, year: date != null && date.length >= 4 ? date.substring(0,4) : null,
       type: ProviderType.movie, sourceId: 'tmdb:catalog', tmdbId: id, tmdbIsTv: item.tmdbIsTv,
-      isSeries: item.tmdbIsTv, genres: item.genres, cast: cast, episodes: [ep],
+      isSeries: item.tmdbIsTv, genres: item.genres, cast: cast, episodes: episodes,
     );
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/metadata/people_service.dart';
+import '../../core/metadata/theporndb.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/person.dart';
 import '../../core/repository/source_repository.dart';
@@ -54,8 +55,17 @@ class _PersonPageState extends State<PersonPage> {
   Future<void> _openWork(PersonWork w) async {
     _snack('Finding “${w.title}”…');
     try {
-      final results =
-          await sl<SourceRepository>().search(w.title, sourceId: widget.sourceId);
+      if (widget.person.source == PersonSource.thePornDbPerformer) {
+        final results = await sl<ThePornDb>().search(w.title);
+        if (!mounted) return;
+        final match = results.isEmpty ? null : results.first;
+        if (match == null) { _snack('“${w.title}” isn’t in ThePornDB'); return; }
+        final catalogDetail = await sl<ThePornDb>().movieDetail(match);
+        if (!mounted) return;
+        Navigator.of(context).push(DetailScreen.route(match, catalogDetail: catalogDetail));
+        return;
+      }
+      final results = await sl<SourceRepository>().search(w.title, sourceId: widget.sourceId);
       if (!mounted) return;
       final match = bestTitleMatch(
         results,

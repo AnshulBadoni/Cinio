@@ -1,7 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 /// Where a person page's data comes from (and which query to run).
-enum PersonSource { anilistCharacter, anilistStaff, tmdb }
+enum PersonSource { anilistCharacter, anilistStaff, tmdb, thePornDbPerformer }
 
 /// A tappable reference to a person page — an anime character or voice
 /// actor/staff (AniList), or a movie/TV person (TMDB). Carried on

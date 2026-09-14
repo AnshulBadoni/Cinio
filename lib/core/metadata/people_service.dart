@@ -13,6 +13,8 @@ class PeopleService {
   static const String _anilist = 'https://graphql.anilist.co';
   static const String _tmdbBase = 'https://api.themoviedb.org/3';
   static const String _img = 'https://image.tmdb.org/t/p';
+  static const String _tpdbBase = 'https://api.theporndb.net';
+  static const String _tpdbKey = '8ABvbgloweVLDeD3HBq6x9eHpL3lMJE8qEuBtdmb213d0c62';
 
   Future<PersonProfile?> load(PersonRef ref) {
     switch (ref.source) {
@@ -22,7 +24,76 @@ class PeopleService {
         return _staff(ref.id);
       case PersonSource.tmdb:
         return _tmdbPerson(ref.id);
+      case PersonSource.thePornDbPerformer:
+        return _tpdbPerformer(ref.id);
     }
+  }
+
+
+  Future<PersonProfile?> _tpdbPerformer(int id) async {
+    try {
+      final res = await _dio.get<dynamic>(
+        '$_tpdbBase/performers/$id',
+        options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
+      );
+      final row = res.data is Map && res.data['data'] is Map
+          ? Map<String, dynamic>.from(res.data['data'] as Map)
+          : null;
+      if (row == null) return null;
+      final name = (row['name'] ?? row['full_name'])?.toString();
+      if (name == null || name.isEmpty) return null;
+      final works = <PersonWork>[];
+      try {
+        final movies = await _dio.get<dynamic>(
+          '$_tpdbBase/performers/$id/movies',
+          queryParameters: {'page': 1, 'per_page': 30},
+          options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
+        );
+        final rows = movies.data is Map ? movies.data['data'] : null;
+        if (rows is List) {
+          for (final m in rows) {
+            if (m is! Map) continue;
+            final title = (m['title'] ?? m['name'])?.toString();
+            if (title == null || title.isEmpty) continue;
+            works.add(PersonWork(
+              title: title,
+              cover: _tpdbImage(m),
+            ));
+          }
+        }
+      } catch (_) {}
+      final age = (row['age'] as num?)?.toInt();
+      final rating = (row['rating'] as num?)?.toDouble();
+      final subtitle = [
+        if (age != null) '$age years',
+        if (rating != null) 'Rating ${rating.toStringAsFixed(1)}',
+      ].join(' · ');
+      return PersonProfile(
+        name: name,
+        nativeName: (row['alias'] ?? row['aliases'])?.toString(),
+        photo: (row['image'] ?? row['thumbnail'] ?? row['face'])?.toString(),
+        description: (row['description'] ?? row['bio'])?.toString(),
+        subtitle: subtitle.isEmpty ? 'Performer' : subtitle,
+        works: works,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _tpdbImage(Map row) {
+    for (final key in ['poster', 'poster_image', 'image', 'thumbnail']) {
+      final v = row[key]?.toString();
+      if (v != null && v.isNotEmpty) return v;
+    }
+    final posters = row['posters'];
+    if (posters is Map) {
+      for (final key in ['large', 'medium', 'small', 'full']) {
+        final v = posters[key]?.toString();
+        if (v != null && v.isNotEmpty) return v;
+      }
+    }
+    return null;
   }
 
   // ── AniList ─────────────────────────────────────────────────────────────────

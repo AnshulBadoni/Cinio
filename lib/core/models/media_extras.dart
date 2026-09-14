@@ -38,6 +38,8 @@ class MediaRelation extends Equatable {
     this.malId,
     this.tmdbId,
     this.tmdbIsTv = false,
+    this.sourceId,
+    this.catalogId,
   });
 
   final String title;
@@ -55,7 +57,12 @@ class MediaRelation extends Equatable {
   final int? tmdbId;
   final bool tmdbIsTv;
 
+  /// The catalog that owns this relation. Used so TMDB/TPDB relations never
+  /// get resolved by searching an unrelated streaming provider.
+  final String? sourceId;
+  final String? catalogId;
+
   @override
   List<Object?> get props =>
-      [title, romaji, cover, relation, malId, tmdbId, tmdbIsTv];
+      [title, romaji, cover, relation, malId, tmdbId, tmdbIsTv, sourceId, catalogId];
 }

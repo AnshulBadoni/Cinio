@@ -143,73 +143,48 @@ class DetailCubit extends Cubit<DetailState> {
   /// owning source is unknown (active-source title) — robust, never throws.
   String get _prefsSourceId => _sourceId ?? '';
 
-  /// Initial fetch. Emits loading then success/error for the current
-  /// [DetailState.category] (the per-title remembered choice, else 'sub').
+  /// Initial fetch. Catalog detail is always owned by its metadata catalog;
+  /// streaming providers are resolved lazily only by Play/Download.
   Future<void> load() async {
     emit(state.copyWith(status: DetailStatus.loading));
     try {
-      MediaDetail detail;
-
-      // TMDB/ThePornDB are metadata catalogs, not playback providers. Resolve
-      // them to a real installed provider while opening the detail page so a
-      // TV title immediately gets the provider's complete season/episode list.
-      // The repository tries the active provider first and only fans out to the
-      // remaining providers in parallel when that fast path misses.
-      final isCatalog = _sourceId == 'tmdb:catalog' ||
-          (_sourceId?.startsWith('tpdb:') ?? false);
-      if (isCatalog) {
-        final catalogItem = _catalogItem ??
-            MediaItem(
-              id: _catalogDetail?.id ?? _url,
-              title: _catalogDetail?.title ?? _url,
-              englishTitle: _catalogDetail?.englishTitle,
-              cover: _catalogDetail?.cover,
-              url: _url,
-              type: _catalogDetail?.type ?? ProviderType.movie,
-              sourceId: _sourceId!,
-              malId: _catalogDetail?.malId,
-              tmdbId: _catalogDetail?.tmdbId,
-              tmdbIsTv: _catalogDetail?.tmdbIsTv ?? false,
-            );
-        final resolved = await _repo.resolveCatalogTitle(
-          catalogItem,
-          category: state.category,
-        );
-        if (resolved != null) {
-          detail = resolved.detail;
-          // Keep richer catalog metadata when the streaming provider does not
-          // expose it itself, while preserving the provider's real episodes
-          // and playback identity.
-          if (_catalogDetail != null) {
-            detail = detail.copyWith(
-              cover: detail.cover ?? _catalogDetail!.cover,
-              description: detail.description ?? _catalogDetail!.description,
-              year: detail.year ?? _catalogDetail!.year,
-              genres: detail.genres.isEmpty ? _catalogDetail!.genres : detail.genres,
-              cast: detail.cast.isEmpty ? _catalogDetail!.cast : detail.cast,
-              tmdbId: detail.tmdbId ?? _catalogDetail!.tmdbId,
-              tmdbIsTv: detail.tmdbIsTv || _catalogDetail!.tmdbIsTv,
-              imdbId: detail.imdbId ?? _catalogDetail!.imdbId,
-            );
-          }
-        } else if (_catalogDetail != null) {
-          // Metadata remains useful even if no installed provider contains the
-          // title. Play/download will still report that no provider matched.
-          detail = _catalogDetail!;
-        } else {
-          throw StateError('No provider match for catalog title');
-        }
-      } else {
-        detail = await _repo.detail(
-          _url, category: state.category, sourceId: _sourceId,
-        );
-      }
-
-      emit(state.copyWith(status: DetailStatus.success, detail: detail, cast: detail.castMembers));
+      final detail = await _loadDetailForCurrentSource(state.category);
+      emit(state.copyWith(
+        status: DetailStatus.success,
+        detail: detail,
+        cast: detail.castMembers,
+        relations: detail.relations,
+      ));
       _enrich(detail);
     } catch (_) {
       emit(state.copyWith(status: DetailStatus.error, error: 'load_failed'));
     }
+  }
+
+  Future<MediaDetail> _loadDetailForCurrentSource(String category) async {
+    final isCatalog = _sourceId == 'tmdb:catalog' ||
+        (_sourceId?.startsWith('tpdb:') ?? false);
+    if (!isCatalog) {
+      return _repo.detail(_url, category: category, sourceId: _sourceId);
+    }
+
+    final catalogItem = _catalogItem ?? MediaItem(
+      id: _catalogDetail?.id ?? _url,
+      title: _catalogDetail?.title ?? _url,
+      englishTitle: _catalogDetail?.englishTitle,
+      cover: _catalogDetail?.cover,
+      url: _url,
+      type: _catalogDetail?.type ?? ProviderType.movie,
+      sourceId: _sourceId!,
+      tmdbId: _catalogDetail?.tmdbId,
+      tmdbIsTv: _catalogDetail?.tmdbIsTv ?? false,
+    );
+    if (_catalogDetail != null) return _catalogDetail!;
+
+    if (_sourceId == 'tmdb:catalog') {
+      return sl<TmdbDiscoverService>().movieDetail(catalogItem);
+    }
+    return sl<ThePornDb>().movieDetail(catalogItem);
   }
 
   /// Pull-to-refresh. Drops the source's HTTP cache first so the re-fetch is
@@ -221,32 +196,14 @@ class DetailCubit extends Cubit<DetailState> {
   Future<void> refresh() async {
     await _repo.clearHttpCache();
     try {
-      MediaDetail? detail;
-      final isCatalog = _sourceId == 'tmdb:catalog' ||
-          (_sourceId?.startsWith('tpdb:') ?? false);
-      if (isCatalog) {
-        final resolved = await _repo.resolveCatalogTitle(
-          _catalogItem ?? MediaItem(
-            id: _catalogDetail?.id ?? _url,
-            title: _catalogDetail?.title ?? _url,
-            englishTitle: _catalogDetail?.englishTitle,
-            cover: _catalogDetail?.cover,
-            url: _url,
-            type: _catalogDetail?.type ?? ProviderType.movie,
-            sourceId: _sourceId!,
-            tmdbId: _catalogDetail?.tmdbId,
-            tmdbIsTv: _catalogDetail?.tmdbIsTv ?? false,
-          ),
-          category: state.category,
-        );
-        detail = resolved?.detail;
-      } else {
-        detail = await _repo.detail(
-          _url, category: state.category, sourceId: _sourceId,
-        );
-      }
-      if (isClosed || detail == null) return;
-      emit(state.copyWith(status: DetailStatus.success, detail: detail));
+      final detail = await _loadDetailForCurrentSource(state.category);
+      if (isClosed) return;
+      emit(state.copyWith(
+        status: DetailStatus.success,
+        detail: detail,
+        cast: detail.castMembers,
+        relations: detail.relations,
+      ));
     } catch (_) {
       // Keep what's on screen — a failed pull shouldn't blank the page.
     }
@@ -271,7 +228,6 @@ class DetailCubit extends Cubit<DetailState> {
     // ANIME's Cast/Relations on the manga's own detail page.
     if (d.malId == null &&
         d.tmdbId == null &&
-        (d.imdbId == null || d.imdbId!.isEmpty) &&
         d.type == ProviderType.movie) {
       try {
         final id = await sl<MetadataEnrichment>().resolveTmdbId(
@@ -376,29 +332,10 @@ class DetailCubit extends Cubit<DetailState> {
     if (cat == state.category) return;
     emit(state.copyWith(category: cat, status: DetailStatus.loading));
     try {
-      MediaDetail? detail;
-      final isCatalog = _sourceId == 'tmdb:catalog' ||
-          (_sourceId?.startsWith('tpdb:') ?? false);
-      if (isCatalog) {
-        final resolved = await _repo.resolveCatalogTitle(
-          _catalogItem ?? MediaItem(
-            id: _catalogDetail?.id ?? _url,
-            title: _catalogDetail?.title ?? _url,
-            englishTitle: _catalogDetail?.englishTitle,
-            cover: _catalogDetail?.cover,
-            url: _url,
-            type: _catalogDetail?.type ?? ProviderType.movie,
-            sourceId: _sourceId!,
-            tmdbId: _catalogDetail?.tmdbId,
-            tmdbIsTv: _catalogDetail?.tmdbIsTv ?? false,
-          ),
-          category: cat,
-        );
-        detail = resolved?.detail;
-      } else {
-        detail = await _repo.detail(_url, category: cat, sourceId: _sourceId);
-      }
-      if (detail == null) throw StateError('No provider match');
+      // Catalog metadata is independent of audio category. Never replace the
+      // catalog detail with a provider detail just because Sub/Dub changed.
+      final detail = await _loadDetailForCurrentSource(cat);
+      if (isClosed) return;
       emit(state.copyWith(
         status: DetailStatus.success,
         detail: detail,
