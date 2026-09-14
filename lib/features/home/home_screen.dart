@@ -61,6 +61,8 @@ import '../../core/ui/states.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/reconnect.dart';
 import '../detail/detail_screen.dart';
+import '../people/person_page.dart';
+import '../../core/models/person.dart';
 import '../history/history_screen.dart';
 import '../player/player_screen.dart';
 import 'cubit/home_cubit.dart';
@@ -268,14 +270,10 @@ class _HomeViewState extends State<_HomeView>
     DetailTrailerContext? trailerContext,
   }) async {
     if (!mounted) return;
-    MediaDetail? catalogDetail;
-    if (item.sourceId == 'tmdb:catalog') {
-      try { catalogDetail = await sl<TmdbDiscoverService>().movieDetail(item); } catch (_) {}
-    } else if (item.sourceId == 'tpdb:catalog' && item.id.startsWith('tpdb:movie:')) {
-      try { catalogDetail = await sl<ThePornDb>().movieDetail(item); } catch (_) {}
-    }
-    if (!mounted) return;
-    await Navigator.push(context, DetailScreen.route(item, trailerContext: trailerContext, catalogDetail: catalogDetail));
+    // Open immediately. Catalog metadata is loaded progressively by DetailCubit;
+    // the detail page owns its catalog and must never block navigation on a
+    // full TPDB/TMDB response.
+    await Navigator.push(context, DetailScreen.route(item, trailerContext: trailerContext));
     if (mounted) setState(() {});
   }
 
@@ -606,13 +604,20 @@ class _HomeViewState extends State<_HomeView>
   /// Builds one provider-defined Home row. People/cast rows use PeopleCard;
   /// normal rows honor the user's Poster/Landscape/Adaptive card style.
   Future<void> _openPerformer(MediaItem performer) async {
-    _snack('Finding videos for ${performer.title}…');
-    final results = await _repo.searchAll(performer.title);
-    if (!mounted) return;
-    if (results.isEmpty) { _snack('No provider videos found for ${performer.title}'); return; }
-    Navigator.push(context, MaterialPageRoute(builder: (_) => SeeAllScreen(
-      title: performer.title, items: results, onTap: _openDetail, onLongPress: _showInfo,
-    )));
+    final raw = performer.id.replaceFirst('tpdb:performer:', '');
+    final numeric = int.tryParse(raw) ?? 0;
+    await Navigator.of(context).push(
+      PersonPage.route(
+        PersonRef(
+          id: numeric,
+          externalId: raw,
+          source: PersonSource.thePornDbPerformer,
+          name: performer.title,
+          photo: performer.cover,
+        ),
+        sourceId: performer.sourceId,
+      ),
+    );
   }
 
   void _snack(String msg) {
@@ -637,7 +642,18 @@ class _HomeViewState extends State<_HomeView>
           onSeeAll: () => _openSeeAll(section),
           onTap: (item) {
             if (item.sourceId == 'tpdb:performer') {
-              _openPerformer(item);
+              final raw = item.id.replaceFirst('tpdb:performer:', '');
+              final numeric = int.tryParse(raw) ?? 0;
+              Navigator.of(context).push(PersonPage.route(
+                PersonRef(
+                  id: numeric,
+                  externalId: raw,
+                  source: PersonSource.thePornDbPerformer,
+                  name: item.title,
+                  photo: item.cover,
+                ),
+                sourceId: item.sourceId,
+              ));
             } else if (item.sourceId == 'tpdb:studio') {
               launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
             } else {
@@ -768,10 +784,18 @@ class _HomeViewState extends State<_HomeView>
         builder: (_) => SeeAllScreen(
           title: section.title,
           items: section.items,
-          onTap: (item) => _openDetail(
-            item,
-            trailerContext: _trailerContextForSection(section),
-          ),
+          onTap: (item) {
+            if (item.sourceId == 'tpdb:performer') {
+              _openPerformer(item);
+            } else if (item.sourceId == 'tpdb:studio') {
+              launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
+            } else {
+              _openDetail(
+                item,
+                trailerContext: _trailerContextForSection(section),
+              );
+            }
+          },
           onLongPress: _showInfo,
           // Only paginable rows (Aniyomi popular/latest, CloudStream mainPage)
           // carry a `more` descriptor; everything else stays a fixed list.

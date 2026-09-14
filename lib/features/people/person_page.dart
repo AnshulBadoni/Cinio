@@ -56,13 +56,33 @@ class _PersonPageState extends State<PersonPage> {
     _snack('Finding “${w.title}”…');
     try {
       if (widget.person.source == PersonSource.thePornDbPerformer) {
-        final results = await sl<ThePornDb>().search(w.title);
-        if (!mounted) return;
-        final match = results.isEmpty ? null : results.first;
+        // Performer works are TPDB-owned. Prefer the source-native movie id so
+        // a similarly named movie can never replace the one in the performer
+        // profile. Title search is only the fallback for older API rows without
+        // an id.
+        MediaItem? match;
+        if (w.catalogId != null && w.catalogId!.isNotEmpty) {
+          match = MediaItem(
+            id: 'tpdb:movie:${w.catalogId}',
+            title: w.title,
+            cover: w.cover,
+            url: 'tpdb://movie/${w.catalogId}',
+            type: ProviderType.movie,
+            sourceId: 'tpdb:catalog',
+          );
+        } else {
+          final results = await sl<ThePornDb>().search(w.title);
+          if (!mounted) return;
+          final wanted = normalizeTitle(w.title);
+          for (final candidate in results) {
+            if (normalizeTitle(candidate.title) == wanted) {
+              match = candidate;
+              break;
+            }
+          }
+        }
         if (match == null) { _snack('“${w.title}” isn’t in ThePornDB'); return; }
-        final catalogDetail = await sl<ThePornDb>().movieDetail(match);
-        if (!mounted) return;
-        Navigator.of(context).push(DetailScreen.route(match, catalogDetail: catalogDetail));
+        Navigator.of(context).push(DetailScreen.route(match));
         return;
       }
       final results = await sl<SourceRepository>().search(w.title, sourceId: widget.sourceId);

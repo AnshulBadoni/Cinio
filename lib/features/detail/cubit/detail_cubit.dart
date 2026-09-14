@@ -106,6 +106,13 @@ class DetailCubit extends Cubit<DetailState> {
        // flash from 'sub' → remembered). Falls back to 'sub' when unset.
        super(
          DetailState(
+           // Catalog details render immediately from the tapped card. The full
+           // catalog response is fetched in the background and replaces this
+           // lightweight shell, so TPDB/TMDB latency never blocks navigation.
+           status: catalogDetail != null || catalogItem != null
+               ? DetailStatus.success
+               : DetailStatus.loading,
+           detail: catalogDetail ?? _shellDetail(catalogItem, sourceId, url),
            category:
                (prefs ?? sl<TitlePrefsStore>()).category(sourceId ?? '', url) ??
                'sub',
@@ -143,10 +150,40 @@ class DetailCubit extends Cubit<DetailState> {
   /// owning source is unknown (active-source title) — robust, never throws.
   String get _prefsSourceId => _sourceId ?? '';
 
+  static MediaDetail? _shellDetail(
+    MediaItem? item,
+    String? sourceId,
+    String url,
+  ) {
+    if (item == null || sourceId == null) return null;
+    final isTmdb = sourceId == 'tmdb:catalog';
+    final isTpdb = sourceId == 'tpdb:catalog';
+    if (!isTmdb && !isTpdb) return null;
+    return MediaDetail(
+      id: item.id,
+      title: item.title,
+      englishTitle: item.englishTitle,
+      cover: item.cover,
+      coverHeaders: item.coverHeaders,
+      url: url,
+      type: item.type,
+      sourceId: sourceId,
+      genres: item.genres,
+      tmdbId: item.tmdbId,
+      tmdbIsTv: item.tmdbIsTv,
+      episodes: item.type == ProviderType.movie && !item.tmdbIsTv
+          ? [Episode(id: item.id, title: item.title, number: 1, url: item.url)]
+          : const [],
+      isSeries: item.tmdbIsTv,
+    );
+  }
+
   /// Initial fetch. Catalog detail is always owned by its metadata catalog;
   /// streaming providers are resolved lazily only by Play/Download.
   Future<void> load() async {
-    emit(state.copyWith(status: DetailStatus.loading));
+    if (state.detail == null) {
+      emit(state.copyWith(status: DetailStatus.loading));
+    }
     try {
       final detail = await _loadDetailForCurrentSource(state.category);
       emit(state.copyWith(

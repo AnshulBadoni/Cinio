@@ -47,7 +47,7 @@ class ThePornDb {
     if (rows is! List) return const [];
     return [
       for (final row in rows)
-        if (row is Map) _movie(row),
+        if (row is Map && !_isExcludedMovie(row)) _movie(row),
     ];
   }
 
@@ -79,7 +79,7 @@ class ThePornDb {
     String orderBy = 'MOST_RELEVANT',
     String? query,
   }) async {
-    final data = await _get('/performers', queryParameters: {
+    var data = await _get('/performers', queryParameters: {
       'page': page,
       'per_page': 100,
       'orderBy': orderBy,
@@ -88,7 +88,18 @@ class ThePornDb {
       'age_operation': '<',
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
     });
-    final rows = data['data'];
+    var rows = data['data'];
+    if (rows is! List || rows.isEmpty) {
+      data = await _get('/performers', queryParameters: {
+        'page': page,
+        'per_page': 100,
+        'gender': 'female',
+        'age': 50,
+        'age_operation': '<',
+        if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      });
+      rows = data['data'];
+    }
     if (rows is! List) return const [];
     return [
       for (final row in rows)
@@ -102,12 +113,19 @@ class ThePornDb {
   }
 
   Future<List<MediaItem>> studios({int page = 1}) async {
-    final data = await _get('/sites', queryParameters: {
+    var data = await _get('/sites', queryParameters: {
       'page': page,
       'per_page': 24,
       'orderBy': 'MOST_RELEVANT',
     });
-    final rows = data['data'];
+    var rows = data['data'];
+    if (rows is! List || rows.isEmpty) {
+      data = await _get('/sites', queryParameters: {
+        'page': page,
+        'per_page': 24,
+      });
+      rows = data['data'];
+    }
     if (rows is! List) return const [];
     return [
       for (final row in rows)
@@ -127,11 +145,13 @@ class ThePornDb {
       _safe(() => _topRated(1)),
       _safe(() => studios()),
     ]);
+    // Keep content rows first; people/studio rows belong after the movie rows.
+    // This also prevents Actors from becoming the Home hero carousel source.
     return [
-      HomeSection(title: 'Actors', items: results[0], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_performers')),
       HomeSection(title: 'Recent', items: results[1], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_recent')),
       HomeSection(title: 'Popular', items: results[2], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_popular')),
       HomeSection(title: 'Top Rated', items: results[3], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_top_rated')),
+      HomeSection(title: 'Actors', items: results[0], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_performers')),
       HomeSection(title: 'Studio', items: results[4], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_studios')),
     ].where((section) => section.items.isNotEmpty).toList();
   }
@@ -155,8 +175,16 @@ class ThePornDb {
 
   Future<MediaDetail> movieDetail(MediaItem item) async {
     final rawId = item.id.replaceFirst('tpdb:movie:', '');
-    final data = await _get('/movies/$rawId');
-    final row = data['data'] is Map ? Map<String,dynamic>.from(data['data'] as Map) : data;
+    // The primary movie payload and recommendations are independent. Fetch them
+    // together so Relations never blocks the initial metadata response.
+    final results = await Future.wait([
+      _get('/movies/$rawId'),
+      _get('/movies/$rawId/similar').catchError((_) => <String, dynamic>{}),
+    ]);
+    final data = results[0];
+    final row = data['data'] is Map
+        ? Map<String, dynamic>.from(data['data'] as Map)
+        : data;
     final performers = row['performers'];
     final cast = <String>[];
     final members = <CastMember>[];
@@ -165,53 +193,62 @@ class ThePornDb {
         if (p is! Map) continue;
         final name = (p['name'] ?? p['full_name'])?.toString();
         if (name == null || name.isEmpty) continue;
-        final pid = int.tryParse('${p['id'] ?? p['_id'] ?? p['slug']}');
+        final rawPid = (p['id'] ?? p['_id'] ?? p['uuid'] ?? p['slug'])?.toString();
+        final pid = int.tryParse(rawPid ?? '');
         final photo = (p['image'] ?? p['thumbnail'] ?? p['face'])?.toString();
         cast.add(name);
         members.add(CastMember(
           name: name,
           role: null,
           photo: photo,
-          person: pid == null ? null : PersonRef(
-            id: pid,
-            source: PersonSource.thePornDbPerformer,
-            name: name,
-            photo: photo,
-          ),
+          person: rawPid == null || rawPid.isEmpty
+              ? null
+              : PersonRef(
+                  id: pid ?? 0,
+                  externalId: rawPid,
+                  source: PersonSource.thePornDbPerformer,
+                  name: name,
+                  photo: photo,
+                ),
         ));
       }
     }
     final title = (row['title'] ?? row['name'] ?? item.title).toString();
-    final ep = Episode(id: 'tpdb:movie:$rawId', title: title, number: 1, url: 'tpdb://movie/$rawId');
+    final ep = Episode(
+      id: 'tpdb:movie:$rawId',
+      title: title,
+      number: 1,
+      url: 'tpdb://movie/$rawId',
+    );
     final relations = <MediaRelation>[];
-    try {
-      final similar = await _get('/movies/$rawId/similar');
-      final rows = similar['data'];
-      if (rows is List) {
-        for (final r in rows.take(20)) {
-          if (r is! Map) continue;
-          final rid = (r['id'] ?? r['_id'] ?? r['uuid'] ?? r['slug'])?.toString();
-          final rtitle = (r['title'] ?? r['name'])?.toString();
-          if (rid == null || rtitle == null || rtitle.isEmpty) continue;
-          relations.add(MediaRelation(
-            title: rtitle,
-            cover: _firstImage(r),
-            relation: 'Recommended',
-            sourceId: 'tpdb:catalog',
-            catalogId: rid,
-          ));
-        }
+    final similar = results[1];
+    final similarRows = similar['data'];
+    if (similarRows is List) {
+      for (final r in similarRows.take(20)) {
+        if (r is! Map || _isExcludedMovie(r)) continue;
+        final rid = (r['id'] ?? r['_id'] ?? r['uuid'] ?? r['slug'])?.toString();
+        final rtitle = (r['title'] ?? r['name'])?.toString();
+        if (rid == null || rtitle == null || rtitle.isEmpty) continue;
+        relations.add(MediaRelation(
+          title: rtitle,
+          cover: _firstImage(r),
+          relation: 'Recommended',
+          sourceId: 'tpdb:catalog',
+          catalogId: rid,
+        ));
       }
-    } catch (_) {}
+    }
     return MediaDetail(
       id: item.id,
       title: title,
-      cover: item.cover,
+      cover: _firstImage(row) ?? item.cover,
       url: item.url,
       description: row['description']?.toString() ?? row['synopsis']?.toString(),
-      year: _year(row['release_date']),
+      year: _year(row['release_date'] ?? row['date']),
       type: ProviderType.movie,
       sourceId: 'tpdb:catalog',
+      genres: _names(row['tags'] ?? row['genres']),
+      studios: _studioNames(row),
       cast: cast,
       castMembers: members,
       relations: relations,
@@ -289,6 +326,55 @@ class ThePornDb {
       for (final item in value)
         if (item is Map && item['name'] != null) item['name'].toString(),
     ];
+  }
+
+  List<String> _studioNames(Map row) {
+    final raw = row['site'] ?? row['studio'] ?? row['studios'];
+    if (raw is Map) {
+      final n = raw['name']?.toString();
+      return n == null || n.isEmpty ? const [] : [n];
+    }
+    if (raw is List) {
+      return [
+        for (final v in raw)
+          if (v is Map && v['name'] != null) v['name'].toString()
+          else if (v != null && v.toString().isNotEmpty) v.toString(),
+      ];
+    }
+    return raw == null || raw.toString().isEmpty ? const [] : [raw.toString()];
+  }
+
+  bool _isExcludedMovie(Map row) {
+    final values = <String>[];
+    void collect(dynamic value) {
+      if (value is List) {
+        for (final v in value) collect(v);
+      } else if (value is Map) {
+        for (final key in ['name', 'title', 'label', 'slug']) {
+          final v = value[key];
+          if (v != null) values.add(v.toString().toLowerCase());
+        }
+      } else if (value != null) {
+        values.add(value.toString().toLowerCase());
+      }
+    }
+    collect(row['tags']);
+    collect(row['genres']);
+    collect(row['categories']);
+    final text = values.join(' | ');
+    // Explicit TPDB metadata only. Do not infer orientation from performer
+    // names/gender; exclude titles tagged as non-straight/trans content.
+    const blocked = [
+      'gay', 'lesbian', 'bisexual', 'transgender', 'transsexual',
+      'trans woman', 'trans man', 'transwoman', 'transman', 'shemale',
+      'femboy', 'crossdresser', 'cross dresser', 'nonbinary', 'non-binary',
+    ];
+    return blocked.any((term) {
+      if (term == 'gay' || term == 'transgender' || term == 'transsexual') {
+        return RegExp(r'(^|[^a-z])' + RegExp.escape(term) + r'([^a-z]|$)').hasMatch(text);
+      }
+      return text.contains(term);
+    });
   }
 
   double _rating(MediaItem item) => item.rating ?? 0;

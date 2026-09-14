@@ -25,12 +25,12 @@ class PeopleService {
       case PersonSource.tmdb:
         return _tmdbPerson(ref.id);
       case PersonSource.thePornDbPerformer:
-        return _tpdbPerformer(ref.id);
+        return _tpdbPerformer(ref.externalId ?? ref.id.toString());
     }
   }
 
 
-  Future<PersonProfile?> _tpdbPerformer(int id) async {
+  Future<PersonProfile?> _tpdbPerformer(String id) async {
     try {
       final res = await _dio.get<dynamic>(
         '$_tpdbBase/performers/$id',
@@ -58,6 +58,7 @@ class PeopleService {
             works.add(PersonWork(
               title: title,
               cover: _tpdbImage(m),
+              catalogId: (m['id'] ?? m['_id'] ?? m['uuid'] ?? m['slug'])?.toString(),
             ));
           }
         }

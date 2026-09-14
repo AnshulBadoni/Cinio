@@ -579,9 +579,8 @@ class _DetailViewState extends State<_DetailView>
           type: ProviderType.movie,
           sourceId: 'tpdb:catalog',
         );
-        final catalogDetail = await sl<ThePornDb>().movieDetail(related);
         if (!mounted) return;
-        Navigator.of(context).push(DetailScreen.route(related, catalogDetail: catalogDetail));
+        Navigator.of(context).push(DetailScreen.route(related));
         return;
       }
 
@@ -1557,7 +1556,8 @@ class _DetailViewState extends State<_DetailView>
     // affect the detail screen's rendering/scroll. Skipped for reading types
     // — prefetch resolves VIDEO sources, and merely opening a manga/novel
     // detail must never fire that against a chapter URL.
-    if (!isReading && eps.isNotEmpty) {
+    if (!isReading && eps.isNotEmpty &&
+        !(item.sourceId == 'tmdb:catalog' || item.sourceId == 'tpdb:catalog')) {
       _maybePrefetch(eps[resumeIdx].url, item.sourceId);
     }
     final hasAnyMark = eps.any(

@@ -13,6 +13,7 @@ class PersonRef extends Equatable {
     required this.source,
     required this.name,
     this.photo,
+    this.externalId,
   });
 
   final int id;
@@ -24,8 +25,12 @@ class PersonRef extends Equatable {
   /// Shown as the hero image while the full profile loads.
   final String? photo;
 
+  /// Source-native string id for catalogs whose identifiers are not integers.
+  /// TPDB performers commonly use string/UUID-like identifiers.
+  final String? externalId;
+
   @override
-  List<Object?> get props => [id, source, name, photo];
+  List<Object?> get props => [id, source, name, photo, externalId];
 }
 
 /// A fully-loaded person profile shown on the person page.
@@ -71,6 +76,7 @@ class PersonWork extends Equatable {
     this.cover,
     this.subtitle,
     this.malId,
+    this.catalogId,
   });
 
   final String title;
@@ -87,6 +93,9 @@ class PersonWork extends Equatable {
   /// on the source. Null for TMDB works (matched by title instead).
   final int? malId;
 
+  /// Catalog-native id for source-owned works (e.g. ThePornDB movie id).
+  final String? catalogId;
+
   @override
-  List<Object?> get props => [title, romaji, cover, subtitle, malId];
+  List<Object?> get props => [title, romaji, cover, subtitle, malId, catalogId];
 }
