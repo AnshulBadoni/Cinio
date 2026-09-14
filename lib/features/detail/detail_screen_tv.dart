@@ -30,7 +30,8 @@ class DetailScreenTv extends StatefulWidget {
 
 class _DetailScreenTvState extends State<DetailScreenTv> {
   int _tab = 0;
-  static const _tabLabels = ['Episodes', 'Cast', 'Relations', 'Details'];
+  static const _seriesTabLabels = ['Episodes', 'Cast', 'Relations', 'Details'];
+  static const _movieTabLabels = ['Cast', 'Relations', 'Details'];
 
   // Episode search. The query is typed in a DIALOG (opened from the left-pane
   // button) rather than an inline TextField: a focused TextField eats the
@@ -461,6 +462,9 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     final item = widget.item;
     final category = state.category;
     final eps = detail.episodes;
+    final showEpisodesTab = detail.isSeries;
+    final tabLabels = showEpisodesTab ? _seriesTabLabels : _movieTabLabels;
+    if (_tab >= tabLabels.length) _tab = tabLabels.length - 1;
     final store = sl<ResumeStore>();
     // Kick the (cached, once-per-malId) filler lookup for the FILLER badge.
     _ensureFiller(detail.malId ?? item.malId);
@@ -508,7 +512,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     if ((detail.year ?? '').isNotEmpty) metaParts.add(detail.year!);
     if (hasMultipleSeasons) {
       metaParts.add('${seasonSet.length} Seasons');
-    } else if (eps.isNotEmpty) {
+    } else if (eps.isNotEmpty && detail.isSeries) {
       metaParts.add('${eps.length} Episode${eps.length == 1 ? '' : 's'}');
     }
     if (statusStr.isNotEmpty) metaParts.add(statusStr);
@@ -628,11 +632,8 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                   ),
                                 ),
                                 const SizedBox(height: 10),
-                                // Episode search — under Play/Download (tester
-                                // request). Opens the type-dialog; the active
-                                // query shows on the label so it's obvious a
-                                // filter is applied.
-                                TvFocusable(
+                                // Episode search is only meaningful for episodic titles.
+                                if (showEpisodesTab) TvFocusable(
                                   key: const ValueKey('tv-detail-ep-search'),
                                   variant: TvFocusVariant.pill,
                                   onTap: _openEpisodeSearch,
@@ -717,21 +718,21 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                             padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
                             child: Row(
                               children: [
-                                for (int i = 0; i < _tabLabels.length; i++)
+                                for (int i = 0; i < tabLabels.length; i++)
                                   Padding(
                                     padding: const EdgeInsets.only(right: 4),
                                     child: TvFocusable(
                                       key: ValueKey('tv-detail-tab-$i'),
                                       variant: TvFocusVariant.pill,
                                       onTap: () => setState(() => _tab = i),
-                                      semanticLabel: _tabLabels[i],
+                                      semanticLabel: tabLabels[i],
                                       builder: (focused) => Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                         // Excluded — semanticLabel above
                                         // already announces the tab name.
                                         child: ExcludeSemantics(
                                           child: Text(
-                                            _tabLabels[i],
+                                            tabLabels[i],
                                             style: AppText.headline.copyWith(
                                               fontSize: 15,
                                               // Active tab reads from bright
@@ -757,7 +758,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                             index: _tab,
                             children: [
                               // ── Episodes ──────────────────────────────────────
-                              _TvEpisodeList(
+                              if (showEpisodesTab) _TvEpisodeList(
                                 key: const ValueKey('tv-detail-episodes'),
                                 eps: eps,
                                 seasonEps: seasonEps,
@@ -793,6 +794,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 genres: detail.genres,
                                 studios: detail.studios,
                                 episodeCount: eps.length,
+                                showEpisodeCount: showEpisodesTab,
                                 year: detail.year,
                                 description: detail.description,
                               ),

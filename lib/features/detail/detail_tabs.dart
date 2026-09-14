@@ -278,6 +278,7 @@ class _DetailsTab extends StatelessWidget {
     required this.year,
     required this.description,
     this.reading = false,
+    this.showEpisodeCount = true,
   });
 
   final String sourceName;
@@ -290,6 +291,7 @@ class _DetailsTab extends StatelessWidget {
 
   /// Manga/novel: the count row reads "Chapters". Display wording only.
   final bool reading;
+  final bool showEpisodeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -301,9 +303,10 @@ class _DetailsTab extends StatelessWidget {
           _DetailRow(label: 'Source', value: sourceName),
         if (statusStr.isNotEmpty) _DetailRow(label: 'Status', value: statusStr),
         if ((year ?? '').isNotEmpty) _DetailRow(label: 'Year', value: year!),
-        _DetailRow(
-            label: reading ? 'Chapters' : 'Episodes',
-            value: '$episodeCount'),
+        if (showEpisodeCount)
+          _DetailRow(
+              label: reading ? 'Chapters' : 'Episodes',
+              value: '$episodeCount'),
         if (studios.isNotEmpty)
           _DetailRow(label: 'Studio', value: studios.join(', ')),
         if (genres.isNotEmpty) ...[

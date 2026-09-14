@@ -257,10 +257,20 @@ class _DetailViewState extends State<_DetailView>
   late final ScrollController _scrollController = ScrollController()
     ..addListener(_onScroll);
 
-  late final TabController _tabController = TabController(
-    length: 4,
-    vsync: this,
-  );
+  late TabController _tabController;
+  bool _tabShowsEpisodes = true;
+
+  void _configureTabController(bool showEpisodes) {
+    if (_tabShowsEpisodes == showEpisodes && _tabController.length == (showEpisodes ? 4 : 3)) return;
+    final oldIndex = _tabController.index;
+    _tabController.dispose();
+    _tabShowsEpisodes = showEpisodes;
+    _tabController = TabController(
+      length: showEpisodes ? 4 : 3,
+      vsync: this,
+      initialIndex: (showEpisodes ? oldIndex.clamp(0, 3) : oldIndex.clamp(0, 2)).toInt(),
+    );
+  }
 
   // ── My List (status-organised library) ────────────────────────────────────
   final MyListStore _myList = sl<MyListStore>();
@@ -315,6 +325,14 @@ class _DetailViewState extends State<_DetailView>
   @override
   void initState() {
     super.initState();
+    _tabShowsEpisodes = widget.item.type == ProviderType.anime ||
+        widget.item.type == ProviderType.manga ||
+        widget.item.type == ProviderType.novel ||
+        widget.item.tmdbIsTv;
+    _tabController = TabController(
+      length: _tabShowsEpisodes ? 4 : 3,
+      vsync: this,
+    );
     // Discord Rich Presence: "Looking at <title>" while this detail is open.
     if (sl.isRegistered<DiscordRpc>()) {
       sl<DiscordRpc>().setBrowsing(
@@ -1405,6 +1423,12 @@ class _DetailViewState extends State<_DetailView>
     final category = state.category;
     final selectedSeason = state.selectedSeason;
     final eps = detail.episodes;
+    final showEpisodesTab = isReading || detail.isSeries;
+    if (_tabShowsEpisodes != showEpisodesTab) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _configureTabController(showEpisodesTab));
+      });
+    }
     final store = sl<ResumeStore>();
     // Manga/novel: no player, no sub/dub, no video downloads — drives the
     // Play→Read relabel and hides the download affordances below.
@@ -1654,7 +1678,7 @@ class _DetailViewState extends State<_DetailView>
                 text: detail.description!,
                 // "Read more" reveals the Details tab (full synopsis) rather
                 // than expanding inline; the header stays clamped to 3 lines.
-                onReadMore: () => _revealTab(3),
+                onReadMore: () => _revealTab(showEpisodesTab ? 3 : 2),
               ),
             ),
           ),
@@ -1673,7 +1697,7 @@ class _DetailViewState extends State<_DetailView>
                       value: starring,
                       more: starringMore,
                       // Tapping the line (or its "… more") reveals the Cast tab.
-                      onMore: starringMore ? () => _revealTab(1) : null,
+                      onMore: starringMore ? () => _revealTab(showEpisodesTab ? 1 : 0) : null,
                     ),
                   if (genresLine != null)
                     _CreditLine(label: 'Genres', value: genresLine),
@@ -1788,7 +1812,7 @@ class _DetailViewState extends State<_DetailView>
                 fontWeight: FontWeight.w500,
               ),
               tabs: [
-                Tab(text: isReading ? 'Chapters' : 'Episodes'),
+                if (showEpisodesTab) Tab(text: isReading ? 'Chapters' : 'Episodes'),
                 // "Cast" means voice actors on an anime; on a manga the tab
                 // holds its author, artist and characters, so it says so.
                 Tab(text: isReading ? 'Characters' : 'Cast'),
@@ -1803,7 +1827,7 @@ class _DetailViewState extends State<_DetailView>
         controller: _tabController,
         children: [
           // ── Episodes ──────────────────────────────────────────────────────
-          _EpisodesTab(
+          if (showEpisodesTab) _EpisodesTab(
             eps: eps,
             seasonEps: seasonEps,
             fillerEps: _fillerEps,
