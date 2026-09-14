@@ -39,7 +39,7 @@ class ThePornDb {
   }) async {
     final data = await _get('/movies', queryParameters: {
       'page': page,
-      'per_page': 24,
+      'per_page': 16,
       'orderBy': orderBy,
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
     });
@@ -81,7 +81,7 @@ class ThePornDb {
   }) async {
     var data = await _get('/performers', queryParameters: {
       'page': page,
-      'per_page': 100,
+      'per_page': 48,
       'orderBy': orderBy,
       'gender': 'FEMALE',
       'age': 50,
@@ -92,7 +92,7 @@ class ThePornDb {
     if (rows is! List || rows.isEmpty) {
       data = await _get('/performers', queryParameters: {
         'page': page,
-        'per_page': 100,
+        'per_page': 48,
         'gender': 'female',
         'age': 50,
         'age_operation': '<',
@@ -108,8 +108,18 @@ class ThePornDb {
   }
 
   bool _qualifiesAsActor(Map row) {
-    final rating = (row['rating'] as num?)?.toDouble();
-    return rating != null && rating > 4.0;
+    final rating = double.tryParse('${row['rating'] ?? row['score'] ?? ''}');
+    final extras = row['extras'];
+    final gender = '${row['gender'] ?? (extras is Map ? extras['gender'] : '')}'.toUpperCase();
+    final birthday = row['birthday'] ?? (extras is Map ? extras['birthday'] : null);
+    final age = double.tryParse('${row['age'] ?? (extras is Map ? extras['age'] : '')}');
+    final born = birthday?.toString();
+    final derivedAge = age ?? (born != null && born.length >= 4
+        ? (DateTime.now().year - (int.tryParse(born.substring(0, 4)) ?? DateTime.now().year)).toDouble()
+        : null);
+    return rating != null && rating > 4.0 &&
+        (gender.isEmpty || gender == 'FEMALE') &&
+        (derivedAge == null || derivedAge < 50);
   }
 
   Future<List<MediaItem>> studios({int page = 1}) async {
@@ -156,6 +166,27 @@ class ThePornDb {
     ].where((section) => section.items.isNotEmpty).toList();
   }
 
+  Future<HomeSection?> homeSection(String kind) async {
+    final items = switch (kind) {
+      'tpdb_recent' => await movies(orderBy: 'recently_released'),
+      'tpdb_popular' => await movies(orderBy: 'most_relevant'),
+      'tpdb_top_rated' => await _topRated(1),
+      'tpdb_performers' => await performers(),
+      'tpdb_studios' => await studios(),
+      _ => const <MediaItem>[],
+    };
+    if (items.isEmpty) return null;
+    final title = switch (kind) {
+      'tpdb_recent' => 'Recent',
+      'tpdb_popular' => 'Popular',
+      'tpdb_top_rated' => 'Top Rated',
+      'tpdb_performers' => 'Actors',
+      'tpdb_studios' => 'Studio',
+      _ => '',
+    };
+    return HomeSection(title: title, items: items, more: BrowseMore(sourceId: 'tpdb:catalog', kind: kind));
+  }
+
   Future<List<MediaItem>> _safe(Future<List<MediaItem>> Function() loader) async {
     try { return await loader(); } catch (_) { return const []; }
   }
@@ -175,13 +206,7 @@ class ThePornDb {
 
   Future<MediaDetail> movieDetail(MediaItem item) async {
     final rawId = item.id.replaceFirst('tpdb:movie:', '');
-    // The primary movie payload and recommendations are independent. Fetch them
-    // together so Relations never blocks the initial metadata response.
-    final results = await Future.wait([
-      _get('/movies/$rawId'),
-      _get('/movies/$rawId/similar').catchError((_) => <String, dynamic>{}),
-    ]);
-    final data = results[0];
+    final data = await _get('/movies/$rawId');
     final row = data['data'] is Map
         ? Map<String, dynamic>.from(data['data'] as Map)
         : data;
@@ -193,24 +218,24 @@ class ThePornDb {
         if (p is! Map) continue;
         final name = (p['name'] ?? p['full_name'])?.toString();
         if (name == null || name.isEmpty) continue;
-        final rawPid = (p['id'] ?? p['_id'] ?? p['uuid'] ?? p['slug'])?.toString();
-        final pid = int.tryParse(rawPid ?? '');
+        final rawPid = (p['id'] ?? p['uuid'] ?? p['_id'] ?? p['slug'])?.toString();
         final photo = (p['image'] ?? p['thumbnail'] ?? p['face'])?.toString();
         cast.add(name);
-        members.add(CastMember(
-          name: name,
-          role: null,
-          photo: photo,
-          person: rawPid == null || rawPid.isEmpty
-              ? null
-              : PersonRef(
-                  id: pid ?? 0,
-                  externalId: rawPid,
-                  source: PersonSource.thePornDbPerformer,
-                  name: name,
-                  photo: photo,
-                ),
-        ));
+        if (rawPid != null && rawPid.isNotEmpty) {
+          members.add(CastMember(
+            name: name,
+            photo: photo,
+            person: PersonRef(
+              id: int.tryParse(p['_id']?.toString() ?? '') ?? 0,
+              externalId: rawPid,
+              source: PersonSource.thePornDbPerformer,
+              name: name,
+              photo: photo,
+            ),
+          ));
+        } else {
+          members.add(CastMember(name: name, photo: photo));
+        }
       }
     }
     final title = (row['title'] ?? row['name'] ?? item.title).toString();
@@ -219,25 +244,10 @@ class ThePornDb {
       title: title,
       number: 1,
       url: 'tpdb://movie/$rawId',
+      description: row['description']?.toString() ?? row['synopsis']?.toString(),
+      rating: double.tryParse('${row['rating'] ?? ''}'),
+      date: row['date']?.toString() ?? row['release_date']?.toString(),
     );
-    final relations = <MediaRelation>[];
-    final similar = results[1];
-    final similarRows = similar['data'];
-    if (similarRows is List) {
-      for (final r in similarRows.take(20)) {
-        if (r is! Map || _isExcludedMovie(r)) continue;
-        final rid = (r['id'] ?? r['_id'] ?? r['uuid'] ?? r['slug'])?.toString();
-        final rtitle = (r['title'] ?? r['name'])?.toString();
-        if (rid == null || rtitle == null || rtitle.isEmpty) continue;
-        relations.add(MediaRelation(
-          title: rtitle,
-          cover: _firstImage(r),
-          relation: 'Recommended',
-          sourceId: 'tpdb:catalog',
-          catalogId: rid,
-        ));
-      }
-    }
     return MediaDetail(
       id: item.id,
       title: title,
@@ -251,7 +261,6 @@ class ThePornDb {
       studios: _studioNames(row),
       cast: cast,
       castMembers: members,
-      relations: relations,
       episodes: [ep],
     );
   }

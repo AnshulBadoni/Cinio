@@ -36,6 +36,7 @@ class DetailState extends Equatable {
     this.error,
     this.cast = const [],
     this.relations = const [],
+    this.extrasLoading = false,
   });
 
   final DetailStatus status;
@@ -45,6 +46,7 @@ class DetailState extends Equatable {
   /// loads (AniList for anime, TMDB for movie/TV). Empty until resolved.
   final List<CastMember> cast;
   final List<MediaRelation> relations;
+  final bool extrasLoading;
 
   /// 'sub' | 'dub'. Drives the Sub/Dub toggle and the player `category`.
   final String category;
@@ -61,6 +63,7 @@ class DetailState extends Equatable {
     String? error,
     List<CastMember>? cast,
     List<MediaRelation>? relations,
+    bool? extrasLoading,
   }) => DetailState(
     status: status ?? this.status,
     detail: detail ?? this.detail,
@@ -70,6 +73,7 @@ class DetailState extends Equatable {
     error: error ?? this.error,
     cast: cast ?? this.cast,
     relations: relations ?? this.relations,
+    extrasLoading: extrasLoading ?? this.extrasLoading,
   );
 
   @override
@@ -82,6 +86,7 @@ class DetailState extends Equatable {
     error,
     cast,
     relations,
+    extrasLoading,
   ];
 }
 
@@ -191,10 +196,15 @@ class DetailCubit extends Cubit<DetailState> {
         detail: detail,
         cast: detail.castMembers,
         relations: detail.relations,
+        extrasLoading: _sourceId == 'tmdb:catalog' || _sourceId == 'tpdb:catalog',
       ));
-      _enrich(detail);
+      unawaited(_enrich(detail));
     } catch (_) {
-      emit(state.copyWith(status: DetailStatus.error, error: 'load_failed'));
+      if (state.detail != null) {
+        emit(state.copyWith(status: DetailStatus.success, extrasLoading: false, error: 'load_failed'));
+      } else {
+        emit(state.copyWith(status: DetailStatus.error, error: 'load_failed'));
+      }
     }
   }
 
@@ -250,7 +260,26 @@ class DetailCubit extends Cubit<DetailState> {
   /// movie/TV) and merge into state. Best-effort — failures leave the tabs in
   /// their empty state. Runs once per title; Sub/Dub switches keep the result.
   Future<void> _enrich(MediaDetail detail) async {
-    if (state.cast.isNotEmpty || state.relations.isNotEmpty) return;
+    if (detail.sourceId == 'tpdb:catalog') {
+      try {
+        final extras = await sl<MetadataEnrichment>().fetch(detail);
+        if (isClosed) return;
+        emit(state.copyWith(
+          cast: extras.cast.isNotEmpty ? extras.cast : detail.castMembers,
+          relations: extras.relations.isNotEmpty ? extras.relations : detail.relations,
+          extrasLoading: false,
+        ));
+      } catch (_) {
+        if (!isClosed) {
+          emit(state.copyWith(cast: detail.castMembers, relations: detail.relations, extrasLoading: false));
+        }
+      }
+      return;
+    }
+    if (state.cast.isNotEmpty && state.relations.isNotEmpty) {
+      emit(state.copyWith(extrasLoading: false));
+      return;
+    }
     var d = detail;
 
     // TMDB fallback: an id-less movie/series (e.g. some CloudStream sources)
@@ -346,7 +375,7 @@ class DetailCubit extends Cubit<DetailState> {
         final extras = await sl<MetadataEnrichment>().fetch(d);
         if (isClosed) return;
         if (extras.cast.isNotEmpty || extras.relations.isNotEmpty) {
-          emit(state.copyWith(cast: extras.cast, relations: extras.relations));
+          emit(state.copyWith(cast: extras.cast, relations: extras.relations, extrasLoading: false));
           return;
         }
       } catch (_) {/* fall through to source-supplied extras */}
@@ -354,11 +383,11 @@ class DetailCubit extends Cubit<DetailState> {
     // Fall back to Cast/Relations the source supplied directly (e.g.
     // CloudStream's actors/recommendations) — so the tabs fill even without ids.
     if (isClosed) return;
-    if (detail.castMembers.isNotEmpty || detail.relations.isNotEmpty) {
-      emit(
-        state.copyWith(cast: detail.castMembers, relations: detail.relations),
-      );
-    }
+    emit(state.copyWith(
+      cast: detail.castMembers,
+      relations: detail.relations,
+      extrasLoading: false,
+    ));
   }
 
   /// Sub/Dub re-fetch. No-op when the category is unchanged. Otherwise
@@ -367,7 +396,7 @@ class DetailCubit extends Cubit<DetailState> {
   /// of seasons). Matches the original `onAudioChanged` behavior.
   Future<void> setCategory(String cat) async {
     if (cat == state.category) return;
-    emit(state.copyWith(category: cat, status: DetailStatus.loading));
+    emit(state.copyWith(category: cat));
     try {
       // Catalog metadata is independent of audio category. Never replace the
       // catalog detail with a provider detail just because Sub/Dub changed.

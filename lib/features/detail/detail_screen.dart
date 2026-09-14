@@ -74,6 +74,9 @@ import '../../core/tv/tv_list_focusable.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/mihon/mihon_image_provider.dart';
 import '../../core/ui/badge.dart';
+import '../../core/ui/people_row.dart';
+import '../../core/ui/content_row.dart';
+import '../../core/ui/poster_card.dart';
 import '../../core/ui/route_observer.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
@@ -1505,12 +1508,13 @@ class _DetailViewState extends State<_DetailView>
           if (state.status == DetailStatus.loading) {
             return const _DetailSkeleton(heroHeight: _expandedHeight);
           }
-          if (state.status == DetailStatus.error || state.detail == null) {
+          if (state.detail == null && state.status == DetailStatus.error) {
             return const EmptyState(
               icon: Icons.error_outline,
               message: 'Failed to load this title',
             );
           }
+          if (state.detail == null) return const _DetailSkeleton(heroHeight: _expandedHeight);
           return _buildBody(context, state, state.detail!);
         },
       ),
@@ -1813,7 +1817,68 @@ class _DetailViewState extends State<_DetailView>
             ),
           ),
 
-        // ── 6. Icon-over-label action row (My List / Trailer / Share / Web) ─
+        // ── 6. Catalog-native people / studio rows ─────────────────────────
+        if (item.sourceId == 'tpdb:catalog' && state.cast.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 18),
+              child: PeopleRow(
+                title: 'Actors',
+                items: [
+                  for (final c in state.cast)
+                    if (c.person?.source == PersonSource.thePornDbPerformer)
+                      MediaItem(
+                        id: 'tpdb:performer:${c.person!.externalId ?? c.person!.id}',
+                        title: c.name,
+                        cover: c.photo ?? c.person!.photo,
+                        url: 'https://theporndb.net/performers/${c.person!.externalId ?? c.person!.id}',
+                        type: ProviderType.movie,
+                        sourceId: 'tpdb:performer',
+                      ),
+                ],
+                onSeeAll: () => _revealTab(showEpisodesTab ? 1 : 0),
+                onTap: (person) {
+                  final raw = person.id.replaceFirst('tpdb:performer:', '');
+                  Navigator.of(context).push(PersonPage.route(
+                    PersonRef(
+                      id: int.tryParse(raw) ?? 0,
+                      externalId: raw,
+                      source: PersonSource.thePornDbPerformer,
+                      name: person.title,
+                      photo: person.cover,
+                    ),
+                    sourceId: 'tpdb:performer',
+                  ));
+                },
+                onLongPress: _showInfo,
+              ),
+            ),
+          ),
+        if (item.sourceId == 'tpdb:catalog' && detail.studios.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: ContentRow(
+                title: 'Studio',
+                itemWidth: 160,
+                itemHeight: 188,
+                itemCount: detail.studios.length,
+                itemBuilder: (context, index) => PosterCard(
+                  title: detail.studios[index],
+                  imageUrl: null,
+                  cellWidth: 160,
+                  onTap: () {
+                    // Studio rows are catalog metadata; open the owning TPDB site
+                    // page rather than searching a provider.
+                    launchUrl(Uri.parse('https://theporndb.net/sites/${Uri.encodeComponent(detail.studios[index])}'), mode: LaunchMode.externalApplication);
+                  },
+                  onLongPress: () => _snack(detail.studios[index]),
+                ),
+              ),
+            ),
+          ),
+
+        // ── 7. Icon-over-label action row (My List / Trailer / Share / Web) ─
         // "Trailer" is a CloudStream-style result action (recloudstream's
         // result fragment exposes a Trailer button); it opens the fullscreen
         // TrailerScreen and only appears once a trailer id has resolved.
@@ -1967,7 +2032,9 @@ class _DetailViewState extends State<_DetailView>
             isReading: isReading,
           ),
           // ── Cast ────────────────────────────────────────────────────────────
-          _CastTab(
+          state.extrasLoading && state.cast.isEmpty
+              ? const _MetadataTabSkeleton(label: 'Loading actors…')
+              : _CastTab(
             cast: state.cast.isNotEmpty
                 ? state.cast
                 : [for (final n in detail.cast) CastMember(name: n)],
@@ -1976,7 +2043,9 @@ class _DetailViewState extends State<_DetailView>
             ).push(PersonPage.route(ref, sourceId: widget.item.sourceId)),
           ),
           // ── Relations ─────────────────────────────────────────────────────────
-          _RelationsTab(relations: state.relations, onOpen: _openRelation),
+          state.extrasLoading && state.relations.isEmpty
+              ? const _MetadataTabSkeleton(label: 'Loading recommendations…')
+              : _RelationsTab(relations: state.relations, onOpen: _openRelation),
           // ── Details ──────────────────────────────────────────────────────────
           _DetailsTab(
             sourceName: sourceName,
@@ -1989,6 +2058,28 @@ class _DetailViewState extends State<_DetailView>
             description: detail.description,
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+class _MetadataTabSkeleton extends StatelessWidget {
+  const _MetadataTabSkeleton({required this.label});
+  final String label;
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(width: 180, height: 14, child: ColoredBox(color: AppColors.surface2)),
+            const SizedBox(height: 14),
+            Text(label, style: AppText.caption.copyWith(color: AppColors.textSecondary)),
+          ],
+        ),
       ),
     );
   }

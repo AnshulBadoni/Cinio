@@ -110,15 +110,16 @@ class HomeCubit extends Cubit<HomeState> {
     String? cloudflareUrl;
     try {
       final source = _catalogSource;
-      final homeFuture = switch (source) {
-        CatalogSource.provider => _repo.home(),
-        CatalogSource.tmdb => _tmdb!.home(),
-        CatalogSource.thePornDb => _tpdb!.home(),
-        CatalogSource.mixed => _mixedHome(),
-      };
-      sections = isAppleTv
-          ? await homeFuture.timeout(const Duration(seconds: 20))
-          : await homeFuture;
+      if (source == CatalogSource.tmdb || source == CatalogSource.thePornDb) {
+        sections = await _loadCatalogProgressively(source, gen);
+      } else {
+        final homeFuture = source == CatalogSource.provider
+            ? _repo.home()
+            : _mixedHome();
+        sections = isAppleTv
+            ? await homeFuture.timeout(const Duration(seconds: 20))
+            : await homeFuture;
+      }
     } on TimeoutException catch (_) {
       debugPrint('[home] load timed out · source=$sourceId');
       sections = const <HomeSection>[];
@@ -150,6 +151,35 @@ class HomeCubit extends Cubit<HomeState> {
       cloudflareUrl: cloudflareUrl,
       ),
     );
+  }
+
+  Future<List<HomeSection>> _loadCatalogProgressively(
+    CatalogSource source,
+    int gen,
+  ) async {
+    final kinds = source == CatalogSource.thePornDb
+        ? const ['tpdb_recent', 'tpdb_popular', 'tpdb_top_rated', 'tpdb_performers', 'tpdb_studios']
+        : const ['tmdb_recent', 'tmdb_trending_movies', 'tmdb_trending_series', 'tmdb_popular_movies', 'tmdb_popular_series', 'tmdb_trending_anime', 'tmdb_top_rated_movies'];
+    final byKind = <String, HomeSection>{};
+    Future<HomeSection?> fetch(String kind) async {
+      try {
+        if (source == CatalogSource.thePornDb) return await _tpdb!.homeSection(kind);
+        return await _tmdb!.homeSection(kind);
+      } catch (_) {
+        return null;
+      }
+    }
+    final futures = <Future<void>>[];
+    for (final kind in kinds) {
+      futures.add(fetch(kind).then((section) {
+        if (section == null || isClosed || gen != _gen) return;
+        byKind[kind] = section;
+        final ordered = [for (final k in kinds) if (byKind.containsKey(k)) byKind[k]!];
+        emit(state.copyWith(sections: ordered, loading: true));
+      }));
+    }
+    await Future.wait(futures);
+    return [for (final k in kinds) if (byKind.containsKey(k)) byKind[k]!];
   }
 
   Future<List<HomeSection>> _mixedHome() async {

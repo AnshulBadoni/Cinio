@@ -79,6 +79,31 @@ class TmdbDiscoverService {
     'Music',
   ];
 
+  Future<HomeSection?> homeSection(String kind) async {
+    final result = switch (kind) {
+      'tmdb_recent' => await _recentMixed(1),
+      'tmdb_trending_movies' => await _trendingKind('movie', 1),
+      'tmdb_trending_series' => await _trendingKind('tv', 1),
+      'tmdb_popular_movies' => await _discoverKind(kind: 'movie', catalog: 'popular', page: 1),
+      'tmdb_popular_series' => await _discoverKind(kind: 'tv', catalog: 'popular', page: 1),
+      'tmdb_trending_anime' => await _discoverKind(kind: 'tv', catalog: 'anime', page: 1, anime: true),
+      'tmdb_top_rated_movies' => await _discoverKind(kind: 'movie', catalog: 'top_rated', page: 1),
+      _ => const <MediaItem>[],
+    };
+    if (result.isEmpty) return null;
+    final title = switch (kind) {
+      'tmdb_recent' => 'Recent Movies & Series',
+      'tmdb_trending_movies' => 'Trending Movies',
+      'tmdb_trending_series' => 'Trending Series',
+      'tmdb_popular_movies' => 'Popular Movies',
+      'tmdb_popular_series' => 'Popular Series',
+      'tmdb_trending_anime' => 'Trending Anime',
+      'tmdb_top_rated_movies' => 'Top Rated Movies',
+      _ => '',
+    };
+    return HomeSection(title: title, items: result, more: BrowseMore(sourceId: 'tmdb:catalog', kind: kind));
+  }
+
   Future<List<HomeSection>> home() async {
     final results = await Future.wait([
       _safe(() => _recentMixed(1)),
@@ -159,43 +184,22 @@ class TmdbDiscoverService {
     if (item.tmdbIsTv) {
       final seasons = row['seasons'];
       if (seasons is List) {
-        for (final season in seasons) {
-          if (season is! Map) continue;
-          final seasonNumber = (season['season_number'] as num?)?.toInt();
-          if (seasonNumber == null || seasonNumber <= 0) continue;
-          try {
-            final seasonResponse = await _dio.get<dynamic>(
-              '${Tmdb.base}/tv/$id/season/$seasonNumber',
-            );
-            final seasonRows = seasonResponse.data is Map
-                ? seasonResponse.data['episodes']
-                : null;
-            if (seasonRows is! List) continue;
-            for (final e in seasonRows) {
-              if (e is! Map) continue;
-              final number = (e['episode_number'] as num?)?.toDouble();
-              if (number == null) continue;
-              final eid = (e['id'] as num?)?.toString() ?? '$id-$seasonNumber-${number.toInt()}';
-              final still = e['still_path']?.toString();
-              episodes.add(Episode(
-                id: 'tmdb:tv:$id:s$seasonNumber:e${number.toInt()}:$eid',
-                title: (e['name'] ?? 'Episode ${number.toInt()}').toString(),
-                number: number,
-                url: 'tmdb://tv/$id/season/$seasonNumber/episode/${number.toInt()}',
-                date: e['air_date']?.toString(),
-                thumbnail: still != null && still.isNotEmpty ? '${Tmdb.img}/w342$still' : null,
-                season: seasonNumber,
-                description: e['overview']?.toString(),
-                metaTitle: e['name']?.toString(),
-                rating: (e['vote_average'] as num?)?.toDouble(),
-                runtimeMinutes: (e['runtime'] as num?)?.toInt(),
-              ));
-            }
-          } catch (_) {
-            // One unavailable season must not prevent the rest of the series
-            // metadata from loading.
-          }
+        final seasonNumbers = [
+          for (final season in seasons)
+            if (season is Map) (season['season_number'] as num?)?.toInt(),
+        ].whereType<int>().where((n) => n > 0).toList();
+        final seasonResults = await Future.wait([
+          for (final seasonNumber in seasonNumbers)
+            _loadTmdbSeason(id, seasonNumber),
+        ]);
+        for (final result in seasonResults) {
+          episodes.addAll(result);
         }
+        episodes.sort((a, b) {
+          final sa = a.season ?? 1, sb = b.season ?? 1;
+          final sn = sa.compareTo(sb);
+          return sn != 0 ? sn : (a.number ?? 0).compareTo(b.number ?? 0);
+        });
       }
     } else {
       episodes.add(Episode(
@@ -212,6 +216,33 @@ class TmdbDiscoverService {
       type: ProviderType.movie, sourceId: 'tmdb:catalog', tmdbId: id, tmdbIsTv: item.tmdbIsTv,
       isSeries: item.tmdbIsTv, genres: item.genres, cast: cast, episodes: episodes,
     );
+  }
+
+  Future<List<Episode>> _loadTmdbSeason(int id, int seasonNumber) async {
+    try {
+      final response = await _dio.get<dynamic>('${Tmdb.base}/tv/$id/season/$seasonNumber');
+      final rows = response.data is Map ? response.data['episodes'] : null;
+      if (rows is! List) return const [];
+      return [
+        for (final e in rows)
+          if (e is Map && e['episode_number'] is num)
+            Episode(
+              id: 'tmdb:tv:$id:s$seasonNumber:e${(e['episode_number'] as num).toInt()}:${e['id'] ?? ''}',
+              title: (e['name'] ?? 'Episode ${(e['episode_number'] as num).toInt()}').toString(),
+              number: (e['episode_number'] as num).toDouble(),
+              url: 'tmdb://tv/$id/season/$seasonNumber/episode/${(e['episode_number'] as num).toInt()}',
+              date: e['air_date']?.toString(),
+              thumbnail: e['still_path'] is String && (e['still_path'] as String).isNotEmpty ? '${Tmdb.img}/w342${e['still_path']}' : null,
+              season: seasonNumber,
+              description: e['overview']?.toString(),
+              metaTitle: e['name']?.toString(),
+              rating: double.tryParse('${e['vote_average'] ?? ''}'),
+              runtimeMinutes: (e['runtime'] as num?)?.toInt(),
+            ),
+      ];
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<List<MediaItem>> discover({
