@@ -241,6 +241,18 @@ class _DetailView extends StatefulWidget {
 
 class _DetailViewState extends State<_DetailView>
     with SingleTickerProviderStateMixin {
+  void _showInfo(MediaItem item) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(item.title, style: Theme.of(context).textTheme.titleLarge),
+        ),
+      ),
+    );
+  }
+
   static const double _expandedHeight = 320;
   bool _showAppBarTitle = false;
 
