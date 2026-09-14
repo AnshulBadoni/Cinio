@@ -615,6 +615,19 @@ class _HomeViewState extends State<_HomeView>
     )));
   }
 
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
   Widget _sectionRow(HomeSection section) {
     if (_isPeopleSection(section.title)) {
       return _animated(

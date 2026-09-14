@@ -229,6 +229,7 @@ class _DetailView extends StatefulWidget {
   const _DetailView({required this.item, this.trailerContext, this.catalogDetail});
   final MediaItem item;
   final DetailTrailerContext? trailerContext;
+  final MediaDetail? catalogDetail;
 
   @override
   State<_DetailView> createState() => _DetailViewState();
