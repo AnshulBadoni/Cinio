@@ -107,12 +107,15 @@ class ThePornDb {
   /// performers attached to recently released scenes; the public API does not
   /// expose a dedicated popularity/trending performer sort.
   Future<List<HomeSection>> home() async {
+    // Home uses several independent API endpoints. Keep the rows that succeed
+    // if one endpoint is temporarily unavailable; Search can still work even
+    // when performers/scenes/sites are unavailable.
     final results = await Future.wait([
-      movies(orderBy: 'recently_released'),
-      movies(orderBy: 'most_relevant'),
-      movies(orderBy: 'recently_released'),
-      trendingPerformers(),
-      studios(),
+      _safeHomeFetch(() => movies(orderBy: 'recently_released')),
+      _safeHomeFetch(() => movies(orderBy: 'most_relevant')),
+      _safeHomeFetch(() => movies(orderBy: 'recently_released')),
+      _safeHomeFetch(trendingPerformers),
+      _safeHomeFetch(studios),
     ]);
 
     final topRated = [...results[2]]
@@ -145,6 +148,16 @@ class ThePornDb {
         more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_top_rated'),
       ),
     ].where((section) => section.items.isNotEmpty).toList();
+  }
+
+  Future<List<MediaItem>> _safeHomeFetch(
+    Future<List<MediaItem>> Function() fetch,
+  ) async {
+    try {
+      return await fetch();
+    } catch (_) {
+      return const <MediaItem>[];
+    }
   }
 
   Future<List<MediaItem>> browseMore(String kind, int page) => switch (kind) {

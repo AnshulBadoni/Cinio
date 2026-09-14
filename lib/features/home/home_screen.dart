@@ -25,6 +25,7 @@ import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
@@ -611,6 +612,14 @@ class _HomeViewState extends State<_HomeView>
     if (labels.contains(t)) return true;
     return labels.any((label) =>
         t.startsWith('$label ') || t.startsWith('$label:') || t.startsWith('$label -'));
+  }
+
+  String _homeSourceName() {
+    final catalog = sl<CatalogSourcePrefs>().source;
+    if (catalog != CatalogSource.provider) return catalog.label;
+    return sl<SourceRepository>().displayName(
+      context.read<ActiveSourceCubit>().state,
+    );
   }
 
   /// Builds one provider-defined Home row. People/cast rows use PeopleCard;
@@ -1311,9 +1320,7 @@ class _HomeViewState extends State<_HomeView>
                           hasScrollBody: false,
                           child: HomeLoadedEmptyView(
                             mode: sl<ContentModeCubit>().state,
-                            sourceName: sl<SourceRepository>().displayName(
-                              context.read<ActiveSourceCubit>().state,
-                            ),
+                            sourceName: _homeSourceName(),
                             onRetry: () =>
                                 context.read<HomeCubit>().load(reset: true),
                             // No-source guide points at the Providers hub (all
