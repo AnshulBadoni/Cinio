@@ -207,6 +207,7 @@ class DetailScreen extends StatelessWidget {
         seedMalId: item.malId,
         seedType: item.type,
         catalogDetail: catalogDetail,
+        catalogItem: item,
       )..load(),
       child: _DetailView(
         item: item,
@@ -861,22 +862,21 @@ class _DetailViewState extends State<_DetailView>
     }
   }
 
-  Future<({MediaItem item, MediaDetail detail})?> _resolveCatalogPlayback() async {
+  Future<({MediaItem item, MediaDetail detail})?> _resolveCatalogPlayback({
+    String category = 'sub',
+  }) async {
     final catalog = widget.item;
-    if (catalog.sourceId != 'tmdb:catalog' && !catalog.sourceId.startsWith('tpdb:')) return null;
-    var results = await sl<SourceRepository>().searchAll(catalog.title);
-    if (results.isEmpty) {
-      results = await sl<SourceRepository>().searchAll(catalog.title, category: 'dub');
-    }
-    final match = bestTitleMatch(results, catalog.title, altTitle: catalog.englishTitle);
-    if (match == null) return null;
-    try {
-      final d = await sl<SourceRepository>().detail(match.url, sourceId: match.sourceId);
-      return (item: match, detail: d);
-    } catch (_) {
+    if (catalog.sourceId != 'tmdb:catalog' && !catalog.sourceId.startsWith('tpdb:')) {
       return null;
     }
+    return sl<SourceRepository>().resolveCatalogTitle(
+      catalog,
+      category: category,
+    );
   }
+
+  bool _isCatalogDetail(MediaDetail detail) =>
+      detail.sourceId == 'tmdb:catalog' || detail.sourceId.startsWith('tpdb:');
 
   Future<void> _openPlayer(
     List<Episode> episodes,
@@ -891,8 +891,8 @@ class _DetailViewState extends State<_DetailView>
     /// adaptive default. One-shot — the cubit clears it after this episode.
     VideoSource? initialSource,
   }) async {
-    if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
-      final resolved = await _resolveCatalogPlayback();
+    if (_isCatalogDetail(detail)) {
+      final resolved = await _resolveCatalogPlayback(category: category);
       if (!mounted) return;
       if (resolved == null) { _snack('No playable provider result found for ${widget.item.title}'); return; }
       detail = resolved.detail;
@@ -1241,8 +1241,8 @@ class _DetailViewState extends State<_DetailView>
     required Map<int, List<Episode>> episodesBySeason,
     required int initialSeason,
   }) async {
-    if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
-      final resolved = await _resolveCatalogPlayback();
+    if (_isCatalogDetail(detail)) {
+      final resolved = await _resolveCatalogPlayback(category: category);
       if (!mounted) return;
       if (resolved == null) { _snack('No downloadable provider result found for ${widget.item.title}'); return; }
       detail = resolved.detail;
@@ -1308,8 +1308,8 @@ class _DetailViewState extends State<_DetailView>
   /// touching the detail page's own toggle), grouped by season.
   Future<Map<int, List<Episode>>> _episodesByCategory(String category) async {
     MediaDetail d;
-    if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
-      final resolved = await _resolveCatalogPlayback();
+    if (_isCatalogDetail(detail)) {
+      final resolved = await _resolveCatalogPlayback(category: category);
       if (resolved == null) return const {};
       d = await sl<SourceRepository>().detail(resolved.item.url, category: category, sourceId: resolved.item.sourceId);
     } else {
@@ -1364,12 +1364,37 @@ class _DetailViewState extends State<_DetailView>
   ) async {
     var item = widget.item;
     if (item.sourceId == 'tmdb:catalog' || item.sourceId.startsWith('tpdb:')) {
-      final resolved = await _resolveCatalogPlayback();
+      final resolved = await _resolveCatalogPlayback(category: category);
       if (!mounted) return;
       if (resolved == null) { _snack('No downloadable provider result found for ${item.title}'); return; }
       item = resolved.item;
       detail = resolved.detail;
-      if (detail.episodes.isNotEmpty) ep = detail.episodes.first;
+      // Preserve the exact episode the user selected. The old fallback always
+      // replaced it with E1, which made downloading E6 (for example) silently
+      // download E1 after catalog resolution. Match by stable id first, then
+      // season/episode number, and only fall back to the first episode when the
+      // provider exposes no usable episode identity.
+      if (detail.episodes.isNotEmpty) {
+        Episode? byId;
+        for (final candidate in detail.episodes) {
+          if (candidate.id == ep.id) { byId = candidate; break; }
+        }
+        if (byId != null) {
+          ep = byId;
+        } else {
+          final wantedSeason = seasonOf(ep);
+          final wantedNumber = ep.number;
+          Episode? byNumber;
+          for (final candidate in detail.episodes) {
+            if (candidate.number == wantedNumber &&
+                (wantedSeason == null || seasonOf(candidate) == wantedSeason)) {
+              byNumber = candidate;
+              break;
+            }
+          }
+          ep = byNumber ?? detail.episodes.first;
+        }
+      }
     }
     final res =
         await showModalBottomSheet<

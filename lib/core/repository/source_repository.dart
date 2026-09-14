@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../aniyomi/aniyomi_filters.dart';
 import '../aniyomi/aniyomi_provider.dart';
 import '../lnreader/lnreader_manager.dart';
@@ -491,6 +493,117 @@ class SourceRepository {
         search(query, category: category, sourceId: source.id).catchError((_) => <MediaItem>[]),
     ]);
     return [for (final batch in results) ...batch];
+  }
+
+  /// Resolve a metadata-catalog item (TMDB/TPDB) to a real installed streaming
+  /// provider without making every detail-page open wait on every source.
+  ///
+  /// Fast path: try the currently active provider first. If it has no usable
+  /// title match, fan out the remaining enabled/loaded providers in parallel
+  /// and return the first strong match. Results are cached briefly so opening
+  /// the same catalog title again does not repeat the provider search.
+  Future<({MediaItem item, MediaDetail detail})?> resolveCatalogTitle(
+    MediaItem catalog, {
+    String category = 'sub',
+  }) async {
+    if (catalog.sourceId != 'tmdb:catalog' && !catalog.sourceId.startsWith('tpdb:')) {
+      return null;
+    }
+
+    final key = 'catalog|${catalog.sourceId}|${catalog.tmdbId ?? catalog.id}|${catalog.title}|$category';
+    final cached = _catalogResolutionCache[key];
+    if (cached != null && DateTime.now().difference(cached.at) < _catalogResolutionTtl) {
+      return cached.value;
+    }
+
+    final preferred = sourceId;
+    final candidates = loadedSources.map((s) => s.id).toList();
+
+    // Preferred provider is always attempted first. An empty active source is
+    // a valid first-run state, so simply skip it.
+    final tried = <String>{};
+    if (preferred.isNotEmpty && hasSource(preferred)) {
+      tried.add(preferred);
+      final hit = await _resolveCatalogOnSource(catalog, preferred, category)
+          .timeout(const Duration(seconds: 8), onTimeout: () => null);
+      if (hit != null) {
+        _catalogResolutionCache[key] = (at: DateTime.now(), value: hit);
+        return hit;
+      }
+    }
+
+    // Only now fan out. The calls are concurrent and each provider is isolated
+    // from failures/timeouts. We return the first usable match rather than
+    // waiting for every installed provider to finish.
+    final remaining = candidates.where((id) => !tried.contains(id)).toList();
+    if (remaining.isEmpty) return null;
+
+    final completer = Completer<({MediaItem item, MediaDetail detail})?>();
+    final pendingCount = remaining.length;
+    var left = pendingCount;
+    for (final id in remaining) {
+      _resolveCatalogOnSource(catalog, id, category)
+          .timeout(const Duration(seconds: 8), onTimeout: () => null)
+          .then((result) {
+        if (completer.isCompleted) return;
+        if (result != null) {
+          completer.complete(result);
+          return;
+        }
+        left -= 1;
+        if (left == 0) completer.complete(null);
+      });
+    }
+    final result = await completer.future;
+    if (result != null) {
+      _catalogResolutionCache[key] = (at: DateTime.now(), value: result);
+    }
+    return result;
+  }
+
+  final Map<String, ({DateTime at, ({MediaItem item, MediaDetail detail}) value})>
+      _catalogResolutionCache = {};
+  static const Duration _catalogResolutionTtl = Duration(minutes: 30);
+
+  Future<({MediaItem item, MediaDetail detail})?> _resolveCatalogOnSource(
+    MediaItem catalog,
+    String providerId,
+    String category,
+  ) async {
+    try {
+      final results = await search(
+        catalog.title,
+        category: category,
+        sourceId: providerId,
+      );
+      var match = bestTitleMatch(
+        results,
+        catalog.title,
+        altTitle: catalog.englishTitle,
+      );
+      if (match == null && category != 'dub') {
+        final dubResults = await search(
+          catalog.title,
+          category: 'dub',
+          sourceId: providerId,
+        );
+        match = bestTitleMatch(
+          dubResults,
+          catalog.title,
+          altTitle: catalog.englishTitle,
+        );
+      }
+      if (match == null) return null;
+      final detail = await detail(
+        match.url,
+        category: category,
+        sourceId: match.sourceId,
+      );
+      if (detail.episodes.isEmpty && catalog.tmdbIsTv) return null;
+      return (item: match, detail: detail);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Status-reporting search for the source-health feature (search ordering +
