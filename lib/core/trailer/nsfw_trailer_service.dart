@@ -88,7 +88,17 @@ class NsfwTrailerService {
   );
 
   static final RegExp _movieIdRegex = RegExp(
-    r'''data-(?:movie|clip|item)-id=['"](\d+)['"]''',
+    r'''data-(?:movie|clip|item)-id=['"](\d+)['"]|/(?:(\d+)/)''',
+    caseSensitive: false,
+  );
+
+  static final RegExp _sceneIdRegex = RegExp(
+    r'''data-scene-id=['"](\d+)['"]''',
+    caseSensitive: false,
+  );
+
+  static final RegExp _clipIdRegex = RegExp(
+    r'''data-clip-id=['"](\d+)['"]''',
     caseSensitive: false,
   );
 
@@ -151,14 +161,47 @@ class NsfwTrailerService {
         );
       }
 
-      // Step 2: Find the first movie or scene href
-      final match = _itemHrefRegex.firstMatch(listingHtml) ??
-          _videoHrefRegex.firstMatch(listingHtml);
-      var videoPath = match?.group(1);
+      // Step 2: Find the first movie or scene href (ignoring shop/category/toys links)
+      final allMatches = <String>[];
+      for (final m in _itemHrefRegex.allMatches(listingHtml)) {
+        final path = m.group(1);
+        if (path != null) allMatches.add(path);
+      }
+      for (final m in _videoHrefRegex.allMatches(listingHtml)) {
+        final path = m.group(1);
+        if (path != null) allMatches.add(path);
+      }
 
-      if (videoPath == null || videoPath.isEmpty) {
+      final validMatches = allMatches.where((p) {
+        final lower = p.toLowerCase();
+        return !lower.contains('/category/') &&
+            !lower.contains('/stores/') &&
+            !lower.contains('/toys/') &&
+            !lower.contains('/sex-toys') &&
+            !lower.contains('/novelties/') &&
+            !lower.contains('/cart') &&
+            !lower.contains('/login');
+      }).toList();
+
+      var videoPath = validMatches.firstWhere(
+        (p) =>
+            p.contains('-porn-movies') ||
+            p.contains('-porn-videos') ||
+            p.contains('/movie/') ||
+            p.contains('/scene/') ||
+            p.contains('/video/'),
+        orElse: () => validMatches.isNotEmpty ? validMatches.first : '',
+      );
+
+      String? movieId;
+      final movieMatchInPath = RegExp(r'/(\d+)/').firstMatch(videoPath);
+      if (movieMatchInPath != null) {
+        movieId = movieMatchInPath.group(1);
+      }
+
+      if (videoPath.isEmpty) {
         final movieIdMatch = _movieIdRegex.firstMatch(listingHtml);
-        final movieId = movieIdMatch?.group(1);
+        movieId ??= movieIdMatch?.group(1);
         if (movieId != null && movieId.isNotEmpty) {
           return AlternateTrailer(
             url: 'https://video.adultempire.com/hls/previewmovie/$movieId/index-f1-v1.m3u8',
@@ -190,6 +233,11 @@ class NsfwTrailerService {
       final sceneHtml = sceneRes.data?.toString();
       if (sceneHtml == null || sceneHtml.isEmpty) return null;
 
+      // Extract scene / movie / clip IDs from the scene page
+      movieId ??= _movieIdRegex.firstMatch(sceneHtml)?.group(1);
+      final sceneId = _sceneIdRegex.firstMatch(sceneHtml)?.group(1);
+      final clipId = _clipIdRegex.firstMatch(sceneHtml)?.group(1);
+
       // Find video stream (.m3u8 or .mp4)
       final streamMatch = _videoStreamRegex.firstMatch(sceneHtml);
       var streamUrl = streamMatch?.group(0);
@@ -202,11 +250,11 @@ class NsfwTrailerService {
         }
       }
 
-      if (streamUrl == null || streamUrl.isEmpty) {
-        final movieIdMatch = _movieIdRegex.firstMatch(sceneHtml);
-        final movieId = movieIdMatch?.group(1);
-        if (movieId != null && movieId.isNotEmpty) {
-          streamUrl = 'https://video.adultempire.com/hls/previewmovie/$movieId/index-f1-v1.m3u8';
+      if ((streamUrl == null || streamUrl.isEmpty) && movieId != null && movieId.isNotEmpty) {
+        if (sceneId != null && sceneId.isNotEmpty) {
+          streamUrl = 'https://video.adultempire.com/hls/previewscene/$movieId/$sceneId/index-f1-v1.m3u8';
+        } else if (clipId != null && clipId.isNotEmpty) {
+          streamUrl = 'https://video.adultempire.com/hls/previewclip/$movieId/$clipId/index-f1-v1.m3u8';
         }
       }
 

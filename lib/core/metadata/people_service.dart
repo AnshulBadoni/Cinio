@@ -111,25 +111,11 @@ class PeopleService {
 
       final works = await _tpdbPerformerWorks(resolvedId, page: 1);
 
-      final extras = row['extras'];
-      final birthday = row['birthday'] ?? (extras is Map ? extras['birthday'] : null);
-      final rawAge = row['age'] ?? (extras is Map ? extras['age'] : null);
-      final parsedAge = (rawAge as num?)?.toInt() ??
-          (birthday != null && birthday.toString().length >= 4
-              ? DateTime.now().year - (int.tryParse(birthday.toString().substring(0, 4)) ?? DateTime.now().year)
-              : null);
-      final rating = (row['rating'] as num?)?.toDouble() ?? (row['score'] as num?)?.toDouble();
-      final subtitle = [
-        if (parsedAge != null && parsedAge > 0) '$parsedAge years',
-        if (rating != null && rating > 0) 'Rating ${rating.toStringAsFixed(1)}',
-      ].join(' · ');
-
       return PersonProfile(
         name: name,
-        nativeName: (row['alias'] ?? row['aliases'])?.toString(),
         photo: (row['image'] ?? row['thumbnail'] ?? row['face'])?.toString(),
         description: (row['description'] ?? row['bio'])?.toString(),
-        subtitle: subtitle.isEmpty ? 'Performer' : subtitle,
+        subtitle: 'Acting',
         works: works,
       );
     } catch (_) {

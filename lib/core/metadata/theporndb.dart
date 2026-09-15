@@ -125,12 +125,61 @@ class ThePornDb {
     return out;
   }
 
+  static const List<String> _kTopPerformers = [
+    'Gabbie Carter',
+    'Lana Rhoades',
+    'Emily Willis',
+    'Mia Malkova',
+    'Riley Reid',
+    'Adriana Chechik',
+    'Angela White',
+    'Autumn Falls',
+    'Abella Danger',
+    'Eva Lovia',
+    'Kendra Lust',
+    'Janice Griffith',
+    'Alina Lopez',
+    'Kenzie Reeves',
+    'Blake Blossom',
+    'Liya Silver',
+    'Cory Chase',
+    'Brandi Love',
+    'Alexis Texas',
+    'Tori Black',
+    'Nicole Aniston',
+    'Dillion Harper',
+    'Lena Paul',
+    'Vicki Chase',
+  ];
+
   Future<List<MediaItem>> performers({
     int page = 1,
     String orderBy = 'most_relevant',
     String? query,
   }) async {
     final isSearch = query != null && query.trim().isNotEmpty;
+    if (!isSearch && page == 1) {
+      final futures = _kTopPerformers.map((name) async {
+        try {
+          final res = await _get('/performers', queryParameters: {
+            'q': name,
+            'per_page': 1,
+          });
+          final list = res['data'] as List?;
+          if (list != null && list.isNotEmpty) {
+            final row = list.first;
+            if (row is Map && _qualifiesAsActor(row, requireRating: true)) {
+              return _performer(row);
+            }
+          }
+        } catch (_) {}
+        return null;
+      });
+      final results = (await Future.wait(futures)).whereType<MediaItem>().toList();
+      results.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+      if (results.isNotEmpty) return results;
+    }
+
     final data = await _get('/performers', queryParameters: {
       'page': page,
       'per_page': 50,
@@ -162,8 +211,8 @@ class ThePornDb {
     if (sps is List) {
       double? best;
       for (final s in sps) {
-        if (s is Map) {
-          final sr = double.tryParse('${s['rating'] ?? (s['site'] is Map ? s['site']['rating'] : null) ?? ''}');
+        if (s is Map && s['rating'] != null) {
+          final sr = double.tryParse('${s['rating']}');
           if (sr != null && sr > 0) {
             if (best == null || sr > best) best = sr;
           }
@@ -171,7 +220,7 @@ class ThePornDb {
       }
       if (best != null) return best;
     }
-    return direct != null && direct > 0 ? direct : null;
+    return null;
   }
 
   bool _qualifiesAsActor(Map row, {bool requireRating = true}) {
@@ -355,7 +404,7 @@ class ThePornDb {
 
   MediaItem _performer(Map row) {
     final id = (row['id'] ?? row['_id'] ?? row['slug']).toString();
-    final rating = double.tryParse('${row['rating'] ?? row['score'] ?? ''}');
+    final rating = _extractPerformerRating(row);
     return MediaItem(
       id: 'tpdb:performer:$id',
       title: (row['name'] ?? row['full_name'] ?? 'Performer').toString(),
