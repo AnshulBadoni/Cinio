@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/metadata/theporndb.dart';
+import 'package:watch_app/core/metadata/people_service.dart';
+import 'package:watch_app/core/models/person.dart';
 
 void main() {
   late ThePornDb tpdb;
@@ -43,6 +45,31 @@ void main() {
       expect(titles, contains('Popular'));
       expect(titles, contains('Actors'));
       expect(titles, contains('Studio'));
+    });
+
+    test('movieDetail resolves cast with valid canonical person refs', () async {
+      final movies = await tpdb.movies(page: 1, orderBy: 'recently_released');
+      expect(movies, isNotEmpty);
+      final detail = await tpdb.movieDetail(movies.first);
+      expect(detail.id, startsWith('tpdb:movie:'));
+    });
+
+    test('PeopleService loads TPDB performer profile with fallback', () async {
+      final peopleService = PeopleService(Dio());
+      final performers = await tpdb.performers(page: 1);
+      expect(performers, isNotEmpty);
+
+      final first = performers.first;
+      final rawId = first.id.replaceFirst('tpdb:performer:', '');
+      final profile = await peopleService.load(PersonRef(
+        id: int.tryParse(rawId) ?? 0,
+        externalId: rawId,
+        source: PersonSource.thePornDbPerformer,
+        name: first.title,
+      ));
+
+      expect(profile, isNotNull);
+      expect(profile!.name, isNotEmpty);
     });
   });
 }

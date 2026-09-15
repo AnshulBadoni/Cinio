@@ -256,17 +256,18 @@ class ThePornDb {
     if (performers is List) {
       for (final p in performers) {
         if (p is! Map) continue;
-        final name = (p['name'] ?? p['full_name'])?.toString();
+        final parent = p['parent'] is Map ? p['parent'] as Map : null;
+        final name = (parent?['name'] ?? parent?['full_name'] ?? p['name'] ?? p['full_name'])?.toString();
         if (name == null || name.isEmpty) continue;
-        final rawPid = (p['id'] ?? p['uuid'] ?? p['_id'] ?? p['slug'])?.toString();
-        final photo = (p['image'] ?? p['thumbnail'] ?? p['face'])?.toString();
+        final rawPid = (parent?['id'] ?? parent?['uuid'] ?? parent?['_id'] ?? parent?['slug'] ?? p['id'] ?? p['uuid'] ?? p['_id'] ?? p['slug'])?.toString();
+        final photo = (parent?['image'] ?? parent?['thumbnail'] ?? parent?['face'] ?? p['image'] ?? p['thumbnail'] ?? p['face'])?.toString();
         cast.add(name);
         if (rawPid != null && rawPid.isNotEmpty) {
           members.add(CastMember(
             name: name,
             photo: photo,
             person: PersonRef(
-              id: int.tryParse(p['_id']?.toString() ?? '') ?? 0,
+              id: int.tryParse((parent?['_id'] ?? p['_id'])?.toString() ?? '') ?? 0,
               externalId: rawPid,
               source: PersonSource.thePornDbPerformer,
               name: name,

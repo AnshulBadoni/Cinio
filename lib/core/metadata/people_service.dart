@@ -25,27 +25,55 @@ class PeopleService {
       case PersonSource.tmdb:
         return _tmdbPerson(ref.id);
       case PersonSource.thePornDbPerformer:
-        return _tpdbPerformer(ref.externalId ?? ref.id.toString());
+        return _tpdbPerformer(ref.externalId ?? ref.id.toString(), fallbackName: ref.name);
     }
   }
 
 
-  Future<PersonProfile?> _tpdbPerformer(String id) async {
+  Future<PersonProfile?> _tpdbPerformer(String id, {String? fallbackName}) async {
     try {
-      final res = await _dio.get<dynamic>(
-        '$_tpdbBase/performers/$id',
-        options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
-      );
-      final row = res.data is Map && res.data['data'] is Map
-          ? Map<String, dynamic>.from(res.data['data'] as Map)
-          : null;
+      Map<String, dynamic>? row;
+      try {
+        final res = await _dio.get<dynamic>(
+          '$_tpdbBase/performers/$id',
+          options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
+        );
+        if (res.data is Map && res.data['data'] is Map) {
+          row = Map<String, dynamic>.from(res.data['data'] as Map);
+        }
+      } catch (_) {}
+
+      // Fallback: If direct lookup failed and we have a performer name, search for them
+      if (row == null && fallbackName != null && fallbackName.trim().isNotEmpty) {
+        try {
+          final searchRes = await _dio.get<dynamic>(
+            '$_tpdbBase/performers',
+            queryParameters: {
+              'q': fallbackName.trim(),
+              'per_page': 10,
+              'orderBy': 'most_relevant',
+            },
+            options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
+          );
+          final rows = searchRes.data is Map ? searchRes.data['data'] : null;
+          if (rows is List && rows.isNotEmpty) {
+            final first = rows.first;
+            if (first is Map) {
+              row = Map<String, dynamic>.from(first);
+            }
+          }
+        } catch (_) {}
+      }
+
       if (row == null) return null;
-      final name = (row['name'] ?? row['full_name'])?.toString();
+      final name = (row['name'] ?? row['full_name'] ?? fallbackName)?.toString();
       if (name == null || name.isEmpty) return null;
+      final resolvedId = (row['id'] ?? row['uuid'] ?? row['_id'] ?? row['slug'] ?? id).toString();
+
       final works = <PersonWork>[];
       try {
         final movies = await _dio.get<dynamic>(
-          '$_tpdbBase/performers/$id/movies',
+          '$_tpdbBase/performers/$resolvedId/movies',
           queryParameters: {'page': 1, 'per_page': 30},
           options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
         );
@@ -63,12 +91,20 @@ class PeopleService {
           }
         }
       } catch (_) {}
-      final age = (row['age'] as num?)?.toInt();
-      final rating = (row['rating'] as num?)?.toDouble();
+
+      final extras = row['extras'];
+      final birthday = row['birthday'] ?? (extras is Map ? extras['birthday'] : null);
+      final rawAge = row['age'] ?? (extras is Map ? extras['age'] : null);
+      final parsedAge = (rawAge as num?)?.toInt() ??
+          (birthday != null && birthday.toString().length >= 4
+              ? DateTime.now().year - (int.tryParse(birthday.toString().substring(0, 4)) ?? DateTime.now().year)
+              : null);
+      final rating = (row['rating'] as num?)?.toDouble() ?? (row['score'] as num?)?.toDouble();
       final subtitle = [
-        if (age != null) '$age years',
-        if (rating != null) 'Rating ${rating.toStringAsFixed(1)}',
+        if (parsedAge != null && parsedAge > 0) '$parsedAge years',
+        if (rating != null && rating > 0) 'Rating ${rating.toStringAsFixed(1)}',
       ].join(' · ');
+
       return PersonProfile(
         name: name,
         nativeName: (row['alias'] ?? row['aliases'])?.toString(),
