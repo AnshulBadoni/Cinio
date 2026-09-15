@@ -45,48 +45,45 @@ class ThePornDb {
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
     };
 
-    // TPDB supports native server-side filtering. Prefer its canonical
-    // Straight tag when it can be resolved, but NEVER let tag discovery or a
-    // provider-side query-shape change take down the entire catalog. If the
-    // tag request/filter is unavailable, retry immediately with TPDB's native
-    // performer-gender filter.
-    Map<String, dynamic> data;
-    try {
-      final straight = await (_straightTagIdFuture ??= _findStraightTagId());
-      data = await _get('/movies', queryParameters: {
+    // TPDB exposes the straight-content restriction as a native movie filter.
+    // Keep the base request and the filter request separate so a bad filter
+    // encoding can never silently turn the entire catalog into an exception.
+    final straightTag = await (_straightTagIdFuture ??= _findStraightTagId());
+    final filterQueries = <Map<String, dynamic>>[
+      if (straightTag != null) {
         ...baseQuery,
-        ..._straightTagQueryFor(straight),
-      });
-    } catch (_) {
-      data = await _get('/movies', queryParameters: {
+        'tags[$straightTag]': 'Straight',
+        'tag_and': true,
+      },
+      {
         ...baseQuery,
-        ..._straightGenderQuery(),
-      });
+        'performer_genders': const ['Female', 'Male'],
+        'performer_gender_only': true,
+      },
+    ];
+
+    Object? lastError;
+    for (final queryParameters in filterQueries) {
+      try {
+        final data = await _get('/movies', queryParameters: queryParameters);
+        final rows = data['data'];
+        if (rows is List) {
+          return [
+            for (final row in rows)
+              if (row is Map) _movie(row),
+          ];
+        }
+      } catch (e) {
+        lastError = e;
+      }
     }
 
-    final rows = data['data'];
-    if (rows is! List) return const [];
-    return [
-      for (final row in rows)
-        if (row is Map) _movie(row),
-    ];
+    // A filter failure is a catalog-source failure, not a provider failure.
+    // Preserve the error so callers can handle it independently from TMDB or
+    // the active playback provider.
+    if (lastError != null) throw lastError;
+    return const [];
   }
-
-  Map<String, dynamic> _straightTagQueryFor(int? tagId) {
-    if (tagId == null) return _straightGenderQuery();
-    return {
-      'tags[$tagId]': 'Straight',
-      'tag_and': true,
-    };
-  }
-
-  Map<String, dynamic> _straightGenderQuery() => {
-    // These are TPDB's native movie-search filters (not client-side guesses).
-    // performer_gender_only means every performer must be one of these genders,
-    // excluding TPDB's transgender/non-binary gender values.
-    'performer_genders': const ['Female', 'Male'],
-    'performer_gender_only': true,
-  };
 
   Future<int?> _findStraightTagId() async {
     try {
@@ -104,7 +101,7 @@ class ThePornDb {
         }
       }
     } catch (_) {
-      // Fall back to TPDB's native performer-gender filter in movies().
+      // The movie endpoint still has its native performer-gender filter.
     }
     return null;
   }

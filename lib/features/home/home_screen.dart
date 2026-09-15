@@ -25,6 +25,7 @@ import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/metadata/tmdb_discover_service.dart';
 import '../../core/metadata/theporndb.dart';
+import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
@@ -1350,9 +1351,14 @@ class _HomeViewState extends State<_HomeView>
                           hasScrollBody: false,
                           child: HomeLoadedEmptyView(
                             mode: sl<ContentModeCubit>().state,
-                            sourceName: sl<SourceRepository>().displayName(
-                              context.read<ActiveSourceCubit>().state,
-                            ),
+                            sourceName: switch (sl<CatalogSourcePrefs>().source) {
+                              CatalogSource.provider => sl<SourceRepository>().displayName(
+                                context.read<ActiveSourceCubit>().state,
+                              ),
+                              CatalogSource.tmdb => 'TMDB',
+                              CatalogSource.thePornDb => 'ThePornDB',
+                              CatalogSource.mixed => 'Catalogs',
+                            },
                             onRetry: () =>
                                 context.read<HomeCubit>().load(reset: true),
                             // No-source guide points at the Providers hub (all
