@@ -16,7 +16,6 @@ class ThePornDb {
   final Dio _dio;
 
   static const String base = 'https://api.theporndb.net';
-  Future<int?>? _straightTagIdFuture;
   // Temporary development key. Replace this before the production release.
   static const String apiKey = '8ABvbgloweVLDeD3HBq6x9eHpL3lMJE8qEuBtdmb213d0c62';
 
@@ -27,7 +26,10 @@ class ThePornDb {
     final response = await _dio.get<dynamic>(
       '$base$path',
       queryParameters: queryParameters,
-      options: Options(headers: {'Authorization': 'Bearer $apiKey'}),
+      options: Options(
+        headers: {'Authorization': 'Bearer $apiKey'},
+        listFormat: ListFormat.multi,
+      ),
     );
     if (response.data is! Map) return const {};
     return Map<String, dynamic>.from(response.data as Map);
@@ -45,17 +47,15 @@ class ThePornDb {
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
     };
 
-    // TPDB's OpenAPI definition declares performer_genders as a normal
-    // query-array. Its documented values are the title-cased strings
-    // `Female` and `Male` (not the uppercase enum spelling). `performer_gender_only`
-    // excludes movies whose performers contain genders outside that set, while
-    // `performer_gender_and=true` requires both genders to be present. Together
-    // these are the API-native filter we use for straight content.
+    // TPDB documents performer_genders as a normal query array with
+    // `Female`/`Male` values. `performer_gender_only=true` means the result
+    // may contain only those performer genders. Do NOT combine this with
+    // performer_gender_and: that flag asks for all selected genders to be
+    // present in a result, which is not the same thing as straight-only and
+    // can reduce the catalog to an empty result set.
     final filteredQuery = <String, dynamic>{
       ...baseQuery,
-      'performer_genders': const ['Female', 'Male'],
-      'performer_gender_only': true,
-      'performer_gender_and': true,
+      ...await _straightFilterQuery(),
     };
 
     final data = await _get('/movies', queryParameters: filteredQuery);
@@ -67,6 +67,42 @@ class ThePornDb {
     ];
   }
 
+
+  Future<Map<String, dynamic>> _straightFilterQuery() async {
+    // Prefer TPDB's explicit tag filter when the canonical Straight tag can
+    // be resolved. This is the strongest server-side signal for orientation.
+    try {
+      final tagData = await _get('/tags', queryParameters: {
+        'q': 'Straight',
+        'orderBy': 'most_relevant',
+      });
+      final rows = tagData['data'];
+      if (rows is List) {
+        for (final row in rows) {
+          if (row is! Map) continue;
+          final name = row['name']?.toString().trim();
+          final id = int.tryParse('${row['id']}');
+          if (id != null && name != null && name.toLowerCase() == 'straight') {
+            return {
+              'tags[$id]': name,
+              'tag_and': true,
+            };
+          }
+        }
+      }
+    } catch (_) {
+      // Fall through to the documented performer-gender-only filter. A
+      // failure resolving the optional tag must never make TPDB unavailable.
+    }
+
+    // TPDB documents these as native /movies filters. Explicitly set Dio's
+    // query array format to repeated parameters: performer_genders=Female
+    // &performer_genders=Male.
+    return {
+      'performer_genders': const ['Female', 'Male'],
+      'performer_gender_only': true,
+    };
+  }
 
   Future<List<MediaItem>> trendingPerformers({int page = 1}) async {
     final data = await _get('/scenes', queryParameters: {
