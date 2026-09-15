@@ -158,7 +158,7 @@ class HomeCubit extends Cubit<HomeState> {
     int gen,
   ) async {
     final kinds = source == CatalogSource.thePornDb
-        ? const ['tpdb_recent', 'tpdb_popular', 'tpdb_top_rated', 'tpdb_performers', 'tpdb_studios']
+        ? const ['tpdb_recent', 'tpdb_trending', 'tpdb_performers', 'tpdb_popular', 'tpdb_top_rated']
         : const ['tmdb_recent', 'tmdb_trending_movies', 'tmdb_trending_series', 'tmdb_popular_movies', 'tmdb_popular_series', 'tmdb_trending_anime', 'tmdb_top_rated_movies'];
     final byKind = <String, HomeSection>{};
     Future<HomeSection?> fetch(String kind) async {
@@ -189,7 +189,7 @@ class HomeCubit extends Cubit<HomeState> {
     ]);
     final tmdb = results[0];
     final tpdb = results[1];
-    final tpdbRecent = tpdb.firstWhere((s) => s.title == 'Trending', orElse: () => const HomeSection(title: '', items: []));
+    final tpdbRecent = tpdb.firstWhere((s) => s.title == 'Recent' || s.title == 'Trending', orElse: () => const HomeSection(title: '', items: []));
     final tpdbPopular = tpdb.firstWhere((s) => s.title == 'Popular', orElse: () => const HomeSection(title: '', items: []));
     final tpdbTop = tpdb.firstWhere((s) => s.title == 'Top Rated', orElse: () => const HomeSection(title: '', items: []));
     if (tmdb.isEmpty) return tpdb;
@@ -222,13 +222,6 @@ class HomeCubit extends Cubit<HomeState> {
     'Top Rated Movies' => 'top_rated_movies',
     _ => 'recent',
   };
-
-  String _mixedTitle(String key, List<HomeSection> tmdb, List<HomeSection> tpdb) {
-    for (final section in [...tmdb, ...tpdb]) {
-      if (section.title.toLowerCase() == key) return section.title;
-    }
-    return key;
-  }
 
   List<MediaItem> _interleave(List<MediaItem> items) {
     final tmdb = items.where((item) => item.sourceId == 'tmdb:catalog').toList();

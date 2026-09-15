@@ -42,9 +42,11 @@ void main() {
       expect(sections, isNotEmpty);
       final titles = sections.map((s) => s.title).toList();
       expect(titles, contains('Recent'));
-      expect(titles, contains('Popular'));
+      expect(titles, contains('Trending'));
       expect(titles, contains('Actors'));
-      expect(titles, contains('Studio'));
+      expect(titles, contains('Popular'));
+      expect(titles, contains('Top Rated'));
+      expect(titles, isNot(contains('Studio')));
     });
 
     test('movieDetail resolves cast with valid canonical person refs', () async {
@@ -61,15 +63,19 @@ void main() {
 
       final first = performers.first;
       final rawId = first.id.replaceFirst('tpdb:performer:', '');
-      final profile = await peopleService.load(PersonRef(
+      final ref = PersonRef(
         id: int.tryParse(rawId) ?? 0,
         externalId: rawId,
         source: PersonSource.thePornDbPerformer,
         name: first.title,
-      ));
+      );
+      final profile = await peopleService.load(ref);
 
       expect(profile, isNotNull);
       expect(profile!.name, isNotEmpty);
+
+      final page2Works = await peopleService.loadWorks(ref, page: 2);
+      expect(page2Works, isA<List>());
     });
   });
 }

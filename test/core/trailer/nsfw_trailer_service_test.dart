@@ -27,13 +27,13 @@ void main() {
       final ctx1 = TrailerAlternateContext.model('Abella Danger');
       expect(
         NsfwTrailerService.buildListingUrl(ctx1),
-        'https://pornstar-scenes.com/model/Abella%20Danger/AllScenes/',
+        'https://www.adultempire.com/allsearch/search?q=Abella%20Danger',
       );
 
       final ctx2 = TrailerAlternateContext.model('  Abella-Danger  ');
       expect(
         NsfwTrailerService.buildListingUrl(ctx2),
-        'https://pornstar-scenes.com/model/Abella%20Danger/AllScenes/',
+        'https://www.adultempire.com/allsearch/search?q=Abella%20Danger',
       );
     });
 
@@ -41,20 +41,21 @@ void main() {
       final ctx1 = TrailerAlternateContext.studio('Tushy Raw');
       expect(
         NsfwTrailerService.buildListingUrl(ctx1),
-        'https://pornstar-scenes.com/showcase/Tushy%20Raw/',
+        'https://www.adultempire.com/allsearch/search?q=Tushy%20Raw',
       );
 
       final ctx2 = TrailerAlternateContext.studio('Tushy-Raw');
       expect(
         NsfwTrailerService.buildListingUrl(ctx2),
-        'https://pornstar-scenes.com/showcase/Tushy%20Raw/',
+        'https://www.adultempire.com/allsearch/search?q=Tushy%20Raw',
       );
     });
 
     test('retains required browser headers', () {
       expect(NsfwTrailerService.kDefaultHeaders['User-Agent'], contains('Mozilla/5.0'));
-      expect(NsfwTrailerService.kDefaultHeaders['Referer'], 'https://pornstar-scenes.com/');
-      expect(NsfwTrailerService.kDefaultHeaders['Origin'], 'https://pornstar-scenes.com');
+      expect(NsfwTrailerService.kDefaultHeaders['Referer'], 'https://www.adultempire.com/');
+      expect(NsfwTrailerService.kDefaultHeaders['Origin'], 'https://www.adultempire.com');
+      expect(NsfwTrailerService.kDefaultHeaders['Cookie'], contains('ageConfirmed=true'));
     });
   });
 
@@ -71,13 +72,13 @@ void main() {
       final dio = Dio();
       dio.httpClientAdapter = _FakeAdapter((options) async {
         final path = options.uri.toString();
-        if (path.contains('/model/Abella%20Danger/AllScenes/')) {
+        if (path.contains('/allsearch/search?q=Abella%20Danger')) {
           const html = '''
             <html>
               <body>
                 <div class="video-grid">
-                  <a href="/video/Hotel_Vixen_Season_3_Episode_7/i12345/">Scene 1</a>
-                  <a href="/video/Another_Scene/i67890/">Scene 2</a>
+                  <a href="/12345/hotel-vixen-episode-7.html">Scene 1</a>
+                  <a href="/67890/another-scene.html">Scene 2</a>
                 </div>
               </body>
             </html>
@@ -87,11 +88,11 @@ void main() {
           });
         }
 
-        if (path.contains('/video/Hotel_Vixen_Season_3_Episode_7/i12345/')) {
+        if (path.contains('/12345/hotel-vixen-episode-7.html')) {
           const html = '''
             <html>
               <script>
-                var videoUrl = "https://cdn.stream.example.com/hls/video_master.m3u8?token=xyz";
+                var videoUrl = "https://video.adultempire.com/hls/previewmovie/12345/index-f1-v1.m3u8";
               </script>
             </html>
           ''';
@@ -111,11 +112,12 @@ void main() {
       expect(result, isNotNull);
       expect(
         result!.url,
-        'https://cdn.stream.example.com/hls/video_master.m3u8?token=xyz',
+        'https://video.adultempire.com/hls/previewmovie/12345/index-f1-v1.m3u8',
       );
       expect(result.headers['User-Agent'], isNotEmpty);
-      expect(result.headers['Referer'], 'https://pornstar-scenes.com/');
-      expect(result.headers['Origin'], 'https://pornstar-scenes.com');
+      expect(result.headers['Referer'], 'https://www.adultempire.com/');
+      expect(result.headers['Origin'], 'https://www.adultempire.com');
+      expect(result.headers['Cookie'], contains('ageConfirmed=true'));
     });
 
     test('returns null when no scene is found in listing', () async {
@@ -136,9 +138,9 @@ void main() {
       final dio = Dio();
       dio.httpClientAdapter = _FakeAdapter((options) async {
         final path = options.uri.toString();
-        if (path.contains('/showcase/')) {
+        if (path.contains('/allsearch/search')) {
           return ResponseBody.fromString(
-            '<a href="/video/sample_scene/123/">Watch</a>',
+            '<a href="/12345/sample-scene.html">Watch</a>',
             200,
           );
         }
@@ -181,14 +183,14 @@ void main() {
       final nsfwDio = Dio();
       nsfwDio.httpClientAdapter = _FakeAdapter((options) async {
         final path = options.uri.toString();
-        if (path.contains('/model/')) {
+        if (path.contains('/allsearch/search')) {
           return ResponseBody.fromString(
-            '<a href="/video/test_scene/1/">Scene</a>',
+            '<a href="/12345/test-scene.html">Scene</a>',
             200,
           );
         }
         return ResponseBody.fromString(
-          'https://cdn.example.com/master.m3u8',
+          'https://video.adultempire.com/hls/previewmovie/12345/index-f1-v1.m3u8',
           200,
         );
       });
@@ -204,8 +206,8 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!.isDirect, isTrue);
-      expect(result.directUrl, 'https://cdn.example.com/master.m3u8');
-      expect(result.headers?['Referer'], 'https://pornstar-scenes.com/');
+      expect(result.directUrl, 'https://video.adultempire.com/hls/previewmovie/12345/index-f1-v1.m3u8');
+      expect(result.headers?['Referer'], 'https://www.adultempire.com/');
     });
 
     test('falls back to normal trailer when alternate NSFW lookup fails', () async {

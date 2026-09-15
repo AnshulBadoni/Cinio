@@ -29,6 +29,45 @@ class PeopleService {
     }
   }
 
+  /// Loads additional works/movies for a person (e.g. for infinite scroll).
+  Future<List<PersonWork>> loadWorks(PersonRef ref, {required int page}) async {
+    switch (ref.source) {
+      case PersonSource.thePornDbPerformer:
+        final id = ref.externalId ?? (ref.id != 0 ? ref.id.toString() : null);
+        if (id == null || id.isEmpty) return const [];
+        return _tpdbPerformerWorks(id, page: page);
+      case PersonSource.tmdb:
+      case PersonSource.anilistCharacter:
+      case PersonSource.anilistStaff:
+        return const [];
+    }
+  }
+
+  Future<List<PersonWork>> _tpdbPerformerWorks(String performerId, {required int page}) async {
+    try {
+      final movies = await _dio.get<dynamic>(
+        '$_tpdbBase/performers/$performerId/movies',
+        queryParameters: {'page': page, 'per_page': 30},
+        options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
+      );
+      final rows = movies.data is Map ? movies.data['data'] : null;
+      if (rows is! List) return const [];
+      final works = <PersonWork>[];
+      for (final m in rows) {
+        if (m is! Map) continue;
+        final title = (m['title'] ?? m['name'])?.toString();
+        if (title == null || title.isEmpty) continue;
+        works.add(PersonWork(
+          title: title,
+          cover: _tpdbImage(m),
+          catalogId: (m['id'] ?? m['_id'] ?? m['uuid'] ?? m['slug'])?.toString(),
+        ));
+      }
+      return works;
+    } catch (_) {
+      return const [];
+    }
+  }
 
   Future<PersonProfile?> _tpdbPerformer(String id, {String? fallbackName}) async {
     try {
@@ -70,27 +109,7 @@ class PeopleService {
       if (name == null || name.isEmpty) return null;
       final resolvedId = (row['id'] ?? row['uuid'] ?? row['_id'] ?? row['slug'] ?? id).toString();
 
-      final works = <PersonWork>[];
-      try {
-        final movies = await _dio.get<dynamic>(
-          '$_tpdbBase/performers/$resolvedId/movies',
-          queryParameters: {'page': 1, 'per_page': 30},
-          options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
-        );
-        final rows = movies.data is Map ? movies.data['data'] : null;
-        if (rows is List) {
-          for (final m in rows) {
-            if (m is! Map) continue;
-            final title = (m['title'] ?? m['name'])?.toString();
-            if (title == null || title.isEmpty) continue;
-            works.add(PersonWork(
-              title: title,
-              cover: _tpdbImage(m),
-              catalogId: (m['id'] ?? m['_id'] ?? m['uuid'] ?? m['slug'])?.toString(),
-            ));
-          }
-        }
-      } catch (_) {}
+      final works = await _tpdbPerformerWorks(resolvedId, page: 1);
 
       final extras = row['extras'];
       final birthday = row['birthday'] ?? (extras is Map ? extras['birthday'] : null);

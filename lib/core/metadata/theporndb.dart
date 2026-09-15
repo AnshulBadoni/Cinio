@@ -141,10 +141,12 @@ class ThePornDb {
     });
     final rows = data['data'];
     if (rows is! List) return const [];
-    return [
+    final list = [
       for (final row in rows)
         if (row is Map && _qualifiesAsActor(row)) _performer(row),
-    ].take(24).toList();
+    ];
+    list.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+    return list.take(24).toList();
   }
 
   bool _qualifiesAsActor(Map row) {
@@ -183,44 +185,43 @@ class ThePornDb {
     ];
   }
 
-  /// Builds the ThePornDB Home rows. Actors are restricted to female performers
-  /// younger than 50 with a rating above 4.0. The API applies the gender/age
-  /// filters server-side; rating is filtered locally because the performer list
-  /// endpoint does not expose a rating filter.
+  /// Builds the ThePornDB Home rows in order: Recent, Trending, Actors, Popular, Top Rated.
+  /// Actors are restricted to female performers younger than 50 with a rating above 4.0,
+  /// sorted with top-rated models first. Studio row is removed from home.
   Future<List<HomeSection>> home() async {
     final results = await Future.wait([
-      _safe(() => performers()),
-      _safe(() => movies(orderBy: 'recently_released')),
-      _safe(() => movies(orderBy: 'most_relevant')),
-      _safe(() => _topRated(1)),
-      _safe(() => studios()),
+      _safe(() => movies(orderBy: 'recently_released')), // 0: Recent
+      _safe(() => movies(orderBy: 'most_relevant')), // 1: Trending
+      _safe(() => performers()), // 2: Actors
+      _safe(() => movies(orderBy: 'most_relevant', page: 2)), // 3: Popular
+      _safe(() => _topRated(1)), // 4: Top Rated
     ]);
-    // Keep content rows first; people/studio rows belong after the movie rows.
-    // This also prevents Actors from becoming the Home hero carousel source.
     return [
-      HomeSection(title: 'Recent', items: results[1], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_recent')),
-      HomeSection(title: 'Popular', items: results[2], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_popular')),
-      HomeSection(title: 'Top Rated', items: results[3], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_top_rated')),
-      HomeSection(title: 'Actors', items: results[0], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_performers')),
-      HomeSection(title: 'Studio', items: results[4], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_studios')),
+      HomeSection(title: 'Recent', items: results[0], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_recent')),
+      HomeSection(title: 'Trending', items: results[1], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_trending')),
+      HomeSection(title: 'Actors', items: results[2], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_performers')),
+      HomeSection(title: 'Popular', items: results[3], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_popular')),
+      HomeSection(title: 'Top Rated', items: results[4], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_top_rated')),
     ].where((section) => section.items.isNotEmpty).toList();
   }
 
   Future<HomeSection?> homeSection(String kind) async {
     final items = switch (kind) {
       'tpdb_recent' => await movies(orderBy: 'recently_released'),
-      'tpdb_popular' => await movies(orderBy: 'most_relevant'),
-      'tpdb_top_rated' => await _topRated(1),
+      'tpdb_trending' => await movies(orderBy: 'most_relevant'),
       'tpdb_performers' => await performers(),
+      'tpdb_popular' => await movies(orderBy: 'most_relevant', page: 2),
+      'tpdb_top_rated' => await _topRated(1),
       'tpdb_studios' => await studios(),
       _ => const <MediaItem>[],
     };
     if (items.isEmpty) return null;
     final title = switch (kind) {
       'tpdb_recent' => 'Recent',
+      'tpdb_trending' => 'Trending',
+      'tpdb_performers' => 'Actors',
       'tpdb_popular' => 'Popular',
       'tpdb_top_rated' => 'Top Rated',
-      'tpdb_performers' => 'Actors',
       'tpdb_studios' => 'Studio',
       _ => '',
     };
@@ -248,8 +249,8 @@ class ThePornDb {
     final rawId = item.id.replaceFirst('tpdb:movie:', '');
     final data = await _get('/movies/$rawId');
     final row = data['data'] is Map
-        ? Map<String, dynamic>.from(data['data'] as Map)
-        : data;
+        ? data['data'] as Map
+        : (data['data'] is List && (data['data'] as List).isNotEmpty ? data['data'][0] as Map : const {});
     final performers = row['performers'];
     final cast = <String>[];
     final members = <CastMember>[];
@@ -260,7 +261,7 @@ class ThePornDb {
         final name = (parent?['name'] ?? parent?['full_name'] ?? p['name'] ?? p['full_name'])?.toString();
         if (name == null || name.isEmpty) continue;
         final rawPid = (parent?['id'] ?? parent?['uuid'] ?? parent?['_id'] ?? parent?['slug'] ?? p['id'] ?? p['uuid'] ?? p['_id'] ?? p['slug'])?.toString();
-        final photo = (parent?['image'] ?? parent?['thumbnail'] ?? parent?['face'] ?? p['image'] ?? p['thumbnail'] ?? p['face'])?.toString();
+        final photo = (parent?['image'] ?? parent?['thumbnail'] ?? parent?['face'] ?? p['image'] ?? p['thumbnail'] ?? p['face'])?.toString() ?? _firstImage(p);
         cast.add(name);
         if (rawPid != null && rawPid.isNotEmpty) {
           members.add(CastMember(
@@ -279,23 +280,21 @@ class ThePornDb {
         }
       }
     }
-    final title = (row['title'] ?? row['name'] ?? item.title).toString();
     final ep = Episode(
-      id: 'tpdb:movie:$rawId',
-      title: title,
+      id: item.id,
       number: 1,
-      url: 'tpdb://movie/$rawId',
-      description: row['description']?.toString() ?? row['synopsis']?.toString(),
-      rating: double.tryParse('${row['rating'] ?? ''}'),
-      date: row['date']?.toString() ?? row['release_date']?.toString(),
+      title: (row['title'] ?? item.title).toString(),
+      url: item.url,
+      thumbnail: _firstImage(row) ?? item.cover,
+      description: (row['description'] ?? row['synopsis'])?.toString(),
     );
     return MediaDetail(
       id: item.id,
-      title: title,
+      title: (row['title'] ?? item.title).toString(),
+      description: (row['description'] ?? row['synopsis'])?.toString(),
       cover: _firstImage(row) ?? item.cover,
       url: item.url,
-      description: row['description']?.toString() ?? row['synopsis']?.toString(),
-      year: _year(row['release_date'] ?? row['date']),
+      year: _year(row['date'] ?? row['release_date']),
       type: ProviderType.movie,
       sourceId: 'tpdb:catalog',
       genres: _names(row['tags'] ?? row['genres']),
@@ -328,6 +327,7 @@ class ThePornDb {
 
   MediaItem _performer(Map row) {
     final id = (row['id'] ?? row['_id'] ?? row['slug']).toString();
+    final rating = double.tryParse('${row['rating'] ?? row['score'] ?? ''}');
     return MediaItem(
       id: 'tpdb:performer:$id',
       title: (row['name'] ?? row['full_name'] ?? 'Performer').toString(),
@@ -335,6 +335,7 @@ class ThePornDb {
       url: 'https://theporndb.net/performers/$id',
       type: ProviderType.movie,
       sourceId: 'tpdb:performer',
+      rating: rating,
     );
   }
 

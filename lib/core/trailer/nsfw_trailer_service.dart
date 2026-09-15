@@ -55,7 +55,7 @@ class AlternateTrailer {
   int get hashCode => url.hashCode;
 }
 
-/// Scrapes NSFW trailers from pornstar-scenes.com for model and studio contexts.
+/// Scrapes NSFW trailers from adultempire.com for model and studio contexts.
 ///
 /// Execution is lazy, best-effort, and fails safely to null without crashing.
 class NsfwTrailerService {
@@ -63,17 +63,28 @@ class NsfwTrailerService {
 
   final Dio _dio;
 
-  static const String _baseUrl = 'https://pornstar-scenes.com';
+  static const String _baseUrl = 'https://www.adultempire.com';
 
   static const Map<String, String> kDefaultHeaders = {
     'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Referer': 'https://pornstar-scenes.com/',
-    'Origin': 'https://pornstar-scenes.com',
+    'Referer': 'https://www.adultempire.com/',
+    'Origin': 'https://www.adultempire.com',
+    'Cookie': 'ageConfirmed=true; hasAcceptedAgeConfirmation=true; RTA=1; enter=1',
   };
 
-  static final RegExp _sceneHrefRegex = RegExp(
-    r'''href=['"](/video/[^'"]+)['"]''',
+  static final RegExp _itemHrefRegex = RegExp(
+    r'''href=['"](/(\d+)/[^'"]+)['"]''',
+    caseSensitive: false,
+  );
+
+  static final RegExp _videoHrefRegex = RegExp(
+    r'''href=['"](/[^'"]*?(?:scene|watch|video|movie)/[^'"]+)['"]''',
+    caseSensitive: false,
+  );
+
+  static final RegExp _movieIdRegex = RegExp(
+    r'''data-movie-id=['"](\d+)['"]''',
     caseSensitive: false,
   );
 
@@ -83,7 +94,7 @@ class NsfwTrailerService {
   );
 
   /// Normalizes a name string: trims, replaces hyphens with spaces, collapses
-  /// repeated whitespace, and URL-encodes with `%20` for spaces.
+  /// repeated whitespace, and URL-encodes with `%20` or standard percent encoding.
   static String normalizeName(String name) {
     final cleaned = name
         .replaceAll('-', ' ')
@@ -92,13 +103,10 @@ class NsfwTrailerService {
     return Uri.encodeComponent(cleaned);
   }
 
-  /// Builds the listing URL for the given [context].
+  /// Builds the search/listing URL for the given [context].
   static String buildListingUrl(TrailerAlternateContext context) {
     final encoded = normalizeName(context.name);
-    return switch (context.type) {
-      TrailerAlternateType.model => '$_baseUrl/model/$encoded/AllScenes/',
-      TrailerAlternateType.studio => '$_baseUrl/showcase/$encoded/',
-    };
+    return '$_baseUrl/allsearch/search?q=$encoded';
   }
 
   /// Fetches an alternate trailer for the given [context].
@@ -111,7 +119,7 @@ class NsfwTrailerService {
     try {
       final listingUrl = buildListingUrl(context);
 
-      // Step 1: Fetch listing page
+      // Step 1: Fetch listing / search page
       final listingRes = await _dio.get<dynamic>(
         listingUrl,
         options: Options(
@@ -125,10 +133,31 @@ class NsfwTrailerService {
       final listingHtml = listingRes.data?.toString();
       if (listingHtml == null || listingHtml.isEmpty) return null;
 
-      // Step 2: Find the first scene href
-      final sceneMatch = _sceneHrefRegex.firstMatch(listingHtml);
-      var videoPath = sceneMatch?.group(1);
-      if (videoPath == null || videoPath.isEmpty) return null;
+      // Check if direct m3u8 is already embedded in listing
+      final directM3u8 = _m3u8Regex.firstMatch(listingHtml)?.group(0);
+      if (directM3u8 != null && directM3u8.isNotEmpty) {
+        return AlternateTrailer(
+          url: directM3u8,
+          headers: Map<String, String>.unmodifiable(kDefaultHeaders),
+        );
+      }
+
+      // Step 2: Find the first movie or scene href
+      final match = _itemHrefRegex.firstMatch(listingHtml) ??
+          _videoHrefRegex.firstMatch(listingHtml);
+      var videoPath = match?.group(1);
+
+      if (videoPath == null || videoPath.isEmpty) {
+        final movieIdMatch = _movieIdRegex.firstMatch(listingHtml);
+        final movieId = movieIdMatch?.group(1);
+        if (movieId != null && movieId.isNotEmpty) {
+          return AlternateTrailer(
+            url: 'https://video.adultempire.com/hls/previewmovie/$movieId/index-f1-v1.m3u8',
+            headers: Map<String, String>.unmodifiable(kDefaultHeaders),
+          );
+        }
+        return null;
+      }
 
       final String sceneUrl;
       if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
@@ -138,7 +167,7 @@ class NsfwTrailerService {
         sceneUrl = '$_baseUrl$videoPath';
       }
 
-      // Step 3: Fetch scene page
+      // Step 3: Fetch movie / scene page
       final sceneRes = await _dio.get<dynamic>(
         sceneUrl,
         options: Options(
@@ -154,7 +183,16 @@ class NsfwTrailerService {
 
       // Find HLS playlist (.m3u8)
       final m3u8Match = _m3u8Regex.firstMatch(sceneHtml);
-      final m3u8Url = m3u8Match?.group(0);
+      var m3u8Url = m3u8Match?.group(0);
+
+      if (m3u8Url == null || m3u8Url.isEmpty) {
+        final movieIdMatch = _movieIdRegex.firstMatch(sceneHtml);
+        final movieId = movieIdMatch?.group(1);
+        if (movieId != null && movieId.isNotEmpty) {
+          m3u8Url = 'https://video.adultempire.com/hls/previewmovie/$movieId/index-f1-v1.m3u8';
+        }
+      }
+
       if (m3u8Url == null || m3u8Url.isEmpty) return null;
 
       // Step 4: Return trailer source with playback headers

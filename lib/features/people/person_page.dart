@@ -35,13 +35,74 @@ class PersonPage extends StatefulWidget {
 }
 
 class _PersonPageState extends State<PersonPage> {
-  late Future<PersonProfile?> _future;
+  final ScrollController _scrollController = ScrollController();
+  PersonProfile? _profile;
+  bool _loading = true;
+  final List<PersonWork> _works = [];
+  int _page = 1;
+  bool _loadingMore = false;
+  bool _hasMore = true;
   bool _bioExpanded = false;
 
   @override
   void initState() {
     super.initState();
-    _future = sl<PeopleService>().load(widget.person);
+    _scrollController.addListener(_onScroll);
+    _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    final p = await sl<PeopleService>().load(widget.person);
+    if (!mounted) return;
+    setState(() {
+      _profile = p;
+      _loading = false;
+      if (p != null) {
+        _works.addAll(p.works);
+        _hasMore = p.works.length >= 30 && widget.person.source == PersonSource.thePornDbPerformer;
+      }
+    });
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (currentScroll >= maxScroll - 300) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore || _loading) return;
+    setState(() => _loadingMore = true);
+    final nextPage = _page + 1;
+    final more = await sl<PeopleService>().loadWorks(widget.person, page: nextPage);
+    if (!mounted) return;
+    setState(() {
+      _loadingMore = false;
+      if (more.isEmpty) {
+        _hasMore = false;
+      } else {
+        _page = nextPage;
+        final existingIds = {for (final w in _works) w.catalogId ?? w.title};
+        for (final w in more) {
+          if (existingIds.add(w.catalogId ?? w.title)) {
+            _works.add(w);
+          }
+        }
+        if (more.length < 30) {
+          _hasMore = false;
+        }
+      }
+    });
   }
 
   void _snack(String msg) {
@@ -122,36 +183,29 @@ class _PersonPageState extends State<PersonPage> {
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      body: FutureBuilder<PersonProfile?>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return Center(
+      body: _loading
+          ? Center(
               child: CircularProgressIndicator(color: AppColors.accent),
-            );
-          }
-          final p = snap.data;
-          if (p == null) {
-            return const EmptyState(
-              icon: Icons.person_off_outlined,
-              message: 'Couldn’t load this profile',
-            );
-          }
-          return _content(p);
-        },
-      ),
+            )
+          : _profile == null
+              ? const EmptyState(
+                  icon: Icons.person_off_outlined,
+                  message: 'Couldn’t load this profile',
+                )
+              : _content(_profile!),
     );
   }
 
   Widget _content(PersonProfile p) {
     return CustomScrollView(
+      controller: _scrollController,
       slivers: [
         SliverToBoxAdapter(child: _header(p)),
         if (p.description != null && p.description!.isNotEmpty)
           SliverToBoxAdapter(child: _bio(p.description!)),
         if (p.related.isNotEmpty)
           SliverToBoxAdapter(child: _relatedRow(p.related)),
-        if (p.works.isNotEmpty) ...[
+        if (_works.isNotEmpty) ...[
           SliverToBoxAdapter(
             child: _sectionLabel(
               widget.person.source == PersonSource.anilistStaff
@@ -160,7 +214,7 @@ class _PersonPageState extends State<PersonPage> {
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
             sliver: SliverGrid(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
@@ -169,11 +223,29 @@ class _PersonPageState extends State<PersonPage> {
                 childAspectRatio: 0.5,
               ),
               delegate: SliverChildBuilderDelegate(
-                (_, i) => _workCard(p.works[i]),
-                childCount: p.works.length,
+                (_, i) => _workCard(_works[i]),
+                childCount: _works.length,
               ),
             ),
           ),
+          if (_loadingMore)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 32),
+                child: Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ] else
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
       ],
