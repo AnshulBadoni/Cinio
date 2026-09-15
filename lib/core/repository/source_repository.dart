@@ -542,20 +542,44 @@ class SourceRepository {
     final completer = Completer<({MediaItem item, MediaDetail detail})?>();
     final pendingCount = remaining.length;
     var left = pendingCount;
+    ({MediaItem item, MediaDetail detail})? bestFuzzyResult;
+    double bestFuzzyScore = 0.0;
+    Timer? fuzzyGraceTimer;
+
+    void finishWith( ({MediaItem item, MediaDetail detail})? res) {
+      if (completer.isCompleted) return;
+      fuzzyGraceTimer?.cancel();
+      completer.complete(res);
+    }
+
     for (final id in remaining) {
       _resolveCatalogOnSource(catalog, id, category)
-          .timeout(const Duration(seconds: 8), onTimeout: () => null)
+          .timeout(const Duration(seconds: 12), onTimeout: () => null)
           .then((result) {
         if (completer.isCompleted) return;
         if (result != null) {
-          completer.complete(result);
-          return;
+          final score = TitleMatcher.matchScore(catalog.title, result.item.title, altWanted: catalog.englishTitle);
+          if (score >= 0.98) {
+            // Exact 100% match: complete immediately with zero delay
+            finishWith(result);
+            return;
+          } else if (score > bestFuzzyScore) {
+            bestFuzzyScore = score;
+            bestFuzzyResult = result;
+            // Short 350ms window to give other providers a chance to return an exact full match
+            fuzzyGraceTimer ??= Timer(const Duration(milliseconds: 350), () {
+              finishWith(bestFuzzyResult);
+            });
+          }
         }
         left -= 1;
-        if (left == 0) completer.complete(null);
+        if (left == 0) {
+          finishWith(bestFuzzyResult);
+        }
       });
     }
     final result = await completer.future;
+    fuzzyGraceTimer?.cancel();
     if (result != null) {
       _catalogResolutionCache[key] = (at: DateTime.now(), value: result);
     }

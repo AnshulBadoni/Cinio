@@ -17,6 +17,7 @@ class PeopleRow extends StatelessWidget {
     required this.onTap,
     required this.onLongPress,
     this.onSeeAll,
+    this.onLoadMore,
   });
 
   final String title;
@@ -24,6 +25,7 @@ class PeopleRow extends StatelessWidget {
   final void Function(MediaItem) onTap;
   final void Function(MediaItem) onLongPress;
   final VoidCallback? onSeeAll;
+  final VoidCallback? onLoadMore;
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +38,7 @@ class PeopleRow extends StatelessWidget {
       itemHeight: height,
       itemCount: items.length,
       onSeeAll: onSeeAll,
+      onLoadMore: onLoadMore,
       itemBuilder: (context, index) {
         final item = items[index];
         return _PersonCard(
@@ -97,8 +100,8 @@ class _PersonCardState extends State<_PersonCard> {
                           cacheManager: AppImageCache.manager,
                           httpHeaders: widget.item.coverHeaders,
                           fit: BoxFit.cover,
-                          placeholder: (_, __) => ColoredBox(color: AppColors.surface2),
-                          errorWidget: (_, __, ___) => ColoredBox(color: AppColors.surface2),
+                          placeholder: (context, url) => ColoredBox(color: AppColors.surface2),
+                          errorWidget: (context, url, error) => ColoredBox(color: AppColors.surface2),
                         ),
                 ),
               ),

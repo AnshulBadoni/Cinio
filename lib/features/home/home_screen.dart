@@ -23,8 +23,6 @@ import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
-import '../../core/metadata/tmdb_discover_service.dart';
-import '../../core/metadata/theporndb.dart';
 import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -417,6 +415,7 @@ class _HomeViewState extends State<_HomeView>
       return;
     }
     item = resolved;
+    if (!mounted) return;
     // Manga/novel: the hero's primary action says "Read", so it must not drop
     // into the video player. Route to the title instead — Detail owns the real
     // Read button, which resolves the chapter list, picks up the saved reading
@@ -621,17 +620,30 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  void _snack(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+  final Map<String, int> _sectionPages = {};
+  final Set<String> _sectionLoading = {};
+
+  Future<void> _loadMoreForSection(HomeSection section) async {
+    if (section.more == null) return;
+    final key = section.title;
+    if (_sectionLoading.contains(key)) return;
+    _sectionLoading.add(key);
+    final nextPage = (_sectionPages[key] ?? 1) + 1;
+    try {
+      final newItems = await _repo.browseMore(section.more!, nextPage);
+      if (newItems.isNotEmpty && mounted) {
+        _sectionPages[key] = nextPage;
+        final existingIds = {for (final it in section.items) it.id};
+        final added = newItems.where((it) => existingIds.add(it.id)).toList();
+        if (added.isNotEmpty) {
+          setState(() {
+            section.items.addAll(added);
+          });
+        }
+      }
+    } catch (_) {} finally {
+      _sectionLoading.remove(key);
+    }
   }
 
   Widget _sectionRow(HomeSection section) {
@@ -641,6 +653,7 @@ class _HomeViewState extends State<_HomeView>
           title: section.title,
           items: section.items,
           onSeeAll: () => _openSeeAll(section),
+          onLoadMore: section.more != null ? () => _loadMoreForSection(section) : null,
           onTap: (item) {
             if (item.sourceId == 'tpdb:performer') {
               final raw = item.id.replaceFirst('tpdb:performer:', '');

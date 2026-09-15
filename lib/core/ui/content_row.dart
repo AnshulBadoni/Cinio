@@ -8,7 +8,7 @@ import 'reveal_item.dart';
 /// Content scrolls lazily via [ListView.builder] so items off-screen are never
 /// built. Left/right padding is 16 px; items spill off the right edge to signal
 /// "more" (no right-side padding on the list itself).
-class ContentRow extends StatelessWidget {
+class ContentRow extends StatefulWidget {
   const ContentRow({
     super.key,
     required this.title,
@@ -18,6 +18,7 @@ class ContentRow extends StatelessWidget {
     this.itemWidth = 124,
     this.itemHeight = 210,
     this.onSeeAll,
+    this.onLoadMore,
   });
 
   final String title;
@@ -27,6 +28,35 @@ class ContentRow extends StatelessWidget {
   final double itemWidth;
   final double itemHeight;
   final VoidCallback? onSeeAll;
+  final VoidCallback? onLoadMore;
+
+  @override
+  State<ContentRow> createState() => _ContentRowState();
+}
+
+class _ContentRowState extends State<ContentRow> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (widget.onLoadMore == null || !_scrollController.hasClients) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 300) {
+      widget.onLoadMore!();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,10 +64,11 @@ class ContentRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _Header(title: title, overline: overline, onSeeAll: onSeeAll),
+        _Header(title: widget.title, overline: widget.overline, onSeeAll: widget.onSeeAll),
         SizedBox(
-          height: itemHeight,
+          height: widget.itemHeight,
           child: ListView.builder(
+            controller: _scrollController,
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             // With a screen reader on, build every item (not just the lazy
@@ -47,15 +78,15 @@ class ContentRow extends StatelessWidget {
             cacheExtent: MediaQuery.of(context).accessibleNavigation
                 ? double.infinity
                 : 600,
-            itemCount: itemCount,
+            itemCount: widget.itemCount,
             itemBuilder: (context, index) => Padding(
               padding: const EdgeInsets.only(right: 12),
               child: SizedBox(
-                width: itemWidth,
+                width: widget.itemWidth,
                 child: RepaintBoundary(
                   child: RevealItem(
                     index: index,
-                    child: itemBuilder(context, index),
+                    child: widget.itemBuilder(context, index),
                   ),
                 ),
               ),

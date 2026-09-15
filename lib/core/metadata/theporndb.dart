@@ -126,30 +126,17 @@ class ThePornDb {
   }
 
   static const List<String> _kTopPerformers = [
-    'Gabbie Carter',
-    'Lana Rhoades',
-    'Emily Willis',
-    'Mia Malkova',
-    'Riley Reid',
-    'Adriana Chechik',
-    'Angela White',
-    'Autumn Falls',
-    'Abella Danger',
-    'Eva Lovia',
-    'Kendra Lust',
-    'Janice Griffith',
-    'Alina Lopez',
-    'Kenzie Reeves',
-    'Blake Blossom',
-    'Liya Silver',
-    'Cory Chase',
-    'Brandi Love',
-    'Alexis Texas',
-    'Tori Black',
-    'Nicole Aniston',
-    'Dillion Harper',
-    'Lena Paul',
-    'Vicki Chase',
+    'Riley Reid', 'Gabbie Carter', 'Lana Rhoades', 'Mia Malkova', 'Angela White',
+    'Emily Willis', 'Autumn Falls', 'Abella Danger', 'Eva Lovia', 'Kendra Lust',
+    'Janice Griffith', 'Alina Lopez', 'Kenzie Reeves', 'Blake Blossom', 'Liya Silver',
+    'Cory Chase', 'Brandi Love', 'Alexis Texas', 'Tori Black', 'Nicole Aniston',
+    'Dillion Harper', 'Lena Paul', 'Vicki Chase', 'Maitland Ward', 'Kenna James',
+    'Gianna Michaels', 'Violet Myers', 'Skylar Vox', 'Gia Paige', 'Scarlit Scandal',
+    'Sweetie Fox', 'Little Caprice', 'Leah Gotti', 'Kelsi Monroe', 'Elsa Jean',
+    'Alex Coal', 'Adria Rae', 'Lacy Lennon', 'Vanna Bardot', 'Maya Bijou',
+    'Kira Noir', 'Jill Kassidy', 'Kylie Rocket', 'Vina Sky', 'Cherie DeVille',
+    'Natasha Nice', 'Kagney Linn Karter', 'Phoenix Marie', 'Sarah Vandella', 'Lisa Ann',
+    'Penny Pax', 'Chanel Preston', 'Alexis Fawx', 'Reagan Foxx', 'Eva Elfie',
   ];
 
   Future<List<MediaItem>> performers({
@@ -158,26 +145,36 @@ class ThePornDb {
     String? query,
   }) async {
     final isSearch = query != null && query.trim().isNotEmpty;
-    if (!isSearch && page == 1) {
-      final futures = _kTopPerformers.map((name) async {
-        try {
-          final res = await _get('/performers', queryParameters: {
-            'q': name,
-            'per_page': 1,
-          });
-          final list = res['data'] as List?;
-          if (list != null && list.isNotEmpty) {
-            final row = list.first;
-            if (row is Map && _qualifiesAsActor(row, requireRating: true)) {
-              return _performer(row);
+    if (!isSearch) {
+      const pageSize = 20;
+      final offset = (page - 1) * pageSize;
+      if (offset < _kTopPerformers.length) {
+        final List<String> names;
+        if (page == 1) {
+          names = (List<String>.from(_kTopPerformers)..shuffle()).take(pageSize).toList();
+        } else {
+          names = _kTopPerformers.skip(offset).take(pageSize).toList();
+        }
+        final futures = names.map((name) async {
+          try {
+            final res = await _get('/performers', queryParameters: {
+              'q': name,
+              'per_page': 1,
+            });
+            final list = res['data'] as List?;
+            if (list != null && list.isNotEmpty) {
+              final row = list.first;
+              if (row is Map && _qualifiesAsActor(row, requireRating: true)) {
+                return _performer(row);
+              }
             }
-          }
-        } catch (_) {}
-        return null;
-      });
-      final results = (await Future.wait(futures)).whereType<MediaItem>().toList();
-      results.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-      if (results.isNotEmpty) return results;
+          } catch (_) {}
+          return null;
+        });
+        final results = (await Future.wait(futures)).whereType<MediaItem>().toList();
+        results.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+        if (results.isNotEmpty) return results;
+      }
     }
 
     final data = await _get('/performers', queryParameters: {

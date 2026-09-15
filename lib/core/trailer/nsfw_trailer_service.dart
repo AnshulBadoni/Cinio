@@ -112,11 +112,11 @@ class NsfwTrailerService {
     caseSensitive: false,
   );
 
-  /// Normalizes a name string: trims, replaces hyphens with spaces, collapses
+  /// Normalizes a name string: trims, replaces hyphens/colons/punctuation with spaces, collapses
   /// repeated whitespace, and URL-encodes with standard percent encoding.
   static String normalizeName(String name) {
     final cleaned = name
-        .replaceAll('-', ' ')
+        .replaceAll(RegExp(r'[-:;,!?#_]+'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     return Uri.encodeComponent(cleaned);

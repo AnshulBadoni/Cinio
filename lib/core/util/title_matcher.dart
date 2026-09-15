@@ -6,36 +6,38 @@ import '../models/media_item.dart';
 class TitleMatcher {
   TitleMatcher._();
 
-  static final RegExp _romanRegex = RegExp(
-    r'\b(xx|xix|xviii|xvii|xvi|xv|xiv|xiii|xii|xi|x|ix|viii|vii|vi|v|iv|iii|ii|i)\b',
+  static final RegExp _romanWordRegex = RegExp(
+    r'\b(?=[mdclxvi]+\b)(m{0,4}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3}))\b',
     caseSensitive: false,
   );
 
-  static final Map<String, String> _romanMap = {
-    'i': '1',
-    'ii': '2',
-    'iii': '3',
-    'iv': '4',
-    'v': '5',
-    'vi': '6',
-    'vii': '7',
-    'viii': '8',
-    'ix': '9',
-    'x': '10',
-    'xi': '11',
-    'xii': '12',
-    'xiii': '13',
-    'xiv': '14',
-    'xv': '15',
-    'xvi': '16',
-    'xvii': '17',
-    'xviii': '18',
-    'xix': '19',
-    'xx': '20',
-  };
+  static int? _parseRoman(String s) {
+    final str = s.toLowerCase();
+    if (str.isEmpty) return null;
+    const romanValues = {
+      'i': 1, 'v': 5, 'x': 10, 'l': 50, 'c': 100, 'd': 500, 'm': 1000
+    };
+    int total = 0;
+    int prev = 0;
+    for (int i = str.length - 1; i >= 0; i--) {
+      final val = romanValues[str[i]] ?? 0;
+      if (val < prev) {
+        total -= val;
+      } else {
+        total += val;
+        prev = val;
+      }
+    }
+    return total > 0 ? total : null;
+  }
 
   static final RegExp _noiseWords = RegExp(
     r'\b(volume|vol|v|part|pt|episode|ep|scene|season|no|num|number)\b',
+    caseSensitive: false,
+  );
+
+  static final RegExp _junkSuffixes = RegExp(
+    r'\b(compilation|short clip|teaser|trailer|promo|sample|preview|behind the scenes|bloopers)\b',
     caseSensitive: false,
   );
 
@@ -43,9 +45,10 @@ class TitleMatcher {
 
   /// Convert Roman numerals to decimal digits in title strings.
   static String convertRomanNumerals(String text) {
-    return text.replaceAllMapped(_romanRegex, (m) {
+    return text.replaceAllMapped(_romanWordRegex, (m) {
       final match = m.group(0)!.toLowerCase();
-      return _romanMap[match] ?? match;
+      final val = _parseRoman(match);
+      return val != null ? '$val' : match;
     });
   }
 
@@ -107,58 +110,72 @@ class TitleMatcher {
     return 1.0 - (d[s1.length][s2.length] / maxLen);
   }
 
-  /// Check whether candidate title matches the wanted title.
-  static bool isMatch(String wanted, String candidate, {String? altWanted}) {
-    if (wanted.trim().isEmpty || candidate.trim().isEmpty) return false;
+  /// Score how well candidate matches wanted (1.0 = exact, 0.0 = mismatch).
+  static double matchScore(String wanted, String candidate, {String? altWanted}) {
+    if (wanted.trim().isEmpty || candidate.trim().isEmpty) return 0.0;
+
+    // Check junk suffixes (e.g. "compilation", "teaser", "promo", "trailer")
+    final wantedHasJunk = _junkSuffixes.hasMatch(wanted.toLowerCase());
+    final candHasJunk = _junkSuffixes.hasMatch(candidate.toLowerCase());
+    if (!wantedHasJunk && candHasJunk) return 0.0;
 
     // Fast path: standard normalized title equality
     final normWanted = normalizeTitle(wanted);
     final normCand = normalizeTitle(candidate);
-    if (normWanted == normCand) return true;
+    if (normWanted == normCand) return 1.0;
 
     if (altWanted != null && altWanted.trim().isNotEmpty) {
       final normAlt = normalizeTitle(altWanted);
       if (normAlt.isNotEmpty && (normAlt == normCand || normWanted == normalizeTitle(altWanted))) {
-        return true;
+        return 1.0;
       }
     }
 
-    // Canonical equality (handles "Vol 10" vs "10", "Part II" vs "2")
+    // Canonical equality (handles "Vol 10" vs "10", "Part II" vs "2", Roman numerals)
     final canonWanted = canonicalize(wanted);
     final canonCand = canonicalize(candidate);
-    if (canonWanted.isNotEmpty && canonWanted == canonCand) return true;
+    if (canonWanted.isNotEmpty && canonWanted == canonCand) return 1.0;
 
-    // Number consistency check: if wanted has numbers (e.g. volume 10),
+    // Number consistency check: if wanted has numbers (e.g. volume 66),
     // candidate must contain the exact same numbers.
     final wantedNums = extractNumbers(wanted);
     final candNums = extractNumbers(candidate);
     if (wantedNums.isNotEmpty) {
       if (wantedNums.length != candNums.length) {
-        // If candidate doesn't have the same count of numbers, check set inclusion
-        if (!wantedNums.every(candNums.contains)) return false;
+        if (!wantedNums.every(candNums.contains)) return 0.0;
       } else {
         for (var i = 0; i < wantedNums.length; i++) {
-          if (wantedNums[i] != candNums[i]) return false;
+          if (wantedNums[i] != candNums[i]) return 0.0;
         }
       }
     }
 
     final wantedTokens = tokenize(wanted);
     final candTokens = tokenize(candidate);
-    if (wantedTokens.isEmpty || candTokens.isEmpty) return false;
+    if (wantedTokens.isEmpty || candTokens.isEmpty) return 0.0;
 
-    // Token subset / inclusion: e.g. "Brazzers - Fantasy 10" contains all tokens of "Fantasy Vol 10"
+    // Token subset: e.g. "Brazzers - Fantasy 10" contains all tokens of "Fantasy Vol 10"
     final wantedSet = wantedTokens.toSet();
     final candSet = candTokens.toSet();
-    if (wantedSet.length >= 2 && (wantedSet.every(candSet.contains) || candSet.every(wantedSet.contains))) {
-      return true;
+    if (wantedSet.length >= 2) {
+      if (wantedSet.every(candSet.contains) && (candTokens.length - wantedTokens.length).abs() <= 3) {
+        return 0.92;
+      }
+      if (candSet.every(wantedSet.contains) && (wantedTokens.length - candTokens.length).abs() <= 2) {
+        return 0.90;
+      }
     }
 
-    // Fuzzy string similarity on canonical text (handles minor typos like "Fantay 10" vs "Fantasy 10")
+    // Fuzzy string similarity on canonical text
     final sim = similarity(canonWanted, canonCand);
-    if (sim >= 0.82) return true;
+    if (sim >= 0.85) return sim * 0.9;
 
-    return false;
+    return 0.0;
+  }
+
+  /// Check whether candidate title matches the wanted title.
+  static bool isMatch(String wanted, String candidate, {String? altWanted}) {
+    return matchScore(wanted, candidate, altWanted: altWanted) >= 0.70;
   }
 
   /// Find the best matching item among provider search results.
@@ -176,15 +193,20 @@ class TitleMatcher {
       }
     }
 
-    // 1. Exact / canonical match
+    MediaItem? best;
+    double bestScore = 0.0;
+
     for (final m in results) {
-      if (isMatch(wanted, m.title, altWanted: altTitle)) return m;
-      if (m.englishTitle != null && isMatch(wanted, m.englishTitle!, altWanted: altTitle)) {
-        return m;
+      final s1 = matchScore(wanted, m.title, altWanted: altTitle);
+      final s2 = m.englishTitle != null ? matchScore(wanted, m.englishTitle!, altWanted: altTitle) : 0.0;
+      final score = max(s1, s2);
+      if (score > bestScore) {
+        bestScore = score;
+        best = m;
       }
     }
 
-    return null;
+    return bestScore >= 0.70 ? best : null;
   }
 
   /// Generate fallback search queries for a given title to maximize provider search hits.
