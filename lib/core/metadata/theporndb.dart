@@ -16,6 +16,7 @@ class ThePornDb {
   final Dio _dio;
 
   static const String base = 'https://api.theporndb.net';
+  Future<int?>? _straightTagIdFuture;
   // Temporary development key. Replace this before the production release.
   static const String apiKey = '8ABvbgloweVLDeD3HBq6x9eHpL3lMJE8qEuBtdmb213d0c62';
 
@@ -42,13 +43,55 @@ class ThePornDb {
       'per_page': 16,
       'orderBy': orderBy,
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      // TPDB supports tag filtering on the Movies endpoint. Resolve the
+      // canonical "Straight" tag once and let TPDB do the filtering
+      // server-side, so mixed-orientation titles never enter pagination.
+      ...await _straightTagQuery(),
     });
     final rows = data['data'];
     if (rows is! List) return const [];
     return [
       for (final row in rows)
-        if (row is Map && !_isExcludedMovie(row)) _movie(row),
+        if (row is Map) _movie(row),
     ];
+  }
+
+
+  Future<Map<String, dynamic>> _straightTagQuery() async {
+    final tagId = await (_straightTagIdFuture ??= _findStraightTagId());
+    if (tagId == null) {
+      return {
+        'performer_genders': const ['Female', 'Male'],
+        'performer_gender_and': true,
+        'performer_gender_only': true,
+      };
+    }
+    return {
+      'tags[$tagId]': 'Straight',
+      'tag_and': true,
+    };
+  }
+
+  Future<int?> _findStraightTagId() async {
+    try {
+      final data = await _get('/tags', queryParameters: {
+        'q': 'Straight',
+        'per_page': 20,
+      });
+      final rows = data['data'];
+      if (rows is! List) return null;
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final name = row['name']?.toString().trim();
+        if (name != null && name.toLowerCase() == 'straight') {
+          return int.tryParse('${row['id']}');
+        }
+      }
+    } catch (_) {
+      // The content query still has a server-side performer-gender fallback
+      // below if the tag lookup is temporarily unavailable.
+    }
+    return null;
   }
 
   Future<List<MediaItem>> trendingPerformers({int page = 1}) async {
@@ -353,38 +396,6 @@ class ThePornDb {
     return raw == null || raw.toString().isEmpty ? const [] : [raw.toString()];
   }
 
-  bool _isExcludedMovie(Map row) {
-    final values = <String>[];
-    void collect(dynamic value) {
-      if (value is List) {
-        for (final v in value) collect(v);
-      } else if (value is Map) {
-        for (final key in ['name', 'title', 'label', 'slug']) {
-          final v = value[key];
-          if (v != null) values.add(v.toString().toLowerCase());
-        }
-      } else if (value != null) {
-        values.add(value.toString().toLowerCase());
-      }
-    }
-    collect(row['tags']);
-    collect(row['genres']);
-    collect(row['categories']);
-    final text = values.join(' | ');
-    // Explicit TPDB metadata only. Do not infer orientation from performer
-    // names/gender; exclude titles tagged as non-straight/trans content.
-    const blocked = [
-      'gay', 'lesbian', 'bisexual', 'transgender', 'transsexual',
-      'trans woman', 'trans man', 'transwoman', 'transman', 'shemale',
-      'femboy', 'crossdresser', 'cross dresser', 'nonbinary', 'non-binary',
-    ];
-    return blocked.any((term) {
-      if (term == 'gay' || term == 'transgender' || term == 'transsexual') {
-        return RegExp(r'(^|[^a-z])' + RegExp.escape(term) + r'([^a-z]|$)').hasMatch(text);
-      }
-      return text.contains(term);
-    });
-  }
 
   double _rating(MediaItem item) => item.rating ?? 0;
 }
