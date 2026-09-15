@@ -27,6 +27,7 @@ import '../metadata/tmdb_discover_service.dart';
 import '../provider/provider_manager.dart';
 import '../provider/reading_provider.dart';
 import '../state/active_source_cubit.dart';
+import '../util/title_matcher.dart';
 
 /// Facade over the active provider runtime for the UI layer.
 /// The active source is driven by [activeSource] so callers can switch at
@@ -571,30 +572,39 @@ class SourceRepository {
     String category,
   ) async {
     try {
-      final results = await search(
-        catalog.title,
-        category: category,
-        sourceId: providerId,
-      );
-      var match = _strictCatalogMatch(
-        results,
-        catalog.title,
-        altTitle: catalog.englishTitle,
-      );
-      if (match == null && category != 'dub') {
-        final dubResults = await search(
-          catalog.title,
-          category: 'dub',
+      final queries = TitleMatcher.searchQueries(catalog.title);
+      MediaItem? match;
+
+      for (final query in queries) {
+        final results = await search(
+          query,
+          category: category,
           sourceId: providerId,
         );
         match = _strictCatalogMatch(
-          dubResults,
+          results,
           catalog.title,
           altTitle: catalog.englishTitle,
         );
+        if (match != null) break;
+
+        if (category != 'dub') {
+          final dubResults = await search(
+            query,
+            category: 'dub',
+            sourceId: providerId,
+          );
+          match = _strictCatalogMatch(
+            dubResults,
+            catalog.title,
+            altTitle: catalog.englishTitle,
+          );
+          if (match != null) break;
+        }
       }
+
       if (match == null) return null;
-      final resolvedDetail = await this.detail(
+      final resolvedDetail = await detail(
         match.url,
         category: category,
         sourceId: match.sourceId,
@@ -611,17 +621,11 @@ class SourceRepository {
     String wanted, {
     String? altTitle,
   }) {
-    final wants = <String>{
-      normalizeTitle(wanted),
-      if (altTitle != null && altTitle.isNotEmpty) normalizeTitle(altTitle),
-    }..removeWhere((s) => s.isEmpty);
-    for (final m in results) {
-      if (wants.contains(normalizeTitle(m.title)) ||
-          (m.englishTitle != null && wants.contains(normalizeTitle(m.englishTitle!)))) {
-        return m;
-      }
-    }
-    return null;
+    return TitleMatcher.findBestMatch(
+      results,
+      wanted,
+      altTitle: altTitle,
+    );
   }
 
   /// Status-reporting search for the source-health feature (search ordering +

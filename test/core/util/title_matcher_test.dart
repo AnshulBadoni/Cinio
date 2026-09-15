@@ -1,0 +1,107 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:watch_app/core/models/media_item.dart';
+import 'package:watch_app/core/models/provider_info.dart';
+import 'package:watch_app/core/util/title_matcher.dart';
+
+void main() {
+  group('TitleMatcher - Roman numerals and canonicalization', () {
+    test('converts roman numerals to digits', () {
+      expect(TitleMatcher.convertRomanNumerals('Fantasy Vol X'), 'Fantasy Vol 10');
+      expect(TitleMatcher.convertRomanNumerals('Part II'), 'Part 2');
+      expect(TitleMatcher.convertRomanNumerals('Season IV'), 'Season 4');
+      expect(TitleMatcher.convertRomanNumerals('Episode III'), 'Episode 3');
+    });
+
+    test('canonicalizes volume/part noise words', () {
+      expect(TitleMatcher.canonicalize('Fantasy Vol. 10'), 'fantasy 10');
+      expect(TitleMatcher.canonicalize('Fantasy Volume 10'), 'fantasy 10');
+      expect(TitleMatcher.canonicalize('Fantasy - Vol 10'), 'fantasy 10');
+      expect(TitleMatcher.canonicalize('Fantasy: Part 2'), 'fantasy 2');
+      expect(TitleMatcher.canonicalize('Fantasy 10'), 'fantasy 10');
+    });
+  });
+
+  group('TitleMatcher - isMatch scenarios', () {
+    test('matches exact titles', () {
+      expect(TitleMatcher.isMatch('Fantasy', 'Fantasy'), isTrue);
+      expect(TitleMatcher.isMatch('Fantasy Vol. 10', 'Fantasy Vol. 10'), isTrue);
+    });
+
+    test('matches "Fantasy Vol 10" with "Fantasy 10"', () {
+      expect(TitleMatcher.isMatch('Fantasy Vol 10', 'Fantasy 10'), isTrue);
+      expect(TitleMatcher.isMatch('Fantasy Vol. 10', 'Fantasy 10'), isTrue);
+      expect(TitleMatcher.isMatch('Fantasy Volume X', 'Fantasy 10'), isTrue);
+      expect(TitleMatcher.isMatch('Fantasy Vol X', 'Fantasy Vol 10'), isTrue);
+      expect(TitleMatcher.isMatch('Fantasy: Part 2', 'Fantasy 2'), isTrue);
+    });
+
+    test('matches minor typos with fuzzy matching', () {
+      expect(TitleMatcher.isMatch('Fantay 10', 'Fantasy 10'), isTrue);
+      expect(TitleMatcher.isMatch('Fantay Vol 10', 'Fantasy 10'), isTrue);
+      expect(TitleMatcher.isMatch('Super Fantasy', 'Super Fantay'), isTrue);
+    });
+
+    test('matches titles with studio prefix/suffix', () {
+      expect(TitleMatcher.isMatch('Fantasy Vol 10', 'Brazzers - Fantasy 10'), isTrue);
+      expect(TitleMatcher.isMatch('Fantasy Vol 10', 'Fantasy 10 (2023)'), isTrue);
+    });
+
+    test('does NOT match different volume numbers', () {
+      expect(TitleMatcher.isMatch('Fantasy Vol 10', 'Fantasy Vol 1'), isFalse);
+      expect(TitleMatcher.isMatch('Fantasy Vol 10', 'Fantasy 1'), isFalse);
+      expect(TitleMatcher.isMatch('Fantasy Vol 2', 'Fantasy Vol 3'), isFalse);
+    });
+
+    test('does NOT match unrelated titles', () {
+      expect(TitleMatcher.isMatch('Fantasy 10', 'Doctor Who 10'), isFalse);
+    });
+  });
+
+  group('TitleMatcher - searchQueries generation', () {
+    test('generates cleaned and base fallback search queries', () {
+      final queries = TitleMatcher.searchQueries('Fantasy Vol. 10');
+      expect(queries, contains('Fantasy Vol. 10'));
+      expect(queries, contains('fantasy 10'));
+      expect(queries, contains('Fantasy'));
+    });
+
+    test('generates stripped studio prefix queries', () {
+      final queries = TitleMatcher.searchQueries('Brazzers - Fantasy 10');
+      expect(queries, contains('Brazzers - Fantasy 10'));
+      expect(queries, contains('Fantasy 10'));
+    });
+  });
+
+  group('TitleMatcher - findBestMatch', () {
+    test('finds best matching MediaItem among provider results', () {
+      final results = [
+        const MediaItem(
+          id: '1',
+          title: 'Fantasy 1',
+          url: 'url1',
+          type: ProviderType.movie,
+          sourceId: 'prov',
+        ),
+        const MediaItem(
+          id: '2',
+          title: 'Fantasy 10',
+          url: 'url2',
+          type: ProviderType.movie,
+          sourceId: 'prov',
+        ),
+        const MediaItem(
+          id: '3',
+          title: 'Unrelated 10',
+          url: 'url3',
+          type: ProviderType.movie,
+          sourceId: 'prov',
+        ),
+      ];
+
+      final match = TitleMatcher.findBestMatch(results, 'Fantasy Vol. 10');
+      expect(match, isNotNull);
+      expect(match!.id, '2');
+      expect(match.title, 'Fantasy 10');
+    });
+  });
+}
