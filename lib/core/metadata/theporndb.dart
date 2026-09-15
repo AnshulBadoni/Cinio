@@ -38,16 +38,32 @@ class ThePornDb {
     String orderBy = 'recently_released',
     String? query,
   }) async {
-    final data = await _get('/movies', queryParameters: {
+    final baseQuery = <String, dynamic>{
       'page': page,
       'per_page': 16,
       'orderBy': orderBy,
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
-      // TPDB supports tag filtering on the Movies endpoint. Resolve the
-      // canonical "Straight" tag once and let TPDB do the filtering
-      // server-side, so mixed-orientation titles never enter pagination.
-      ...await _straightTagQuery(),
-    });
+    };
+
+    // TPDB supports native server-side filtering. Prefer its canonical
+    // Straight tag when it can be resolved, but NEVER let tag discovery or a
+    // provider-side query-shape change take down the entire catalog. If the
+    // tag request/filter is unavailable, retry immediately with TPDB's native
+    // performer-gender filter.
+    Map<String, dynamic> data;
+    try {
+      final straight = await (_straightTagIdFuture ??= _findStraightTagId());
+      data = await _get('/movies', queryParameters: {
+        ...baseQuery,
+        ..._straightTagQueryFor(straight),
+      });
+    } catch (_) {
+      data = await _get('/movies', queryParameters: {
+        ...baseQuery,
+        ..._straightGenderQuery(),
+      });
+    }
+
     final rows = data['data'];
     if (rows is! List) return const [];
     return [
@@ -56,28 +72,28 @@ class ThePornDb {
     ];
   }
 
-
-  Future<Map<String, dynamic>> _straightTagQuery() async {
-    final tagId = await (_straightTagIdFuture ??= _findStraightTagId());
-    if (tagId == null) {
-      return {
-        'performer_genders': const ['Female', 'Male'],
-        'performer_gender_and': true,
-        'performer_gender_only': true,
-      };
-    }
+  Map<String, dynamic> _straightTagQueryFor(int? tagId) {
+    if (tagId == null) return _straightGenderQuery();
     return {
       'tags[$tagId]': 'Straight',
       'tag_and': true,
     };
   }
 
+  Map<String, dynamic> _straightGenderQuery() => {
+    // These are TPDB's native movie-search filters (not client-side guesses).
+    // performer_gender_only means every performer must be one of these genders,
+    // excluding TPDB's transgender/non-binary gender values.
+    'performer_genders': const ['Female', 'Male'],
+    'performer_gender_only': true,
+  };
+
   Future<int?> _findStraightTagId() async {
     try {
       final data = await _get('/tags', queryParameters: {
         'q': 'Straight',
         'per_page': 20,
-      });
+      }).timeout(const Duration(seconds: 5));
       final rows = data['data'];
       if (rows is! List) return null;
       for (final row in rows) {
@@ -88,8 +104,7 @@ class ThePornDb {
         }
       }
     } catch (_) {
-      // The content query still has a server-side performer-gender fallback
-      // below if the tag lookup is temporarily unavailable.
+      // Fall back to TPDB's native performer-gender filter in movies().
     }
     return null;
   }
