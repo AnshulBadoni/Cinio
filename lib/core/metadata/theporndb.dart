@@ -45,51 +45,26 @@ class ThePornDb {
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
     };
 
-    // TPDB's movie API exposes native performer-gender filtering.  Use it
-    // directly instead of making every catalog request depend on a separate
-    // tag lookup.  The bracketed array keys are intentional: TPDB is backed
-    // by a Laravel-style query parser and expects performer_genders[] values.
+    // TPDB's OpenAPI definition declares performer_genders as a normal
+    // query-array. Its documented values are the title-cased strings
+    // `Female` and `Male` (not the uppercase enum spelling). `performer_gender_only`
+    // excludes movies whose performers contain genders outside that set, while
+    // `performer_gender_and=true` requires both genders to be present. Together
+    // these are the API-native filter we use for straight content.
     final filteredQuery = <String, dynamic>{
       ...baseQuery,
-      'performer_genders[]': const ['FEMALE', 'MALE'],
+      'performer_genders': const ['Female', 'Male'],
       'performer_gender_only': true,
       'performer_gender_and': true,
     };
 
-    try {
-      final data = await _get('/movies', queryParameters: filteredQuery);
-      final rows = data['data'];
-      if (rows is List) {
-        return [
-          for (final row in rows)
-            if (row is Map) _movie(row),
-        ];
-      }
-    } catch (_) {
-      // Some TPDB deployments accept the OpenAPI form-array encoding rather
-      // than the Laravel [] spelling. Retry using the documented array form.
-    }
-
-    try {
-      final data = await _get('/movies', queryParameters: {
-        ...baseQuery,
-        'performer_genders': const ['FEMALE', 'MALE'],
-        'performer_gender_only': true,
-        'performer_gender_and': true,
-      });
-      final rows = data['data'];
-      if (rows is List) {
-        return [
-          for (final row in rows)
-            if (row is Map) _movie(row),
-        ];
-      }
-    } catch (_) {
-      // Keep catalog failures isolated. Search/discovery can still show an
-      // empty TPDB result instead of turning into a generic discovery error.
-    }
-
-    return const <MediaItem>[];
+    final data = await _get('/movies', queryParameters: filteredQuery);
+    final rows = data['data'];
+    if (rows is! List) return const <MediaItem>[];
+    return [
+      for (final row in rows)
+        if (row is Map) _movie(row),
+    ];
   }
 
 
