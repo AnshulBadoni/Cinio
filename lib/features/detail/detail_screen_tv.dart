@@ -357,14 +357,23 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
 
   Future<void> _pickSourceAndDownload(Episode ep, MediaDetail detail, String category) async {
     final item = widget.item;
-    final res = await showModalBottomSheet<({VideoSource chosen, List<VideoSource> all})>(
+    final res = await showModalBottomSheet<SourcePickerResult>(
       context: context,
       backgroundColor: AppColors.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => _SourcePickerSheet(
         title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
-        resolve: () => sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId),
+        resolve: () async {
+          final s = await sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId);
+          return (
+            sources: s,
+            resolvedItem: item,
+            resolvedDetail: detail,
+            resolvedEpisode: ep,
+            error: s.isEmpty ? 'No download sources found on installed providers' : null,
+          );
+        },
       ),
     );
     if (res == null || !mounted) return;

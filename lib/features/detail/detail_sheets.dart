@@ -16,14 +16,35 @@ String _sourceName(VideoSource s, int index) {
       : 'Server ${index + 1}';
 }
 
+typedef SourcePickerResolver = Future<({
+  List<VideoSource> sources,
+  MediaItem? resolvedItem,
+  MediaDetail? resolvedDetail,
+  Episode? resolvedEpisode,
+  String? error,
+})> Function();
+
+typedef SourcePickerResult = ({
+  VideoSource chosen,
+  List<VideoSource> all,
+  MediaItem? resolvedItem,
+  MediaDetail? resolvedDetail,
+  Episode? resolvedEpisode,
+});
+
 // Server/mirror picker (CloudStream-style) — resolves the episode's sources
 // and lists them so the user downloads a specific, real link. Returns the
 // chosen VideoSource via pop. HLS sources are shown disabled (phase 2).
 class _SourcePickerSheet extends StatefulWidget {
-  const _SourcePickerSheet({required this.title, required this.resolve});
+  const _SourcePickerSheet({
+    required this.title,
+    required this.resolve,
+    this.loadingMessage,
+  });
 
   final String title;
-  final Future<List<VideoSource>> Function() resolve;
+  final SourcePickerResolver resolve;
+  final String? loadingMessage;
 
   @override
   State<_SourcePickerSheet> createState() => _SourcePickerSheetState();
@@ -31,6 +52,9 @@ class _SourcePickerSheet extends StatefulWidget {
 
 class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   List<VideoSource>? _sources;
+  MediaItem? _resolvedItem;
+  MediaDetail? _resolvedDetail;
+  Episode? _resolvedEpisode;
   bool _loading = true;
   String? _error;
 
@@ -42,8 +66,16 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
 
   Future<void> _load() async {
     try {
-      final s = await widget.resolve();
-      if (mounted) setState(() => _sources = s);
+      final res = await widget.resolve();
+      if (mounted) {
+        setState(() {
+          _sources = res.sources;
+          _resolvedItem = res.resolvedItem;
+          _resolvedDetail = res.resolvedDetail;
+          _resolvedEpisode = res.resolvedEpisode;
+          _error = res.error;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _error = "Couldn't load download options");
     } finally {
@@ -94,24 +126,58 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
             const SizedBox(height: 12),
             if (_loading)
               Padding(
-                padding: EdgeInsets.symmetric(vertical: 28),
+                padding: const EdgeInsets.symmetric(vertical: 28),
                 child: Center(
-                  child: SizedBox(
-                    width: 26,
-                    height: 26,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      color: AppColors.accent,
-                    ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: AppColors.accent,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        widget.loadingMessage ?? 'Searching providers for download sources…',
+                        style: AppText.caption.copyWith(color: AppColors.textSecondary),
+                      ),
+                    ],
                   ),
                 ),
               )
             else if (_error != null || (_sources?.isEmpty ?? true))
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Text(
-                  _error ?? 'No download sources found',
-                  style: AppText.body.copyWith(color: AppColors.textSecondary),
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.cloud_off_rounded,
+                        size: 36,
+                        color: AppColors.textTertiary,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _error ?? 'No download sources found on installed providers',
+                        style: AppText.body.copyWith(color: AppColors.textSecondary),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textPrimary,
+                          side: BorderSide(color: AppColors.textTertiary),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text('Close'),
+                      ),
+                    ],
+                  ),
                 ),
               )
             else
@@ -136,8 +202,16 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
       if (s.quality != null && s.quality!.trim().isNotEmpty) s.quality!.trim(),
       hls ? 'HLS' : 'Direct',
     ].join(' · ');
-    void onTap() =>
-        Navigator.pop(context, (chosen: s, all: _sources ?? <VideoSource>[s]));
+    void onTap() => Navigator.pop(
+      context,
+      (
+        chosen: s,
+        all: _sources ?? <VideoSource>[s],
+        resolvedItem: _resolvedItem,
+        resolvedDetail: _resolvedDetail,
+        resolvedEpisode: _resolvedEpisode,
+      ),
+    );
     if (sl<AppMode>().isTv) {
       return TvListFocusable(
         autofocus: i == 0,

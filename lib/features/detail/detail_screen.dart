@@ -1391,72 +1391,93 @@ class _DetailViewState extends State<_DetailView>
     MediaDetail detail,
     String category,
   ) async {
-    var item = widget.item;
-    if (item.sourceId == 'tmdb:catalog' || item.sourceId.startsWith('tpdb:')) {
-      final resolved = await _resolveCatalogPlayback(category: category);
-      if (!mounted) return;
-      if (resolved == null) { _snack('No downloadable provider result found for ${item.title}'); return; }
-      item = resolved.item;
-      detail = resolved.detail;
-      // Preserve the exact episode the user selected. The old fallback always
-      // replaced it with E1, which made downloading E6 (for example) silently
-      // download E1 after catalog resolution. Match by stable id first, then
-      // season/episode number, and only fall back to the first episode when the
-      // provider exposes no usable episode identity.
-      if (detail.episodes.isNotEmpty) {
-        Episode? byId;
-        for (final candidate in detail.episodes) {
-          if (candidate.id == ep.id) { byId = candidate; break; }
-        }
-        if (byId != null) {
-          ep = byId;
-        } else {
-          final wantedSeason = seasonOf(ep);
-          final wantedNumber = ep.number;
-          Episode? byNumber;
-          for (final candidate in detail.episodes) {
-            if (candidate.number == wantedNumber &&
-                (wantedSeason == null || seasonOf(candidate) == wantedSeason)) {
-              byNumber = candidate;
-              break;
+    final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
+
+    final res = await showModalBottomSheet<SourcePickerResult>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _SourcePickerSheet(
+        title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
+        loadingMessage: isCatalog
+            ? 'Searching providers for download sources…'
+            : 'Resolving download options…',
+        resolve: () async {
+          var targetItem = widget.item;
+          var targetDetail = detail;
+          var targetEp = ep;
+
+          if (isCatalog) {
+            final resolved = await _resolveCatalogPlayback(category: category);
+            if (resolved == null) {
+              return (
+                sources: <VideoSource>[],
+                resolvedItem: null,
+                resolvedDetail: null,
+                resolvedEpisode: null,
+                error: 'No download sources found on installed providers',
+              );
+            }
+            targetItem = resolved.item;
+            targetDetail = resolved.detail;
+            if (targetDetail.episodes.isNotEmpty) {
+              Episode? byId;
+              for (final candidate in targetDetail.episodes) {
+                if (candidate.id == ep.id) { byId = candidate; break; }
+              }
+              if (byId != null) {
+                targetEp = byId;
+              } else {
+                final wantedSeason = seasonOf(ep);
+                final wantedNumber = ep.number;
+                Episode? byNumber;
+                for (final candidate in targetDetail.episodes) {
+                  if (candidate.number == wantedNumber &&
+                      (wantedSeason == null || seasonOf(candidate) == wantedSeason)) {
+                    byNumber = candidate;
+                    break;
+                  }
+                }
+                targetEp = byNumber ?? targetDetail.episodes.first;
+              }
             }
           }
-          ep = byNumber ?? detail.episodes.first;
-        }
-      }
-    }
-    final res =
-        await showModalBottomSheet<
-          ({VideoSource chosen, List<VideoSource> all})
-        >(
-          context: context,
-          backgroundColor: AppColors.surface,
-          isScrollControlled: true,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          builder: (_) => _SourcePickerSheet(
-            title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
-            resolve: () =>
-                sl<SourceRepository>().sources(ep.url, sourceId: detail.sourceId),
-          ),
-        );
+
+          final s = await sl<SourceRepository>().sources(targetEp.url, sourceId: targetDetail.sourceId);
+          return (
+            sources: s,
+            resolvedItem: targetItem,
+            resolvedDetail: targetDetail,
+            resolvedEpisode: targetEp,
+            error: s.isEmpty ? 'No download sources found on installed providers' : null,
+          );
+        },
+      ),
+    );
+
     if (res == null || !mounted) return;
+    final finalItem = res.resolvedItem ?? widget.item;
+    final finalDetail = res.resolvedDetail ?? detail;
+    final finalEp = res.resolvedEpisode ?? ep;
+
     unawaited(
       sl<DownloadManager>().enqueueSource(
-        sourceId: detail.sourceId,
-        showId: detail.id,
-        showTitle: detail.title,
-        cover: detail.cover ?? item.cover,
-        coverHeaders: detail.coverHeaders ?? item.coverHeaders,
-        showUrl: detail.url,
+        sourceId: finalDetail.sourceId,
+        showId: finalDetail.id,
+        showTitle: finalDetail.title,
+        cover: finalDetail.cover ?? finalItem.cover,
+        coverHeaders: finalDetail.coverHeaders ?? finalItem.coverHeaders,
+        showUrl: finalDetail.url,
         category: category,
-        episode: ep,
+        episode: finalEp,
         source: res.chosen,
         qualityLabel: res.chosen.quality ?? 'auto',
         fallbacks: res.all,
         nowMs: DateTime.now().millisecondsSinceEpoch,
-        malId: detail.malId ?? item.malId,
+        malId: finalDetail.malId ?? finalItem.malId,
       ),
     );
     _snack('Added to downloads');
