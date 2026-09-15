@@ -95,12 +95,10 @@ class ThePornDb {
       // failure resolving the optional tag must never make TPDB unavailable.
     }
 
-    // TPDB documents these as native /movies filters. Explicitly set Dio's
-    // query array format to repeated parameters: performer_genders=Female
-    // &performer_genders=Male.
+    // TPDB documents performer_genders as an associative array:
+    // performer_genders[Female]=Female.
     return {
-      'performer_genders': const ['Female', 'Male'],
-      'performer_gender_only': true,
+      'performer_genders[Female]': 'Female',
     };
   }
 
@@ -129,30 +127,19 @@ class ThePornDb {
 
   Future<List<MediaItem>> performers({
     int page = 1,
-    String orderBy = 'MOST_RELEVANT',
+    String orderBy = 'most_relevant',
     String? query,
   }) async {
-    var data = await _get('/performers', queryParameters: {
+    final data = await _get('/performers', queryParameters: {
       'page': page,
       'per_page': 48,
       'orderBy': orderBy,
-      'gender': 'FEMALE',
+      'gender': 'Female',
       'age': 50,
       'age_operation': '<',
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
     });
-    var rows = data['data'];
-    if (rows is! List || rows.isEmpty) {
-      data = await _get('/performers', queryParameters: {
-        'page': page,
-        'per_page': 48,
-        'gender': 'female',
-        'age': 50,
-        'age_operation': '<',
-        if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
-      });
-      rows = data['data'];
-    }
+    final rows = data['data'];
     if (rows is! List) return const [];
     return [
       for (final row in rows)
@@ -170,7 +157,7 @@ class ThePornDb {
     final derivedAge = age ?? (born != null && born.length >= 4
         ? (DateTime.now().year - (int.tryParse(born.substring(0, 4)) ?? DateTime.now().year)).toDouble()
         : null);
-    return rating != null && rating > 4.0 &&
+    return (rating == null || rating == 0 || rating > 4.0) &&
         (gender.isEmpty || gender == 'FEMALE') &&
         (derivedAge == null || derivedAge < 50);
   }
@@ -179,7 +166,7 @@ class ThePornDb {
     var data = await _get('/sites', queryParameters: {
       'page': page,
       'per_page': 24,
-      'orderBy': 'MOST_RELEVANT',
+      'orderBy': 'most_relevant',
     });
     var rows = data['data'];
     if (rows is! List || rows.isEmpty) {
