@@ -29,6 +29,7 @@ void main() {
       final items = await tpdb.performers(page: 1);
       expect(items, isNotEmpty);
       expect(items.first.sourceId, 'tpdb:performer');
+      expect(items.first.id, startsWith('tpdb:performer:'));
     });
 
     test('studios returns non-empty list of studios', () async {

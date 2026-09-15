@@ -51,6 +51,14 @@ void main() {
       );
     });
 
+    test('normalizes movie URLs correctly', () {
+      final ctx1 = TrailerAlternateContext.movie('Let Me In Too');
+      expect(
+        NsfwTrailerService.buildListingUrl(ctx1),
+        'https://www.adultempire.com/allsearch/search?q=Let%20Me%20In%20Too',
+      );
+    });
+
     test('retains required browser headers', () {
       expect(NsfwTrailerService.kDefaultHeaders['User-Agent'], contains('Mozilla/5.0'));
       expect(NsfwTrailerService.kDefaultHeaders['Referer'], 'https://www.adultempire.com/');

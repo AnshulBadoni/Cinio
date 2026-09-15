@@ -300,18 +300,22 @@ class _DetailViewState extends State<_DetailView>
   void _resolveTrailer(MediaDetail detail) {
     if (_trailerFuture != null) return;
 
-    // Model/studio context is only meaningful when the detail was opened from
-    // one of those dedicated rows AND the user explicitly enabled NSFW
-    // trailers. No alternate-source request is made for ordinary details.
+    // Model/studio/movie context is enabled when the detail is from TPDB OR
+    // opened from a dedicated performer/studio row AND the user enabled NSFW trailers.
     final nsfwEnabled = sl<PlaybackPrefs>().nsfwTrailers;
-    final hasNsfwContext = widget.trailerContext != null;
+    final isTpdb = widget.item.sourceId.startsWith('tpdb:');
+    final hasNsfwContext = widget.trailerContext != null || isTpdb;
 
     final TrailerAlternateContext? alternateContext;
     if (hasNsfwContext && nsfwEnabled) {
       final name = detail.title;
-      alternateContext = widget.trailerContext == DetailTrailerContext.model
-          ? TrailerAlternateContext.model(name)
-          : TrailerAlternateContext.studio(name);
+      if (widget.trailerContext == DetailTrailerContext.studio) {
+        alternateContext = TrailerAlternateContext.studio(name);
+      } else if (widget.trailerContext == DetailTrailerContext.model) {
+        alternateContext = TrailerAlternateContext.model(name);
+      } else {
+        alternateContext = TrailerAlternateContext.movie(name);
+      }
     } else {
       alternateContext = null;
     }

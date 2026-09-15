@@ -130,27 +130,52 @@ class ThePornDb {
     String orderBy = 'most_relevant',
     String? query,
   }) async {
+    final isSearch = query != null && query.trim().isNotEmpty;
     final data = await _get('/performers', queryParameters: {
       'page': page,
-      'per_page': 48,
+      'per_page': 50,
       'orderBy': orderBy,
       'gender': 'Female',
       'age': 50,
       'age_operation': '<',
-      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      if (isSearch) 'q': query.trim(),
     });
     final rows = data['data'];
     if (rows is! List) return const [];
     final list = [
       for (final row in rows)
-        if (row is Map && _qualifiesAsActor(row)) _performer(row),
+        if (row is Map && _qualifiesAsActor(row, requireRating: !isSearch)) _performer(row),
     ];
     list.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
     return list.take(24).toList();
   }
 
-  bool _qualifiesAsActor(Map row) {
-    final rating = double.tryParse('${row['rating'] ?? row['score'] ?? ''}');
+  double? _extractPerformerRating(Map row) {
+    final direct = double.tryParse('${row['rating'] ?? row['score'] ?? ''}');
+    if (direct != null && direct > 0) return direct;
+    final extras = row['extras'];
+    if (extras is Map) {
+      final r = double.tryParse('${extras['rating'] ?? extras['score'] ?? ''}');
+      if (r != null && r > 0) return r;
+    }
+    final sps = row['site_performers'];
+    if (sps is List) {
+      double? best;
+      for (final s in sps) {
+        if (s is Map) {
+          final sr = double.tryParse('${s['rating'] ?? (s['site'] is Map ? s['site']['rating'] : null) ?? ''}');
+          if (sr != null && sr > 0) {
+            if (best == null || sr > best) best = sr;
+          }
+        }
+      }
+      if (best != null) return best;
+    }
+    return direct != null && direct > 0 ? direct : null;
+  }
+
+  bool _qualifiesAsActor(Map row, {bool requireRating = true}) {
+    final rating = _extractPerformerRating(row);
     final extras = row['extras'];
     final gender = '${row['gender'] ?? (extras is Map ? extras['gender'] : '')}'.toUpperCase();
     final birthday = row['birthday'] ?? (extras is Map ? extras['birthday'] : null);
@@ -159,7 +184,10 @@ class ThePornDb {
     final derivedAge = age ?? (born != null && born.length >= 4
         ? (DateTime.now().year - (int.tryParse(born.substring(0, 4)) ?? DateTime.now().year)).toDouble()
         : null);
-    return (rating == null || rating == 0 || rating > 4.0) &&
+    final ratingOk = requireRating
+        ? (rating != null && rating >= 4.0)
+        : (rating == null || rating >= 4.0);
+    return ratingOk &&
         (gender.isEmpty || gender == 'FEMALE') &&
         (derivedAge == null || derivedAge < 50);
   }

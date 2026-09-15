@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 
 /// Context type for alternate NSFW trailer resolution.
-enum TrailerAlternateType { model, studio }
+enum TrailerAlternateType { model, studio, movie }
 
 /// Context payload holding the type and name for alternate trailer resolution.
 class TrailerAlternateContext {
@@ -10,6 +10,9 @@ class TrailerAlternateContext {
 
   const TrailerAlternateContext.studio(this.name)
       : type = TrailerAlternateType.studio;
+
+  const TrailerAlternateContext.movie(this.name)
+      : type = TrailerAlternateType.movie;
 
   const TrailerAlternateContext({
     required this.type,
@@ -21,6 +24,7 @@ class TrailerAlternateContext {
 
   bool get isModel => type == TrailerAlternateType.model;
   bool get isStudio => type == TrailerAlternateType.studio;
+  bool get isMovie => type == TrailerAlternateType.movie;
 
   @override
   bool operator ==(Object other) =>
@@ -55,7 +59,7 @@ class AlternateTrailer {
   int get hashCode => url.hashCode;
 }
 
-/// Scrapes NSFW trailers from adultempire.com for model and studio contexts.
+/// Scrapes NSFW trailers from adultempire.com for model, studio, and movie contexts.
 ///
 /// Execution is lazy, best-effort, and fails safely to null without crashing.
 class NsfwTrailerService {
@@ -84,17 +88,22 @@ class NsfwTrailerService {
   );
 
   static final RegExp _movieIdRegex = RegExp(
-    r'''data-movie-id=['"](\d+)['"]''',
+    r'''data-(?:movie|clip|item)-id=['"](\d+)['"]''',
     caseSensitive: false,
   );
 
-  static final RegExp _m3u8Regex = RegExp(
-    r'''https?://[^\\'"\s<>]+\.m3u8[^\\'"\s<>]*''',
+  static final RegExp _videoStreamRegex = RegExp(
+    r'''https?://[^\\'"\s<>]+\.(?:m3u8|mp4)[^\\'"\s<>]*''',
+    caseSensitive: false,
+  );
+
+  static final RegExp _videoTagSrcRegex = RegExp(
+    r'''<(?:source|video)[^>]+src=['"]([^'"]+)['"]''',
     caseSensitive: false,
   );
 
   /// Normalizes a name string: trims, replaces hyphens with spaces, collapses
-  /// repeated whitespace, and URL-encodes with `%20` or standard percent encoding.
+  /// repeated whitespace, and URL-encodes with standard percent encoding.
   static String normalizeName(String name) {
     final cleaned = name
         .replaceAll('-', ' ')
@@ -110,7 +119,7 @@ class NsfwTrailerService {
   }
 
   /// Fetches an alternate trailer for the given [context].
-  /// Returns null if no scenes or .m3u8 streams are found, or on network/parse error.
+  /// Returns null if no scenes or video streams are found, or on network/parse error.
   Future<AlternateTrailer?> fetch({
     required TrailerAlternateContext context,
   }) async {
@@ -133,11 +142,11 @@ class NsfwTrailerService {
       final listingHtml = listingRes.data?.toString();
       if (listingHtml == null || listingHtml.isEmpty) return null;
 
-      // Check if direct m3u8 is already embedded in listing
-      final directM3u8 = _m3u8Regex.firstMatch(listingHtml)?.group(0);
-      if (directM3u8 != null && directM3u8.isNotEmpty) {
+      // Check if direct video stream is already embedded in listing
+      final directStream = _videoStreamRegex.firstMatch(listingHtml)?.group(0);
+      if (directStream != null && directStream.isNotEmpty) {
         return AlternateTrailer(
-          url: directM3u8,
+          url: directStream,
           headers: Map<String, String>.unmodifiable(kDefaultHeaders),
         );
       }
@@ -181,23 +190,31 @@ class NsfwTrailerService {
       final sceneHtml = sceneRes.data?.toString();
       if (sceneHtml == null || sceneHtml.isEmpty) return null;
 
-      // Find HLS playlist (.m3u8)
-      final m3u8Match = _m3u8Regex.firstMatch(sceneHtml);
-      var m3u8Url = m3u8Match?.group(0);
+      // Find video stream (.m3u8 or .mp4)
+      final streamMatch = _videoStreamRegex.firstMatch(sceneHtml);
+      var streamUrl = streamMatch?.group(0);
 
-      if (m3u8Url == null || m3u8Url.isEmpty) {
-        final movieIdMatch = _movieIdRegex.firstMatch(sceneHtml);
-        final movieId = movieIdMatch?.group(1);
-        if (movieId != null && movieId.isNotEmpty) {
-          m3u8Url = 'https://video.adultempire.com/hls/previewmovie/$movieId/index-f1-v1.m3u8';
+      if (streamUrl == null || streamUrl.isEmpty) {
+        final tagMatch = _videoTagSrcRegex.firstMatch(sceneHtml);
+        final tagSrc = tagMatch?.group(1);
+        if (tagSrc != null && tagSrc.isNotEmpty) {
+          streamUrl = tagSrc.startsWith('http') ? tagSrc : '$_baseUrl$tagSrc';
         }
       }
 
-      if (m3u8Url == null || m3u8Url.isEmpty) return null;
+      if (streamUrl == null || streamUrl.isEmpty) {
+        final movieIdMatch = _movieIdRegex.firstMatch(sceneHtml);
+        final movieId = movieIdMatch?.group(1);
+        if (movieId != null && movieId.isNotEmpty) {
+          streamUrl = 'https://video.adultempire.com/hls/previewmovie/$movieId/index-f1-v1.m3u8';
+        }
+      }
+
+      if (streamUrl == null || streamUrl.isEmpty) return null;
 
       // Step 4: Return trailer source with playback headers
       return AlternateTrailer(
-        url: m3u8Url,
+        url: streamUrl,
         headers: Map<String, String>.unmodifiable(kDefaultHeaders),
       );
     } catch (_) {
