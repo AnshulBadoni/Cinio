@@ -229,9 +229,9 @@ class _PersonPageState extends State<PersonPage> {
             ),
           ),
           if (_loadingMore)
-            const SliverToBoxAdapter(
+            SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.only(bottom: 32),
+                padding: const EdgeInsets.only(bottom: 32),
                 child: Center(
                   child: SizedBox(
                     width: 24,
