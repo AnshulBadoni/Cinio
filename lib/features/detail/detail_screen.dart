@@ -236,7 +236,7 @@ class _DetailView extends StatefulWidget {
 }
 
 class _DetailViewState extends State<_DetailView>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const double _expandedHeight = 320;
   bool _showAppBarTitle = false;
 
@@ -300,9 +300,12 @@ class _DetailViewState extends State<_DetailView>
   void _resolveTrailer(MediaDetail detail) {
     if (_trailerFuture != null) return;
 
-    // Model/studio/movie context is enabled when the detail is from TPDB OR
-    // opened from a dedicated performer/studio row AND the user enabled NSFW trailers.
-    final nsfwEnabled = sl<PlaybackPrefs>().nsfwTrailers;
+    var nsfwEnabled = false;
+    try {
+      if (sl.isRegistered<PlaybackPrefs>()) {
+        nsfwEnabled = sl<PlaybackPrefs>().nsfwTrailers;
+      }
+    } catch (_) {}
     final isTpdb = widget.item.sourceId.startsWith('tpdb:');
     final hasNsfwContext = widget.trailerContext != null || isTpdb;
 
@@ -1560,7 +1563,10 @@ class _DetailViewState extends State<_DetailView>
     // Play→Read relabel and hides the download affordances below.
     final isReading =
         detail.type == ProviderType.novel || detail.type == ProviderType.manga;
-    final showEpisodesTab = isReading || detail.isSeries;
+    final showEpisodesTab = isReading ||
+        detail.isSeries ||
+        detail.type == ProviderType.anime ||
+        eps.length > 1;
     if (_tabShowsEpisodes != showEpisodesTab) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _configureTabController(showEpisodesTab));
@@ -1773,32 +1779,34 @@ class _DetailViewState extends State<_DetailView>
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-            child: Column(
-              children: [
-                _PlayButton(
-                  label: buttonLabel,
-                  icon: isReading
-                      ? Icons.menu_book_rounded
-                      : Icons.play_arrow_rounded,
-                  onPressed: eps.isNotEmpty
-                      ? () => _openPlayer(eps, resumeIdx, detail, category)
-                      : null,
-                ),
-                // Reading downloads are out of scope for this plan.
-                if (!isReading) ...[
-                  const SizedBox(height: 10),
-                  _DownloadButton(
-                    label: downloadLabel,
-                    onPressed: () => _openDownloadSheet(
-                      detail: detail,
-                      category: category,
-                      episodesBySeason: episodesBySeason,
-                      initialSeason: currentSeason,
-                    ),
+            child: _isFutureRelease(detail)
+                ? const _ComingSoonButton()
+                : Column(
+                    children: [
+                      _PlayButton(
+                        label: buttonLabel,
+                        icon: isReading
+                            ? Icons.menu_book_rounded
+                            : Icons.play_arrow_rounded,
+                        onPressed: eps.isNotEmpty
+                            ? () => _openPlayer(eps, resumeIdx, detail, category)
+                            : null,
+                      ),
+                      // Reading downloads are out of scope for this plan.
+                      if (!isReading) ...[
+                        const SizedBox(height: 10),
+                        _DownloadButton(
+                          label: downloadLabel,
+                          onPressed: () => _openDownloadSheet(
+                            detail: detail,
+                            category: category,
+                            episodesBySeason: episodesBySeason,
+                            initialSeason: currentSeason,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
-              ],
-            ),
           ),
         ),
 
@@ -1995,8 +2003,8 @@ class _DetailViewState extends State<_DetailView>
             isReading: isReading,
           ),
           // ── Cast ────────────────────────────────────────────────────────────
-          state.extrasLoading && state.cast.isEmpty
-              ? const _MetadataTabSkeleton(label: 'Loading actors…')
+          (state.extrasLoading && state.cast.isEmpty && detail.cast.isEmpty)
+              ? const _CastSkeletonTab()
               : _CastTab(
             cast: state.cast.isNotEmpty
                 ? state.cast
@@ -2006,9 +2014,9 @@ class _DetailViewState extends State<_DetailView>
             ).push(PersonPage.route(ref, sourceId: widget.item.sourceId)),
           ),
           // ── Relations ─────────────────────────────────────────────────────────
-          state.extrasLoading && state.relations.isEmpty
-              ? const _MetadataTabSkeleton(label: 'Loading recommendations…')
-              : _RelationsTab(relations: state.relations, onOpen: _openRelation),
+          (state.extrasLoading && state.relations.isEmpty && detail.relations.isEmpty)
+              ? const _RelationsSkeletonTab()
+              : _RelationsTab(relations: state.relations.isNotEmpty ? state.relations : detail.relations, onOpen: _openRelation),
           // ── Details ──────────────────────────────────────────────────────────
           _DetailsTab(
             sourceName: sourceName,
@@ -2026,24 +2034,34 @@ class _DetailViewState extends State<_DetailView>
   }
 }
 
+/// Checks if a movie / title has a confirmed release date strictly in the future.
+bool _isFutureRelease(MediaDetail? detail) {
+  if (detail == null) return false;
+  final raw = detail.year?.trim();
+  if (raw == null || raw.isEmpty) return false;
 
-class _MetadataTabSkeleton extends StatelessWidget {
-  const _MetadataTabSkeleton({required this.label});
-  final String label;
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(width: 180, height: 14, child: ColoredBox(color: AppColors.surface2)),
-            const SizedBox(height: 14),
-            Text(label, style: AppText.caption.copyWith(color: AppColors.textSecondary)),
-          ],
-        ),
-      ),
-    );
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+
+  // If it's a 4-digit year only (e.g. "2027")
+  if (RegExp(r'^\d{4}$').hasMatch(raw)) {
+    final y = int.tryParse(raw);
+    return y != null && y > now.year;
   }
+
+  // If it's a full ISO/parseable date (e.g. "2026-11-20")
+  final parsed = DateTime.tryParse(raw);
+  if (parsed != null) {
+    return parsed.isAfter(today);
+  }
+
+  // Fallback: check if contains a future 4-digit year
+  final yearMatch = RegExp(r'\b(20\d\d)\b').firstMatch(raw);
+  if (yearMatch != null) {
+    final y = int.tryParse(yearMatch.group(1)!);
+    if (y != null && y > now.year) return true;
+  }
+
+  return false;
 }
+

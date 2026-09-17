@@ -577,3 +577,43 @@ class _DownloadButton extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Full-width Coming Soon badge/button (disabled, surface2, schedule icon).
+// Shown when a movie is not out yet based on future release date comparison.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ComingSoonButton extends StatelessWidget {
+  const _ComingSoonButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: 0.7,
+      child: Material(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          height: 52,
+          width: double.infinity,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.schedule_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Coming Soon',
+                style: AppText.button.copyWith(color: Colors.white),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+

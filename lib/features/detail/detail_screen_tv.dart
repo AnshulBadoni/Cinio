@@ -471,7 +471,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     final item = widget.item;
     final category = state.category;
     final eps = detail.episodes;
-    final showEpisodesTab = detail.isSeries;
+    final showEpisodesTab = detail.isSeries || eps.length > 1;
     final tabLabels = showEpisodesTab ? _seriesTabLabels : _movieTabLabels;
     if (_tab >= tabLabels.length) _tab = tabLabels.length - 1;
     final store = sl<ResumeStore>();
@@ -595,51 +595,65 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 const SizedBox(height: 16),
                                 // Play button — autofocus: always the first focused
                                 // element when the detail screen opens on TV.
-                                TvFocusable(
-                                  key: const ValueKey('tv-detail-play'),
-                                  autofocus: true,
-                                  variant: TvFocusVariant.pill,
-                                  onTap: eps.isNotEmpty ? () => _openPlayer(eps, resumeIdx, detail, category) : () {},
-                                  semanticLabel: buttonLabel,
-                                  // _PlayButton is shared with the phone view —
-                                  // exclude its own label Text here instead of
-                                  // touching the widget, so semanticLabel above
-                                  // is the only thing TalkBack hears.
-                                  child: ExcludeSemantics(
-                                    child: _PlayButton(
-                                      label: buttonLabel,
-                                      onPressed: eps.isNotEmpty
-                                          ? () => _openPlayer(eps, resumeIdx, detail, category)
-                                          : null,
+                                if (_isFutureRelease(detail)) ...[
+                                  TvFocusable(
+                                    key: const ValueKey('tv-detail-coming-soon'),
+                                    autofocus: true,
+                                    variant: TvFocusVariant.pill,
+                                    onTap: () {},
+                                    semanticLabel: 'Coming Soon',
+                                    child: const ExcludeSemantics(
+                                      child: _ComingSoonButton(),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(height: 10),
-                                // Download button
-                                TvFocusable(
-                                  key: const ValueKey('tv-detail-download'),
-                                  variant: TvFocusVariant.pill,
-                                  onTap: () => _openDownloadSheet(
-                                    detail: detail,
-                                    category: category,
-                                    episodesBySeason: episodesBySeason,
-                                    initialSeason: currentSeason,
-                                  ),
-                                  semanticLabel: 'Download',
-                                  // _DownloadButton is shared with the phone
-                                  // view — exclude its Text, same as Play above.
-                                  child: ExcludeSemantics(
-                                    child: _DownloadButton(
-                                      label: 'Download',
-                                      onPressed: () => _openDownloadSheet(
-                                        detail: detail,
-                                        category: category,
-                                        episodesBySeason: episodesBySeason,
-                                        initialSeason: currentSeason,
+                                ] else ...[
+                                  // Play button
+                                  TvFocusable(
+                                    key: const ValueKey('tv-detail-play'),
+                                    autofocus: true,
+                                    variant: TvFocusVariant.pill,
+                                    onTap: eps.isNotEmpty ? () => _openPlayer(eps, resumeIdx, detail, category) : () {},
+                                    semanticLabel: buttonLabel,
+                                    // _PlayButton is shared with the phone view —
+                                    // exclude its own label Text here instead of
+                                    // touching the widget, so semanticLabel above
+                                    // is the only thing TalkBack hears.
+                                    child: ExcludeSemantics(
+                                      child: _PlayButton(
+                                        label: buttonLabel,
+                                        onPressed: eps.isNotEmpty
+                                            ? () => _openPlayer(eps, resumeIdx, detail, category)
+                                            : null,
                                       ),
                                     ),
                                   ),
-                                ),
+                                  const SizedBox(height: 10),
+                                  // Download button
+                                  TvFocusable(
+                                    key: const ValueKey('tv-detail-download'),
+                                    variant: TvFocusVariant.pill,
+                                    onTap: () => _openDownloadSheet(
+                                      detail: detail,
+                                      category: category,
+                                      episodesBySeason: episodesBySeason,
+                                      initialSeason: currentSeason,
+                                    ),
+                                    semanticLabel: 'Download',
+                                    // _DownloadButton is shared with the phone
+                                    // view — exclude its Text, same as Play above.
+                                    child: ExcludeSemantics(
+                                      child: _DownloadButton(
+                                        label: 'Download',
+                                        onPressed: () => _openDownloadSheet(
+                                          detail: detail,
+                                          category: category,
+                                          episodesBySeason: episodesBySeason,
+                                          initialSeason: currentSeason,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                                 const SizedBox(height: 10),
                                 // Episode search is only meaningful for episodic titles.
                                 if (showEpisodesTab) TvFocusable(
@@ -789,13 +803,17 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 onDownload: (ep) => _pickSourceAndDownload(ep, detail, category),
                               ),
                               // ── Cast ─────────────────────────────────────────
-                              _CastTab(
+                              (state.extrasLoading && state.cast.isEmpty && detail.cast.isEmpty)
+                                  ? const _CastSkeletonTab()
+                                  : _CastTab(
                                 cast: state.cast.isNotEmpty
                                     ? state.cast
                                     : [for (final n in detail.cast) CastMember(name: n)],
                               ),
                               // ── Relations ──────────────────────────────────
-                              _RelationsTab(relations: state.relations, onOpen: _openRelation, tvFocus: true),
+                              (state.extrasLoading && state.relations.isEmpty && detail.relations.isEmpty)
+                                  ? const _RelationsSkeletonTab()
+                                  : _RelationsTab(relations: state.relations.isNotEmpty ? state.relations : detail.relations, onOpen: _openRelation, tvFocus: true),
                               // ── Details ────────────────────────────────────
                               _DetailsTab(
                                 sourceName: sourceName,

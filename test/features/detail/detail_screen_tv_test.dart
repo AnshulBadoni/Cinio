@@ -215,6 +215,7 @@ const _testDetailWithRelations = MediaDetail(
   url: 'http://test/rel',
   type: ProviderType.anime,
   sourceId: 'test',
+  isSeries: true,
   episodes: [
     Episode(id: 'e1', title: 'Episode 1', url: '/e1', number: 1),
   ],

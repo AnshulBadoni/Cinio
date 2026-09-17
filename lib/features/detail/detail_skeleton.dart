@@ -129,3 +129,105 @@ class _SlideGradient extends GradientTransform {
   Matrix4? transform(Rect bounds, {TextDirection? textDirection}) =>
       Matrix4.translationValues(bounds.width * t, 0, 0);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cast Tab Skeleton — Shimmering grid of actor avatar cards shown while
+// metadata enrichment is in flight.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CastSkeletonTab extends StatelessWidget {
+  const _CastSkeletonTab();
+
+  @override
+  Widget build(BuildContext context) {
+    final base = AppColors.surface2;
+
+    Widget box(double w, double h, [double r = 8]) => ClipRRect(
+      borderRadius: BorderRadius.circular(r),
+      child: SizedBox(
+        width: w,
+        height: h,
+        child: ColoredBox(color: base),
+      ),
+    );
+
+    return GridView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.66,
+      ),
+      itemCount: 6,
+      itemBuilder: (_, _) => Column(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: ColoredBox(color: base),
+            ),
+          ),
+          const SizedBox(height: 8),
+          box(70, 12, 4),
+          const SizedBox(height: 4),
+          box(45, 10, 4),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Relations Tab Skeleton — Shimmering grid of relation cards.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _RelationsSkeletonTab extends StatelessWidget {
+  const _RelationsSkeletonTab();
+
+  @override
+  Widget build(BuildContext context) {
+    final base = AppColors.surface2;
+
+    Widget box(double w, double h, [double r = 8]) => ClipRRect(
+      borderRadius: BorderRadius.circular(r),
+      child: SizedBox(
+        width: w,
+        height: h,
+        child: ColoredBox(color: base),
+      ),
+    );
+
+    return GridView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.47,
+      ),
+      itemCount: 6,
+      itemBuilder: (_, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: AspectRatio(
+              aspectRatio: 2 / 3,
+              child: ColoredBox(color: base),
+            ),
+          ),
+          const SizedBox(height: 8),
+          box(40, 10, 4),
+          const SizedBox(height: 4),
+          box(75, 12, 4),
+        ],
+      ),
+    );
+  }
+}
+
+

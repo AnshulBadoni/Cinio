@@ -77,12 +77,17 @@ class HomeCubit extends Cubit<HomeState> {
   final TmdbDiscoverService? _tmdb;
 
   CatalogSource get _catalogSource =>
-      _catalogPrefs?.source ?? CatalogSource.tmdb;
+      _catalogPrefs?.source ??
+      (_tmdb != null ? CatalogSource.tmdb : CatalogSource.provider);
 
   /// Monotonic load id. Each [load] bumps it; a fetch only emits its result if
   /// it's still the latest. This makes source switches "latest wins" — a slow
   /// previous-source fetch can't land after a newer switch and clobber the UI.
   int _gen = 0;
+
+  /// In-memory cache for catalog sections (5-minute TTL) to prevent empty rows
+  /// and avoid spamming TMDB/TPDB with concurrent network bursts.
+  static final Map<CatalogSource, (DateTime, List<HomeSection>)> _catalogCache = {};
 
   /// (Re)load the rows. Emits `loading: true` (keeping any existing sections so
   /// rows don't flash empty), fetches the provider's home, and emits the fresh
@@ -93,14 +98,24 @@ class HomeCubit extends Cubit<HomeState> {
   Future<void> load({bool reset = false}) async {
     final gen = ++_gen;
     final sourceId = _repo.sourceId;
-    emit(
-      reset ? const HomeState(loading: true) : state.copyWith(loading: true),
-    );
+    final source = _catalogSource;
 
-    // An empty active id means the user has not selected a provider yet.
-    // Do not call the repository with an invalid source: that turns a normal
-    // first-run setup state into a misleading generic load failure.
-    if (_catalogSource == CatalogSource.provider && !_repo.hasSource(sourceId)) {
+    if (reset) {
+      _catalogCache.remove(source);
+      emit(const HomeState(loading: true));
+    } else {
+      // Check cache first for instant load without network flash
+      final cached = _catalogCache[source];
+      if (cached != null &&
+          DateTime.now().difference(cached.$1).inMinutes < 5 &&
+          cached.$2.isNotEmpty) {
+        emit(HomeState(sections: cached.$2, loading: false));
+        return;
+      }
+      emit(state.copyWith(loading: true));
+    }
+
+    if (source == CatalogSource.provider && sourceId.isEmpty) {
       if (isClosed || gen != _gen) return;
       emit(const HomeState(sections: [], loading: false));
       return;
@@ -109,7 +124,6 @@ class HomeCubit extends Cubit<HomeState> {
     List<HomeSection> sections;
     String? cloudflareUrl;
     try {
-      final source = _catalogSource;
       if (source == CatalogSource.tmdb || source == CatalogSource.thePornDb) {
         sections = await _loadCatalogProgressively(source, gen);
       } else {
@@ -146,9 +160,9 @@ class HomeCubit extends Cubit<HomeState> {
     if (isClosed || gen != _gen) return;
     emit(
       HomeState(
-      sections: sections,
-      loading: false,
-      cloudflareUrl: cloudflareUrl,
+        sections: sections,
+        loading: false,
+        cloudflareUrl: cloudflareUrl,
       ),
     );
   }
@@ -161,14 +175,25 @@ class HomeCubit extends Cubit<HomeState> {
         ? const ['tpdb_recent', 'tpdb_trending', 'tpdb_performers', 'tpdb_popular', 'tpdb_top_rated']
         : const ['tmdb_recent', 'tmdb_trending_movies', 'tmdb_trending_series', 'tmdb_popular_movies', 'tmdb_popular_series', 'tmdb_trending_anime', 'tmdb_top_rated_movies'];
     final byKind = <String, HomeSection>{};
+
     Future<HomeSection?> fetch(String kind) async {
-      try {
-        if (source == CatalogSource.thePornDb) return await _tpdb!.homeSection(kind);
-        return await _tmdb!.homeSection(kind);
-      } catch (_) {
-        return null;
+      for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+          final section = (source == CatalogSource.thePornDb)
+              ? await _tpdb!.homeSection(kind)
+              : await _tmdb!.homeSection(kind);
+          if (section != null && section.items.isNotEmpty) return section;
+        } catch (e) {
+          if (attempt == 2) {
+            debugPrint('[home] failed to load section $kind after 3 attempts: $e');
+            return null;
+          }
+          await Future.delayed(Duration(milliseconds: 300 * (attempt + 1)));
+        }
       }
+      return null;
     }
+
     final futures = <Future<void>>[];
     for (final kind in kinds) {
       futures.add(fetch(kind).then((section) {
@@ -179,7 +204,11 @@ class HomeCubit extends Cubit<HomeState> {
       }));
     }
     await Future.wait(futures);
-    return [for (final k in kinds) if (byKind.containsKey(k)) byKind[k]!];
+    final finalOrdered = [for (final k in kinds) if (byKind.containsKey(k)) byKind[k]!];
+    if (finalOrdered.isNotEmpty) {
+      _catalogCache[source] = (DateTime.now(), finalOrdered);
+    }
+    return finalOrdered;
   }
 
   Future<List<HomeSection>> _mixedHome() async {
