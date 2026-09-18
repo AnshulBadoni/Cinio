@@ -219,7 +219,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceVariant.withOpacity(0.4),
+                    color: AppColors.surface2,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(

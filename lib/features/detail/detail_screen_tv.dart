@@ -364,13 +364,13 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => _SourcePickerSheet(
         title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
-        resolve: () async {
+        resolve: ([onProgress]) async {
           final s = await sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId);
           return (
             sources: s,
-            resolvedItem: item,
-            resolvedDetail: detail,
-            resolvedEpisode: ep,
+            resolvedItem: item as MediaItem?,
+            resolvedDetail: detail as MediaDetail?,
+            resolvedEpisode: ep as Episode?,
             error: s.isEmpty ? 'No download sources found on installed providers' : null,
           );
         },
