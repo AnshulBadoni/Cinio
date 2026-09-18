@@ -526,7 +526,7 @@ class SourceRepository {
     if (preferred.isNotEmpty && hasSource(preferred)) {
       tried.add(preferred);
       final hit = await _resolveCatalogOnSource(catalog, preferred, category)
-          .timeout(const Duration(seconds: 4), onTimeout: () => null);
+          .timeout(const Duration(milliseconds: 2500), onTimeout: () => null);
       if (hit != null) {
         _catalogResolutionCache[key] = (at: DateTime.now(), value: hit);
         return hit;
@@ -554,7 +554,7 @@ class SourceRepository {
 
     for (final id in remaining) {
       _resolveCatalogOnSource(catalog, id, category)
-          .timeout(const Duration(seconds: 5), onTimeout: () => null)
+          .timeout(const Duration(seconds: 8), onTimeout: () => null)
           .then((result) {
         if (completer.isCompleted) return;
         if (result != null) {

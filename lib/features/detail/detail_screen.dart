@@ -1480,7 +1480,12 @@ class _DetailViewState extends State<_DetailView>
             }
           }
 
-          final s = await sl<SourceRepository>().sources(targetEp.url, sourceId: targetDetail.sourceId);
+          // 1. Initial fast resolve: returns first available mirror(s) within ~1-2s
+          var s = await sl<SourceRepository>().sources(
+            targetEp.url,
+            sourceId: targetDetail.sourceId,
+            fast: true,
+          );
           if (s.isNotEmpty) {
             onProgress?.call(
               sources: s,
@@ -1489,6 +1494,36 @@ class _DetailViewState extends State<_DetailView>
               resolvedEpisode: targetEp,
             );
           }
+
+          // 2. Progressive background polling: gather slower mirrors without blocking
+          // the user from picking an already-resolved server immediately.
+          var done = false;
+          var pollTries = 0;
+          final knownUrls = s.map((e) => e.url).toSet();
+
+          while (!done && pollTries < 15) {
+            await Future.delayed(const Duration(milliseconds: 750));
+            pollTries++;
+            final polled = await sl<SourceRepository>().polledSources(
+              targetEp.url,
+              sourceId: targetDetail.sourceId,
+            );
+            done = polled.done;
+            final newSources = polled.sources.where((e) => !knownUrls.contains(e.url)).toList();
+            if (newSources.isNotEmpty) {
+              for (final ns in newSources) {
+                knownUrls.add(ns.url);
+              }
+              s = [...s, ...newSources];
+              onProgress?.call(
+                sources: s,
+                resolvedItem: targetItem,
+                resolvedDetail: targetDetail,
+                resolvedEpisode: targetEp,
+              );
+            }
+          }
+
           return (
             sources: s,
             resolvedItem: targetItem,

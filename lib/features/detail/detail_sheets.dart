@@ -235,7 +235,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Searching other providers…',
+                          'Searching more servers…',
                           style: AppText.caption.copyWith(color: AppColors.textSecondary),
                         ),
                       ),

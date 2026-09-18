@@ -170,16 +170,16 @@ class TitleMatcher {
     // Token subset: e.g. "Brazzers - Fantasy 10" contains all tokens of "Fantasy Vol 10"
     final wantedSet = wantedTokens.toSet();
     final candSet = candTokens.toSet();
-    if (wantedSet.length >= 2) {
+    if (wantedSet.isNotEmpty) {
       if (wantedSet.every(candSet.contains) && (candTokens.length - wantedTokens.length).abs() <= 4) {
         // Disallow sequel / subtitle drift: any extra tokens in candidate must be
         // technical release tags, year, or studio tags, NOT distinct subtitle words (e.g. "Afterlife").
         final extraTokens = candSet.difference(wantedSet);
-        if (extraTokens.every(_isReleaseOrYearToken)) {
+        if (extraTokens.isNotEmpty && extraTokens.every(_isReleaseOrYearToken)) {
           return 0.92;
         }
       }
-      if (candSet.every(wantedSet.contains) && (wantedTokens.length - candTokens.length).abs() <= 2) {
+      if (wantedSet.length >= 2 && candSet.every(wantedSet.contains) && (wantedTokens.length - candTokens.length).abs() <= 2) {
         final missingTokens = wantedSet.difference(candSet);
         if (missingTokens.every(_isReleaseOrYearToken)) {
           return 0.90;
@@ -236,12 +236,16 @@ class TitleMatcher {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return list;
 
-    list.add(trimmed);
-
-    // Canonical version without noise (e.g. "Fantasy Vol 10" -> "Fantasy 10")
+    // Canonical version without noise (e.g. "Fantasy Vol 10" -> "Fantasy 10").
+    // Prioritized first because provider SQL/text search routinely returns 0 results
+    // on noise terms like "Vol." while matching cleanly on digits.
     final canon = canonicalize(trimmed);
-    if (canon.isNotEmpty && canon.toLowerCase() != trimmed.toLowerCase()) {
+    if (canon.isNotEmpty) {
       list.add(canon);
+    }
+
+    if (!list.contains(trimmed)) {
+      list.add(trimmed);
     }
 
     // Strip year in parentheses, e.g. "Meant to Fuck (2026)" -> "Meant to Fuck"

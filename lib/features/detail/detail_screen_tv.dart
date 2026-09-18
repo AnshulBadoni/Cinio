@@ -365,7 +365,47 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       builder: (_) => _SourcePickerSheet(
         title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
         resolve: ([onProgress]) async {
-          final s = await sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId);
+          var s = await sl<SourceRepository>().sources(
+            ep.url,
+            sourceId: item.sourceId,
+            fast: true,
+          );
+          if (s.isNotEmpty) {
+            onProgress?.call(
+              sources: s,
+              resolvedItem: item as MediaItem?,
+              resolvedDetail: detail as MediaDetail?,
+              resolvedEpisode: ep as Episode?,
+            );
+          }
+
+          var done = false;
+          var pollTries = 0;
+          final knownUrls = s.map((e) => e.url).toSet();
+
+          while (!done && pollTries < 15) {
+            await Future.delayed(const Duration(milliseconds: 750));
+            pollTries++;
+            final polled = await sl<SourceRepository>().polledSources(
+              ep.url,
+              sourceId: item.sourceId,
+            );
+            done = polled.done;
+            final newSources = polled.sources.where((e) => !knownUrls.contains(e.url)).toList();
+            if (newSources.isNotEmpty) {
+              for (final ns in newSources) {
+                knownUrls.add(ns.url);
+              }
+              s = [...s, ...newSources];
+              onProgress?.call(
+                sources: s,
+                resolvedItem: item as MediaItem?,
+                resolvedDetail: detail as MediaDetail?,
+                resolvedEpisode: ep as Episode?,
+              );
+            }
+          }
+
           return (
             sources: s,
             resolvedItem: item as MediaItem?,
