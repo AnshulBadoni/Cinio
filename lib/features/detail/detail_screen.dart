@@ -933,7 +933,21 @@ class _DetailViewState extends State<_DetailView>
       if (resolved == null) { _snack('No playable provider result found for ${widget.item.title}'); return; }
       detail = resolved.detail;
       episodes = detail.episodes;
-      if (episodes.isEmpty) { _snack('No playable episodes found for ${widget.item.title}'); return; }
+      if (episodes.isEmpty) {
+        if (!detail.isSeries) {
+          episodes = [
+            Episode(
+              id: resolved.item.id,
+              number: 1,
+              title: detail.title.trim().isNotEmpty ? detail.title : widget.item.title,
+              url: resolved.item.url,
+            ),
+          ];
+        } else {
+          _snack('No playable episodes found for ${widget.item.title}');
+          return;
+        }
+      }
       index = index.clamp(0, episodes.length - 1).toInt();
     }
     // Opening something other than where they left off? Offer to look at it
@@ -1418,7 +1432,7 @@ class _DetailViewState extends State<_DetailView>
         loadingMessage: isCatalog
             ? 'Searching providers for download sources…'
             : 'Resolving download options…',
-        resolve: () async {
+        resolve: ([onProgress]) async {
           var targetItem = widget.item;
           var targetDetail = detail;
           var targetEp = ep;
@@ -1456,10 +1470,25 @@ class _DetailViewState extends State<_DetailView>
                 }
                 targetEp = byNumber ?? targetDetail.episodes.first;
               }
+            } else {
+              targetEp = Episode(
+                id: targetItem.id,
+                number: 1,
+                title: targetDetail.title.trim().isNotEmpty ? targetDetail.title : targetItem.title,
+                url: targetItem.url,
+              );
             }
           }
 
           final s = await sl<SourceRepository>().sources(targetEp.url, sourceId: targetDetail.sourceId);
+          if (s.isNotEmpty) {
+            onProgress?.call(
+              sources: s,
+              resolvedItem: targetItem,
+              resolvedDetail: targetDetail,
+              resolvedEpisode: targetEp,
+            );
+          }
           return (
             sources: s,
             resolvedItem: targetItem,
@@ -1788,7 +1817,9 @@ class _DetailViewState extends State<_DetailView>
                         icon: isReading
                             ? Icons.menu_book_rounded
                             : Icons.play_arrow_rounded,
-                        onPressed: eps.isNotEmpty
+                        onPressed: (eps.isNotEmpty ||
+                                widget.item.sourceId == 'tmdb:catalog' ||
+                                widget.item.sourceId.startsWith('tpdb:'))
                             ? () => _openPlayer(eps, resumeIdx, detail, category)
                             : null,
                       ),

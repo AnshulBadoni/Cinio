@@ -43,6 +43,19 @@ class TitleMatcher {
 
   static final RegExp _nonAlphaNum = RegExp(r'[^a-z0-9]+');
 
+  static final Set<String> _releaseAndNoiseTokens = {
+    '1080p', '720p', '480p', '2160p', '4k', 'web', 'dl', 'webdl', 'bluray',
+    'bdrip', 'dvdrip', 'hdrip', 'x264', 'x265', 'hevc', 'aac', 'mp3',
+    'splitscenes', 'xxx', 'full', 'hd', 'uhd', 'rip', 'mkv', 'mp4',
+    'blacked', 'erotica', 'x', 'brazzers', 'vixen', 'tushy', 'bang', 'raw'
+  };
+
+  static bool _isReleaseOrYearToken(String t) {
+    if (_releaseAndNoiseTokens.contains(t)) return true;
+    if (RegExp(r'^(?:19|20)\d{2}$').hasMatch(t)) return true;
+    return false;
+  }
+
   /// Convert Roman numerals to decimal digits in title strings.
   static String convertRomanNumerals(String text) {
     return text.replaceAllMapped(_romanWordRegex, (m) {
@@ -158,11 +171,19 @@ class TitleMatcher {
     final wantedSet = wantedTokens.toSet();
     final candSet = candTokens.toSet();
     if (wantedSet.length >= 2) {
-      if (wantedSet.every(candSet.contains) && (candTokens.length - wantedTokens.length).abs() <= 3) {
-        return 0.92;
+      if (wantedSet.every(candSet.contains) && (candTokens.length - wantedTokens.length).abs() <= 4) {
+        // Disallow sequel / subtitle drift: any extra tokens in candidate must be
+        // technical release tags, year, or studio tags, NOT distinct subtitle words (e.g. "Afterlife").
+        final extraTokens = candSet.difference(wantedSet);
+        if (extraTokens.every(_isReleaseOrYearToken)) {
+          return 0.92;
+        }
       }
       if (candSet.every(wantedSet.contains) && (wantedTokens.length - candTokens.length).abs() <= 2) {
-        return 0.90;
+        final missingTokens = wantedSet.difference(candSet);
+        if (missingTokens.every(_isReleaseOrYearToken)) {
+          return 0.90;
+        }
       }
     }
 
@@ -223,17 +244,31 @@ class TitleMatcher {
       list.add(canon);
     }
 
+    // Strip year in parentheses, e.g. "Meant to Fuck (2026)" -> "Meant to Fuck"
+    final withoutYear = trimmed.replaceAll(RegExp(r'\s*\(\d{4}\)'), '').trim();
+    if (withoutYear.length >= 3 && !list.contains(withoutYear)) {
+      list.add(withoutYear);
+    }
+
     // Base title without trailing numbers/volumes (e.g. "Fantasy Vol 10" -> "Fantasy")
     final withoutNumbers = trimmed.replaceAll(RegExp(r'\s*(vol|volume|pt|part|episode|ep|scene)?\.?\s*\d+\s*$', caseSensitive: false), '').trim();
     if (withoutNumbers.length >= 3 && !list.contains(withoutNumbers)) {
       list.add(withoutNumbers);
     }
 
-    // Strip prefix before hyphen or colon (e.g. "Studio - Title" -> "Title")
+    // Strip prefix before hyphen (e.g. "Studio - Title" -> "Title")
     if (trimmed.contains(' - ')) {
       final afterHyphen = trimmed.split(' - ').last.trim();
       if (afterHyphen.length >= 3 && !list.contains(afterHyphen)) {
         list.add(afterHyphen);
+      }
+    }
+
+    // Strip prefix before colon (e.g. "Studio: Title" -> "Title")
+    if (trimmed.contains(': ')) {
+      final afterColon = trimmed.split(': ').last.trim();
+      if (afterColon.length >= 3 && !list.contains(afterColon)) {
+        list.add(afterColon);
       }
     }
 

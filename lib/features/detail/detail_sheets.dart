@@ -16,13 +16,20 @@ String _sourceName(VideoSource s, int index) {
       : 'Server ${index + 1}';
 }
 
+typedef SourceProgressEmitter = void Function({
+  required List<VideoSource> sources,
+  MediaItem? resolvedItem,
+  MediaDetail? resolvedDetail,
+  Episode? resolvedEpisode,
+});
+
 typedef SourcePickerResolver = Future<({
   List<VideoSource> sources,
   MediaItem? resolvedItem,
   MediaDetail? resolvedDetail,
   Episode? resolvedEpisode,
   String? error,
-})> Function();
+})> Function([SourceProgressEmitter? onProgress]);
 
 typedef SourcePickerResult = ({
   VideoSource chosen,
@@ -56,6 +63,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   MediaDetail? _resolvedDetail;
   Episode? _resolvedEpisode;
   bool _loading = true;
+  bool _cancelled = false;
   String? _error;
 
   @override
@@ -66,18 +74,43 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
 
   Future<void> _load() async {
     try {
-      final res = await widget.resolve();
-      if (mounted) {
+      final res = await widget.resolve(({
+        required List<VideoSource> sources,
+        MediaItem? resolvedItem,
+        MediaDetail? resolvedDetail,
+        Episode? resolvedEpisode,
+      }) {
+        if (!mounted || _cancelled) return;
         setState(() {
-          _sources = res.sources;
-          _resolvedItem = res.resolvedItem;
-          _resolvedDetail = res.resolvedDetail;
-          _resolvedEpisode = res.resolvedEpisode;
-          _error = res.error;
+          final existingUrls = _sources?.map((s) => s.url).toSet() ?? <String>{};
+          final newOnes = sources.where((s) => !existingUrls.contains(s.url)).toList();
+          _sources = [...?_sources, ...newOnes];
+          if (resolvedItem != null) _resolvedItem = resolvedItem;
+          if (resolvedDetail != null) _resolvedDetail = resolvedDetail;
+          if (resolvedEpisode != null) _resolvedEpisode = resolvedEpisode;
+        });
+      });
+      if (mounted && !_cancelled) {
+        setState(() {
+          if (_sources == null || _sources!.isEmpty) {
+            _sources = res.sources;
+          } else {
+            final existingUrls = _sources!.map((s) => s.url).toSet();
+            final newOnes = res.sources.where((s) => !existingUrls.contains(s.url)).toList();
+            _sources = [..._sources!, ...newOnes];
+          }
+          _resolvedItem ??= res.resolvedItem;
+          _resolvedDetail ??= res.resolvedDetail;
+          _resolvedEpisode ??= res.resolvedEpisode;
+          if (_sources!.isEmpty) {
+            _error = res.error;
+          }
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _error = "Couldn't load download options");
+      if (mounted && (_sources == null || _sources!.isEmpty)) {
+        setState(() => _error = "Couldn't load download options");
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -124,7 +157,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
               ),
             ),
             const SizedBox(height: 12),
-            if (_loading)
+            if (_loading && (_sources == null || _sources!.isEmpty))
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 28),
                 child: Center(
@@ -148,7 +181,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                   ),
                 ),
               )
-            else if (_error != null || (_sources?.isEmpty ?? true))
+            else if (_error != null && (_sources?.isEmpty ?? true))
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
                 child: Center(
@@ -180,7 +213,54 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                   ),
                 ),
               )
-            else
+            else ...[
+              if (_loading)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceVariant.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 13,
+                        height: 13,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.accent,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Searching other providers…',
+                          style: AppText.caption.copyWith(color: AppColors.textSecondary),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _loading = false;
+                            _cancelled = true;
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          child: Text(
+                            'Skip loading',
+                            style: AppText.caption.copyWith(
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ConstrainedBox(
                 constraints: BoxConstraints(maxHeight: maxH),
                 child: ListView.builder(
@@ -189,6 +269,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                   itemBuilder: (context, i) => _row(_sources![i], i),
                 ),
               ),
+            ],
           ],
         ),
       ),

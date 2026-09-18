@@ -526,7 +526,7 @@ class SourceRepository {
     if (preferred.isNotEmpty && hasSource(preferred)) {
       tried.add(preferred);
       final hit = await _resolveCatalogOnSource(catalog, preferred, category)
-          .timeout(const Duration(seconds: 8), onTimeout: () => null);
+          .timeout(const Duration(seconds: 4), onTimeout: () => null);
       if (hit != null) {
         _catalogResolutionCache[key] = (at: DateTime.now(), value: hit);
         return hit;
@@ -554,20 +554,20 @@ class SourceRepository {
 
     for (final id in remaining) {
       _resolveCatalogOnSource(catalog, id, category)
-          .timeout(const Duration(seconds: 12), onTimeout: () => null)
+          .timeout(const Duration(seconds: 5), onTimeout: () => null)
           .then((result) {
         if (completer.isCompleted) return;
         if (result != null) {
           final score = TitleMatcher.matchScore(catalog.title, result.item.title, altWanted: catalog.englishTitle);
-          if (score >= 0.98) {
-            // Exact 100% match: complete immediately with zero delay
+          if (score >= 0.90) {
+            // Validated strict match: complete immediately with zero delay
             finishWith(result);
             return;
-          } else if (score > bestFuzzyScore) {
+          } else if (score > bestFuzzyScore && score >= 0.70) {
             bestFuzzyScore = score;
             bestFuzzyResult = result;
-            // Short 350ms window to give other providers a chance to return an exact full match
-            fuzzyGraceTimer ??= Timer(const Duration(milliseconds: 350), () {
+            // Short 250ms window to give other providers a chance to return an exact full match
+            fuzzyGraceTimer ??= Timer(const Duration(milliseconds: 250), () {
               finishWith(bestFuzzyResult);
             });
           }
@@ -612,7 +612,7 @@ class SourceRepository {
         );
         if (match != null) break;
 
-        if (category != 'dub') {
+        if (category != 'dub' && catalog.tmdbIsTv) {
           final dubResults = await search(
             query,
             category: 'dub',
