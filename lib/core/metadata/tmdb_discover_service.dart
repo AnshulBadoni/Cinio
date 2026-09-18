@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
@@ -79,26 +80,44 @@ class TmdbDiscoverService {
     'Music',
   ];
 
+  static String get _deviceRegion {
+    try {
+      final loc = Platform.localeName;
+      final parts = loc.split(RegExp(r'[_-]'));
+      if (parts.length > 1) {
+        final code = parts.last.toUpperCase();
+        if (code.length == 2) return code;
+      }
+      return 'US';
+    } catch (_) {
+      return 'US';
+    }
+  }
+
   Future<HomeSection?> homeSection(String kind) async {
     final result = switch (kind) {
       'tmdb_recent' => await _recentMixed(1),
+      'tmdb_new_releases' => await _newReleases(1),
       'tmdb_trending_movies' => await _trendingKind('movie', 1),
       'tmdb_trending_series' => await _trendingKind('tv', 1),
       'tmdb_popular_movies' => await _discoverKind(kind: 'movie', catalog: 'popular', page: 1),
       'tmdb_popular_series' => await _discoverKind(kind: 'tv', catalog: 'popular', page: 1),
       'tmdb_trending_anime' => await _discoverKind(kind: 'tv', catalog: 'anime', page: 1, anime: true),
       'tmdb_top_rated_movies' => await _discoverKind(kind: 'movie', catalog: 'top_rated', page: 1),
+      'tmdb_top_rated_series' => await _discoverKind(kind: 'tv', catalog: 'top_rated', page: 1),
       _ => const <MediaItem>[],
     };
     if (result.isEmpty) return null;
     final title = switch (kind) {
       'tmdb_recent' => 'Recent Movies & Series',
+      'tmdb_new_releases' => 'New Releases',
       'tmdb_trending_movies' => 'Trending Movies',
       'tmdb_trending_series' => 'Trending Series',
       'tmdb_popular_movies' => 'Popular Movies',
       'tmdb_popular_series' => 'Popular Series',
       'tmdb_trending_anime' => 'Trending Anime',
       'tmdb_top_rated_movies' => 'Top Rated Movies',
+      'tmdb_top_rated_series' => 'Top Rated Series',
       _ => '',
     };
     return HomeSection(title: title, items: result, more: BrowseMore(sourceId: 'tmdb:catalog', kind: kind));
@@ -107,21 +126,24 @@ class TmdbDiscoverService {
   Future<List<HomeSection>> home() async {
     final results = await Future.wait([
       _safe(() => _recentMixed(1)),
+      _safe(() => _newReleases(1)),
       _safe(() => _trendingKind('movie', 1)),
       _safe(() => _trendingKind('tv', 1)),
       _safe(() => _discoverKind(kind: 'movie', catalog: 'popular', page: 1)),
       _safe(() => _discoverKind(kind: 'tv', catalog: 'popular', page: 1)),
       _safe(() => _discoverKind(kind: 'tv', catalog: 'anime', page: 1, anime: true)),
       _safe(() => _discoverKind(kind: 'movie', catalog: 'top_rated', page: 1)),
+      _safe(() => _discoverKind(kind: 'tv', catalog: 'top_rated', page: 1)),
     ]);
     final kinds = <String>[
-      'tmdb_recent', 'tmdb_trending_movies', 'tmdb_trending_series',
+      'tmdb_recent', 'tmdb_new_releases', 'tmdb_trending_movies', 'tmdb_trending_series',
       'tmdb_popular_movies', 'tmdb_popular_series', 'tmdb_trending_anime',
-      'tmdb_top_rated_movies',
+      'tmdb_top_rated_movies', 'tmdb_top_rated_series',
     ];
     final titles = <String>[
-      'Recent Movies & Series', 'Trending Movies', 'Trending Series',
-      'Popular Movies', 'Popular Series', 'Trending Anime', 'Top Rated Movies',
+      'Recent Movies & Series', 'New Releases', 'Trending Movies', 'Trending Series',
+      'Popular Movies', 'Popular Series', 'Trending Anime',
+      'Top Rated Movies', 'Top Rated Series',
     ];
     return [
       for (var i = 0; i < results.length; i++)
@@ -139,18 +161,42 @@ class TmdbDiscoverService {
   Future<List<MediaItem>> browseMore(String kind, int page) async {
     switch (kind) {
       case 'tmdb_recent': return _recentMixed(page);
+      case 'tmdb_new_releases': return _newReleases(page);
       case 'tmdb_trending_movies': return _trendingKind('movie', page);
       case 'tmdb_trending_series': return _trendingKind('tv', page);
       case 'tmdb_popular_movies': return _discoverKind(kind: 'movie', catalog: 'popular', page: page);
       case 'tmdb_popular_series': return _discoverKind(kind: 'tv', catalog: 'popular', page: page);
       case 'tmdb_trending_anime': return _discoverKind(kind: 'tv', catalog: 'anime', page: page, anime: true);
       case 'tmdb_top_rated_movies': return _discoverKind(kind: 'movie', catalog: 'top_rated', page: page);
+      case 'tmdb_top_rated_series': return _discoverKind(kind: 'tv', catalog: 'top_rated', page: page);
       default: return const [];
     }
   }
 
+  Future<List<MediaItem>> _newReleases(int page) async {
+    try {
+      final response = await _dio.get<dynamic>(
+        '${Tmdb.base}/movie/now_playing',
+        queryParameters: {
+          'page': page,
+          'region': _deviceRegion,
+        },
+        options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
+      );
+      final rows = response.data is Map ? response.data['results'] : null;
+      if (rows is List && rows.isNotEmpty) {
+        return [for (final row in rows) if (row is Map) ..._mapSearchRow(row, type: 'movies')];
+      }
+    } catch (_) {}
+    return _discoverKind(kind: 'movie', catalog: 'recent', page: page);
+  }
+
   Future<List<MediaItem>> _trendingKind(String kind, int page) async {
-    final response = await _dio.get<dynamic>('${Tmdb.base}/trending/$kind/week', queryParameters: {'page': page});
+    final response = await _dio.get<dynamic>(
+      '${Tmdb.base}/trending/$kind/week',
+      queryParameters: {'page': page},
+      options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
+    );
     final rows = response.data is Map ? response.data['results'] : null;
     if (rows is! List) return const [];
     return [for (final row in rows) if (row is Map) ..._mapSearchRow(row, type: kind == 'tv' ? 'series' : 'movies', trending: true)];
@@ -171,12 +217,49 @@ class TmdbDiscoverService {
     final id = item.tmdbId;
     if (id == null) throw StateError('Missing TMDB id');
     final kind = item.tmdbIsTv ? 'tv' : 'movie';
-    final response = await _dio.get<dynamic>('${Tmdb.base}/$kind/$id', queryParameters: {'append_to_response': 'credits'});
+    final response = await _dio.get<dynamic>(
+      '${Tmdb.base}/$kind/$id',
+      queryParameters: {
+        'append_to_response': item.tmdbIsTv ? 'credits' : 'credits,release_dates',
+      },
+      options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
+    );
     final row = response.data is Map ? Map<String,dynamic>.from(response.data as Map) : <String,dynamic>{};
     final title = (item.tmdbIsTv ? row['name'] : row['title'])?.toString() ?? item.title;
     final poster = row['poster_path']?.toString();
     final overview = row['overview']?.toString();
-    final date = (item.tmdbIsTv ? row['first_air_date'] : row['release_date'])?.toString();
+    var date = (item.tmdbIsTv ? row['first_air_date'] : row['release_date'])?.toString();
+    final tmdbStatus = row['status']?.toString();
+
+    // Check regional release date for movie if available
+    if (!item.tmdbIsTv && row['release_dates'] is Map) {
+      final results = row['release_dates']['results'];
+      if (results is List) {
+        final region = _deviceRegion;
+        Map? matchCountry;
+        for (final r in results) {
+          if (r is Map && r['iso_3166_1'] == region) {
+            matchCountry = r;
+            break;
+          }
+        }
+        if (matchCountry != null && matchCountry['release_dates'] is List) {
+          final datesList = matchCountry['release_dates'] as List;
+          if (datesList.isNotEmpty) {
+            for (final d in datesList) {
+              if (d is Map && d['release_date'] is String) {
+                final rd = (d['release_date'] as String).split('T').first;
+                if (rd.isNotEmpty) {
+                  date = rd;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     final castRows = row['credits'] is Map ? row['credits']['cast'] : null;
     final cast = <String>[];
     if (castRows is List) { for (final c in castRows) { if (c is Map && c['name'] != null) cast.add(c['name'].toString()); } }
@@ -188,10 +271,18 @@ class TmdbDiscoverService {
           for (final season in seasons)
             if (season is Map) (season['season_number'] as num?)?.toInt(),
         ].whereType<int>().where((n) => n > 0).toList();
-        final seasonResults = await Future.wait([
-          for (final seasonNumber in seasonNumbers)
-            _loadTmdbSeason(id, seasonNumber),
-        ]);
+
+        // Batch seasons in pools of 3 to avoid TMDB 429 rate limit or socket exhaustion
+        final seasonResults = <List<Episode>>[];
+        for (var i = 0; i < seasonNumbers.length; i += 3) {
+          final chunk = seasonNumbers.sublist(i, math.min(i + 3, seasonNumbers.length));
+          final chunkRes = await Future.wait([
+            for (final seasonNumber in chunk)
+              _loadTmdbSeason(id, seasonNumber),
+          ]);
+          seasonResults.addAll(chunkRes);
+        }
+
         for (final result in seasonResults) {
           episodes.addAll(result);
         }
@@ -215,12 +306,17 @@ class TmdbDiscoverService {
       url: item.url, description: overview, year: date != null && date.length >= 4 ? date.substring(0,4) : null,
       type: ProviderType.movie, sourceId: 'tmdb:catalog', tmdbId: id, tmdbIsTv: item.tmdbIsTv,
       isSeries: item.tmdbIsTv, genres: item.genres, cast: cast, episodes: episodes,
+      releaseDate: date,
+      tmdbStatus: tmdbStatus,
     );
   }
 
   Future<List<Episode>> _loadTmdbSeason(int id, int seasonNumber) async {
     try {
-      final response = await _dio.get<dynamic>('${Tmdb.base}/tv/$id/season/$seasonNumber');
+      final response = await _dio.get<dynamic>(
+        '${Tmdb.base}/tv/$id/season/$seasonNumber',
+        options: Options(receiveTimeout: const Duration(seconds: 10), sendTimeout: const Duration(seconds: 10)),
+      );
       final rows = response.data is Map ? response.data['episodes'] : null;
       if (rows is! List) return const [];
       return [
@@ -385,10 +481,14 @@ class TmdbDiscoverService {
       params['with_genres'] = 16;
       params['with_origin_country'] = 'JP';
     }
+    if (kind == 'movie') {
+      params['region'] = _deviceRegion;
+    }
 
     final response = await _dio.get<dynamic>(
       '${Tmdb.base}/discover/$kind',
       queryParameters: params,
+      options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
     );
     final rows = response.data is Map ? response.data['results'] : null;
     if (rows is! List) return const [];

@@ -188,19 +188,31 @@ class DetailCubit extends Cubit<DetailState> {
   /// streaming providers are resolved lazily only by Play/Download.
   Future<void> load() async {
     if (state.detail == null) {
-      emit(state.copyWith(status: DetailStatus.loading));
+      emit(state.copyWith(status: DetailStatus.loading, error: null));
     }
-    try {
-      final detail = await _loadDetailForCurrentSource(state.category);
+    MediaDetail? detail;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        detail = await _loadDetailForCurrentSource(state.category);
+        break;
+      } catch (_) {
+        if (attempt == 0) {
+          await Future.delayed(const Duration(milliseconds: 350));
+        }
+      }
+    }
+
+    if (detail != null) {
       emit(state.copyWith(
         status: DetailStatus.success,
         detail: detail,
         cast: detail.castMembers,
         relations: detail.relations,
         extrasLoading: _sourceId == 'tmdb:catalog' || _sourceId == 'tpdb:catalog',
+        error: null,
       ));
       unawaited(_enrich(detail));
-    } catch (_) {
+    } else {
       if (state.detail != null) {
         emit(state.copyWith(status: DetailStatus.success, extrasLoading: false, error: 'load_failed'));
       } else {
@@ -208,6 +220,8 @@ class DetailCubit extends Cubit<DetailState> {
       }
     }
   }
+
+  Future<void> retry() => load();
 
   Future<MediaDetail> _loadDetailForCurrentSource(String category) async {
     final isCatalog = _sourceId == 'tmdb:catalog' ||
@@ -227,7 +241,7 @@ class DetailCubit extends Cubit<DetailState> {
       tmdbId: _catalogDetail?.tmdbId,
       tmdbIsTv: _catalogDetail?.tmdbIsTv ?? false,
     );
-    if (_catalogDetail != null) return _catalogDetail!;
+    if (_catalogDetail != null) return _catalogDetail;
 
     if (_sourceId == 'tmdb:catalog') {
       return sl<TmdbDiscoverService>().movieDetail(catalogItem);

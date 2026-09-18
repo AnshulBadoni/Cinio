@@ -927,6 +927,8 @@ class _DetailViewState extends State<_DetailView>
     /// adaptive default. One-shot — the cubit clears it after this episode.
     VideoSource? initialSource,
   }) async {
+    final targetEp = (index >= 0 && index < episodes.length) ? episodes[index] : null;
+
     if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
       final resolved = await _resolveCatalogPlayback(category: category);
       if (!mounted) return;
@@ -948,7 +950,31 @@ class _DetailViewState extends State<_DetailView>
           return;
         }
       }
-      index = index.clamp(0, episodes.length - 1).toInt();
+
+      if (targetEp != null && episodes.isNotEmpty) {
+        final wantedSeason = seasonOf(targetEp);
+        final wantedNumber = targetEp.number;
+        var foundIndex = -1;
+        for (var i = 0; i < episodes.length; i++) {
+          final cand = episodes[i];
+          if (cand.number == wantedNumber &&
+              (wantedSeason == null || seasonOf(cand) == wantedSeason)) {
+            foundIndex = i;
+            break;
+          }
+        }
+        if (foundIndex < 0 && wantedNumber != null) {
+          for (var i = 0; i < episodes.length; i++) {
+            if (episodes[i].number == wantedNumber) {
+              foundIndex = i;
+              break;
+            }
+          }
+        }
+        index = foundIndex >= 0 ? foundIndex : index.clamp(0, episodes.length - 1);
+      } else {
+        index = index.clamp(0, episodes.length - 1).toInt();
+      }
     }
     // Opening something other than where they left off? Offer to look at it
     // without moving their place. Asked here, before the reading/video split,
@@ -1540,13 +1566,27 @@ class _DetailViewState extends State<_DetailView>
     final finalDetail = res.resolvedDetail ?? detail;
     final finalEp = res.resolvedEpisode ?? ep;
 
+    final catalogCover = (detail.cover != null && detail.cover!.isNotEmpty)
+        ? detail.cover
+        : ((widget.item.cover != null && widget.item.cover!.isNotEmpty) ? widget.item.cover : null);
+    final catalogHeaders = detail.coverHeaders ?? widget.item.coverHeaders;
+    final catalogTitle = detail.title.trim().isNotEmpty ? detail.title : widget.item.title;
+
+    final effectiveCover = isCatalog
+        ? (catalogCover ?? finalDetail.cover ?? finalItem.cover)
+        : (finalDetail.cover ?? finalItem.cover ?? catalogCover);
+    final effectiveHeaders = isCatalog
+        ? (catalogHeaders ?? finalDetail.coverHeaders ?? finalItem.coverHeaders)
+        : (finalDetail.coverHeaders ?? finalItem.coverHeaders ?? catalogHeaders);
+    final effectiveTitle = isCatalog && catalogTitle.isNotEmpty ? catalogTitle : finalDetail.title;
+
     unawaited(
       sl<DownloadManager>().enqueueSource(
         sourceId: finalDetail.sourceId,
-        showId: finalDetail.id,
-        showTitle: finalDetail.title,
-        cover: finalDetail.cover ?? finalItem.cover,
-        coverHeaders: finalDetail.coverHeaders ?? finalItem.coverHeaders,
+        showId: isCatalog ? widget.item.id : finalDetail.id,
+        showTitle: effectiveTitle,
+        cover: effectiveCover,
+        coverHeaders: effectiveHeaders,
         showUrl: finalDetail.url,
         category: category,
         episode: finalEp,
@@ -1567,13 +1607,20 @@ class _DetailViewState extends State<_DetailView>
     List<Episode> episodes,
   ) {
     final item = widget.item;
+    final isCatalog = item.sourceId == 'tmdb:catalog' || item.sourceId.startsWith('tpdb:');
+    final catalogCover = (detail.cover != null && detail.cover!.isNotEmpty)
+        ? detail.cover
+        : ((item.cover != null && item.cover!.isNotEmpty) ? item.cover : null);
+    final catalogHeaders = detail.coverHeaders ?? item.coverHeaders;
+    final catalogTitle = detail.title.trim().isNotEmpty ? detail.title : item.title;
+
     unawaited(
       sl<DownloadManager>().enqueueEpisodes(
         sourceId: detail.sourceId,
-        showId: detail.id,
-        showTitle: detail.title,
-        cover: detail.cover ?? item.cover,
-        coverHeaders: detail.coverHeaders ?? item.coverHeaders,
+        showId: isCatalog ? item.id : detail.id,
+        showTitle: isCatalog ? catalogTitle : detail.title,
+        cover: isCatalog ? (catalogCover ?? detail.cover ?? item.cover) : (detail.cover ?? item.cover),
+        coverHeaders: isCatalog ? (catalogHeaders ?? detail.coverHeaders ?? item.coverHeaders) : (detail.coverHeaders ?? item.coverHeaders),
         showUrl: detail.url,
         category: category,
         quality: quality,
@@ -1600,9 +1647,22 @@ class _DetailViewState extends State<_DetailView>
             return const _DetailSkeleton(heroHeight: _expandedHeight);
           }
           if (state.detail == null && state.status == DetailStatus.error) {
-            return const EmptyState(
-              icon: Icons.error_outline,
-              message: 'Failed to load this title',
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const EmptyState(
+                    icon: Icons.error_outline,
+                    message: 'Failed to load this title',
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    onPressed: () => context.read<DetailCubit>().retry(),
+                    icon: Icon(Icons.refresh_rounded, color: AppColors.accent),
+                    label: Text('Tap to retry', style: TextStyle(color: AppColors.accent)),
+                  ),
+                ],
+              ),
             );
           }
           if (state.detail == null) return const _DetailSkeleton(heroHeight: _expandedHeight);
@@ -1837,6 +1897,42 @@ class _DetailViewState extends State<_DetailView>
             ),
           ),
         ),
+
+        if (state.error == 'load_failed')
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, size: 18, color: Colors.orangeAccent),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Could not load full details',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => cubit.retry(),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: Text(
+                          'Retry',
+                          style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
 
         // ── 3. White Play + gray Download buttons (full-width, stacked) ─────
         // (The hero banner autoplays the trailer; tap it for fullscreen.)
@@ -2103,29 +2199,55 @@ class _DetailViewState extends State<_DetailView>
 /// Checks if a movie / title has a confirmed release date strictly in the future.
 bool _isFutureRelease(MediaDetail? detail) {
   if (detail == null) return false;
-  final raw = detail.year?.trim();
-  if (raw == null || raw.isEmpty) return false;
+
+  // 1. Official TMDB release status check
+  final tmdbStatus = detail.tmdbStatus?.trim().toLowerCase();
+  if (tmdbStatus != null && tmdbStatus.isNotEmpty) {
+    if (tmdbStatus != 'released' && tmdbStatus != 'ended') {
+      return true;
+    }
+  }
 
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
 
-  // If it's a 4-digit year only (e.g. "2027")
-  if (RegExp(r'^\d{4}$').hasMatch(raw)) {
-    final y = int.tryParse(raw);
-    return y != null && y > now.year;
+  // 2. Full release date check (e.g. "2026-09-25")
+  final fullDate = detail.releaseDate?.trim();
+  if (fullDate != null && fullDate.isNotEmpty) {
+    final parsed = DateTime.tryParse(fullDate);
+    if (parsed != null) {
+      return parsed.isAfter(today);
+    }
   }
 
-  // If it's a full ISO/parseable date (e.g. "2026-11-20")
-  final parsed = DateTime.tryParse(raw);
-  if (parsed != null) {
-    return parsed.isAfter(today);
+  // 3. Fallback: inspect raw year / date string in detail.year
+  final raw = detail.year?.trim();
+  if (raw != null && raw.isNotEmpty) {
+    final parsed = DateTime.tryParse(raw);
+    if (parsed != null) {
+      return parsed.isAfter(today);
+    }
+    if (RegExp(r'^\d{4}$').hasMatch(raw)) {
+      final y = int.tryParse(raw);
+      return y != null && y > now.year;
+    }
+    final yearMatch = RegExp(r'\b(20\d\d)\b').firstMatch(raw);
+    if (yearMatch != null) {
+      final y = int.tryParse(yearMatch.group(1)!);
+      if (y != null && y > now.year) return true;
+    }
   }
 
-  // Fallback: check if contains a future 4-digit year
-  final yearMatch = RegExp(r'\b(20\d\d)\b').firstMatch(raw);
-  if (yearMatch != null) {
-    final y = int.tryParse(yearMatch.group(1)!);
-    if (y != null && y > now.year) return true;
+  // 4. For TV series: if season 1 episode 1 has a future air date
+  if (detail.isSeries && detail.episodes.isNotEmpty) {
+    final firstEp = detail.episodes.first;
+    final epDate = firstEp.date?.trim();
+    if (epDate != null && epDate.isNotEmpty) {
+      final parsed = DateTime.tryParse(epDate);
+      if (parsed != null && parsed.isAfter(today)) {
+        return true;
+      }
+    }
   }
 
   return false;

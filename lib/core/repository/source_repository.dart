@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import '../aniyomi/aniyomi_filters.dart';
 import '../aniyomi/aniyomi_provider.dart';
@@ -428,12 +429,14 @@ class SourceRepository {
               ? p.browseMainPage(more.categoryId!, page)
               : const [];
         case 'tmdb_recent':
+        case 'tmdb_new_releases':
         case 'tmdb_trending_movies':
         case 'tmdb_trending_series':
         case 'tmdb_popular_movies':
         case 'tmdb_popular_series':
         case 'tmdb_trending_anime':
         case 'tmdb_top_rated_movies':
+        case 'tmdb_top_rated_series':
           return sl<TmdbDiscoverService>().browseMore(more.kind, page);
         case 'mixed_recent':
           return _mixedBrowse('tmdb_recent', 'tpdb_trending', page);
@@ -597,7 +600,6 @@ class SourceRepository {
   ) async {
     try {
       final queries = TitleMatcher.searchQueries(catalog.title);
-      MediaItem? match;
 
       for (final query in queries) {
         final results = await search(
@@ -605,12 +607,8 @@ class SourceRepository {
           category: category,
           sourceId: providerId,
         );
-        match = _strictCatalogMatch(
-          results,
-          catalog.title,
-          altTitle: catalog.englishTitle,
-        );
-        if (match != null) break;
+        final hit = await _findValidCatalogMatch(results, catalog, category);
+        if (hit != null) return hit;
 
         if (category != 'dub' && catalog.tmdbIsTv) {
           final dubResults = await search(
@@ -618,38 +616,82 @@ class SourceRepository {
             category: 'dub',
             sourceId: providerId,
           );
-          match = _strictCatalogMatch(
-            dubResults,
-            catalog.title,
-            altTitle: catalog.englishTitle,
-          );
-          if (match != null) break;
+          final dubHit = await _findValidCatalogMatch(dubResults, catalog, 'dub');
+          if (dubHit != null) return dubHit;
         }
       }
 
-      if (match == null) return null;
-      final resolvedDetail = await detail(
-        match.url,
-        category: category,
-        sourceId: match.sourceId,
-      );
-      if (resolvedDetail.episodes.isEmpty && catalog.tmdbIsTv) return null;
-      return (item: match, detail: resolvedDetail);
+      return null;
     } catch (_) {
       return null;
     }
   }
 
-  MediaItem? _strictCatalogMatch(
+  Future<({MediaItem item, MediaDetail detail})?> _findValidCatalogMatch(
     List<MediaItem> results,
-    String wanted, {
-    String? altTitle,
-  }) {
-    return TitleMatcher.findBestMatch(
-      results,
-      wanted,
-      altTitle: altTitle,
-    );
+    MediaItem catalog,
+    String category,
+  ) async {
+    if (results.isEmpty) return null;
+
+    final candidates = <({MediaItem item, double score})>[];
+    for (final r in results) {
+      final s1 = TitleMatcher.matchScore(catalog.title, r.title, altWanted: catalog.englishTitle);
+      final s2 = r.englishTitle != null
+          ? TitleMatcher.matchScore(catalog.title, r.englishTitle!, altWanted: catalog.englishTitle)
+          : 0.0;
+      final score = math.max(s1, s2);
+      if (score >= 0.70) {
+        candidates.add((item: r, score: score));
+      }
+    }
+
+    if (candidates.isEmpty) return null;
+
+    // Prioritize candidates whose item type (TV vs Movie) matches catalog
+    candidates.sort((a, b) {
+      if (catalog.tmdbIsTv) {
+        final aTv = a.item.tmdbIsTv ? 1 : 0;
+        final bTv = b.item.tmdbIsTv ? 1 : 0;
+        if (aTv != bTv) return bTv.compareTo(aTv);
+      } else {
+        final aMovie = !a.item.tmdbIsTv ? 1 : 0;
+        final bMovie = !b.item.tmdbIsTv ? 1 : 0;
+        if (aMovie != bMovie) return bMovie.compareTo(aMovie);
+      }
+      return b.score.compareTo(a.score);
+    });
+
+    for (final cand in candidates.take(3)) {
+      try {
+        final resolvedDetail = await detail(
+          cand.item.url,
+          category: category,
+          sourceId: cand.item.sourceId,
+        );
+
+        if (catalog.tmdbIsTv) {
+          // If catalog is TV series, reject movies with same name (e.g. Silo 2021 vs Silo TV show)
+          if (!resolvedDetail.isSeries && resolvedDetail.episodes.length <= 1) {
+            continue;
+          }
+          if (resolvedDetail.episodes.isEmpty) {
+            continue;
+          }
+        } else {
+          // If catalog is Movie, reject TV series
+          if (resolvedDetail.isSeries && resolvedDetail.episodes.length > 1) {
+            continue;
+          }
+        }
+
+        return (item: cand.item, detail: resolvedDetail);
+      } catch (_) {
+        continue;
+      }
+    }
+
+    return null;
   }
 
   /// Status-reporting search for the source-health feature (search ordering +

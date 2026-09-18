@@ -94,6 +94,16 @@ class MediaDetail extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final List<MediaRelation> relations;
 
+  /// Full release date (e.g. "2026-09-25"), when provided by TMDB/metadata.
+  /// Runtime-only — not serialized to JSON.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? releaseDate;
+
+  /// Official TMDB status (e.g. "Released", "Post Production", "Planned").
+  /// Runtime-only — not serialized to JSON.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? tmdbStatus;
+
   const MediaDetail({
     required this.id,
     required this.title,
@@ -119,6 +129,8 @@ class MediaDetail extends Equatable {
     this.imdbId,
     this.castMembers = const [],
     this.relations = const [],
+    this.releaseDate,
+    this.tmdbStatus,
   });
 
   factory MediaDetail.fromJson(Map<String, dynamic> json) =>
@@ -150,6 +162,8 @@ class MediaDetail extends Equatable {
     String? imdbId,
     List<CastMember>? castMembers,
     List<MediaRelation>? relations,
+    String? releaseDate,
+    String? tmdbStatus,
   }) => MediaDetail(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -175,6 +189,8 @@ class MediaDetail extends Equatable {
     imdbId: imdbId ?? this.imdbId,
     castMembers: castMembers ?? this.castMembers,
     relations: relations ?? this.relations,
+    releaseDate: releaseDate ?? this.releaseDate,
+    tmdbStatus: tmdbStatus ?? this.tmdbStatus,
   );
 
   @override
@@ -203,5 +219,7 @@ class MediaDetail extends Equatable {
     imdbId,
     castMembers,
     relations,
+    releaseDate,
+    tmdbStatus,
   ];
 }

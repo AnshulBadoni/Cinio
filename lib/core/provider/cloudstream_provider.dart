@@ -640,13 +640,14 @@ class CloudStreamProvider implements BaseProvider {
     if (ph is Map) {
       coverHeaders = ph.map((k, v) => MapEntry('$k', '$v'));
     }
+    final csType = m['type'] as String?;
     return MediaItem(
       id: url,
       title: (m['name'] ?? '').toString(),
       cover: (m['posterUrl'] as String?),
       coverHeaders: coverHeaders,
       url: url,
-      type: itemType(m['type'] as String?),
+      type: itemType(csType),
       sourceId: sourceId,
       // Only CloudStream reports this, and plenty of its providers don't set
       // it either — null just means no badge.
@@ -655,6 +656,7 @@ class CloudStreamProvider implements BaseProvider {
       dubBadge: dubBadgeLabel(
         (m['dubStatus'] as List?)?.map((e) => '$e').toList(),
       ),
+      tmdbIsTv: _csTypeIsTv(csType),
     );
   }
 

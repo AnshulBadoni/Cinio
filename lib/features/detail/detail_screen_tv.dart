@@ -187,29 +187,89 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
 
   // ── Player launch (mirrors _DetailViewState._openPlayer exactly) ──────────
   Future<void> _openPlayer(List<Episode> episodes, int index, MediaDetail detail, String category) async {
+    final targetEp = (index >= 0 && index < episodes.length) ? episodes[index] : null;
+
+    if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
+      final resolved = await sl<SourceRepository>().resolveCatalogTitle(
+        widget.item,
+        category: category,
+      );
+      if (!mounted) return;
+      if (resolved == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No playable provider result found for ${widget.item.title}')),
+        );
+        return;
+      }
+      detail = resolved.detail;
+      episodes = detail.episodes;
+      if (episodes.isEmpty) {
+        if (!detail.isSeries) {
+          episodes = [
+            Episode(
+              id: resolved.item.id,
+              number: 1,
+              title: detail.title.trim().isNotEmpty ? detail.title : widget.item.title,
+              url: resolved.item.url,
+            ),
+          ];
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No playable episodes found for ${widget.item.title}')),
+          );
+          return;
+        }
+      }
+
+      if (targetEp != null && episodes.isNotEmpty) {
+        final wantedSeason = seasonOf(targetEp);
+        final wantedNumber = targetEp.number;
+        var foundIndex = -1;
+        for (var i = 0; i < episodes.length; i++) {
+          final cand = episodes[i];
+          if (cand.number == wantedNumber &&
+              (wantedSeason == null || seasonOf(cand) == wantedSeason)) {
+            foundIndex = i;
+            break;
+          }
+        }
+        if (foundIndex < 0 && wantedNumber != null) {
+          for (var i = 0; i < episodes.length; i++) {
+            if (episodes[i].number == wantedNumber) {
+              foundIndex = i;
+              break;
+            }
+          }
+        }
+        index = foundIndex >= 0 ? foundIndex : index.clamp(0, episodes.length - 1);
+      } else {
+        index = index.clamp(0, episodes.length - 1).toInt();
+      }
+    }
+
     final available = <String>[if ((detail.subCount ?? 0) > 0) 'sub', if ((detail.dubCount ?? 0) > 0) 'dub'];
     final availableCategories = available.isEmpty ? [category] : available;
     final preferred =
-        sl<TitlePrefsStore>().category(widget.item.sourceId, widget.item.url) ??
+        sl<TitlePrefsStore>().category(detail.sourceId, detail.url) ??
         sl<PlaybackPrefs>().defaultCategory;
     final launchCategory = availableCategories.contains(preferred)
         ? preferred
         : category;
     resolveSources(String u) => sl<SourceRepository>().sources(
       u,
-      sourceId: widget.item.sourceId,
+      sourceId: detail.sourceId,
       fast: true,
     );
     await launchTvPlayback(
       context: context,
-      sourceId: widget.item.sourceId,
+      sourceId: detail.sourceId,
       episodes: episodes,
       startIndex: index,
       resume: sl<ResumeStore>(),
       resolveSources: resolveSources,
-      showUrl: widget.item.url,
+      showUrl: detail.url,
       showTitle: detail.title,
-      cover: detail.cover ?? widget.item.cover,
+      cover: (detail.cover != null && detail.cover!.isNotEmpty) ? detail.cover : widget.item.cover,
       coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
       category: launchCategory,
       availableCategories: availableCategories,
@@ -499,7 +559,24 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         if (state.status == DetailStatus.error || state.detail == null) {
           return Scaffold(
             backgroundColor: AppColors.bg,
-            body: EmptyState(icon: Icons.error_outline, message: 'Failed to load this title'),
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const EmptyState(icon: Icons.error_outline, message: 'Failed to load this title'),
+                  const SizedBox(height: 16),
+                  TvFocusable(
+                    autofocus: true,
+                    onTap: () => context.read<DetailCubit>().retry(),
+                    variant: TvFocusVariant.pill,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text('Retry', style: AppText.button.copyWith(color: AppColors.accent)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           );
         }
         return _buildTwoPane(context, state, state.detail!);
@@ -633,6 +710,28 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                   ),
                                 ],
                                 const SizedBox(height: 16),
+                                if (state.error == 'load_failed') ...[
+                                  TvFocusable(
+                                    onTap: () => context.read<DetailCubit>().retry(),
+                                    variant: TvFocusVariant.pill,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.surface2,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.refresh_rounded, size: 16, color: AppColors.accent),
+                                          const SizedBox(width: 8),
+                                          Text('Retry loading details', style: AppText.caption.copyWith(color: AppColors.accent)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                ],
                                 // Play button — autofocus: always the first focused
                                 // element when the detail screen opens on TV.
                                 if (_isFutureRelease(detail)) ...[

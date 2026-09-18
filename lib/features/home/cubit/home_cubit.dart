@@ -173,7 +173,17 @@ class HomeCubit extends Cubit<HomeState> {
   ) async {
     final kinds = source == CatalogSource.thePornDb
         ? const ['tpdb_recent', 'tpdb_trending', 'tpdb_performers', 'tpdb_popular', 'tpdb_top_rated']
-        : const ['tmdb_recent', 'tmdb_trending_movies', 'tmdb_trending_series', 'tmdb_popular_movies', 'tmdb_popular_series', 'tmdb_trending_anime', 'tmdb_top_rated_movies'];
+        : const [
+            'tmdb_recent',
+            'tmdb_new_releases',
+            'tmdb_trending_movies',
+            'tmdb_trending_series',
+            'tmdb_popular_movies',
+            'tmdb_popular_series',
+            'tmdb_trending_anime',
+            'tmdb_top_rated_movies',
+            'tmdb_top_rated_series',
+          ];
     final byKind = <String, HomeSection>{};
 
     Future<HomeSection?> fetch(String kind) async {
