@@ -614,7 +614,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
 
     // Season data (mirrors _DetailViewState._buildBody).
-    final seasonSet = seasonsOf(eps);
+    final seasonSet = seasonsOf(eps, detail.availableSeasons);
     final hasMultipleSeasons = seasonSet.length > 1;
     final currentSeason = hasMultipleSeasons
         ? (seasonSet.contains(state.selectedSeason) ? state.selectedSeason : seasonSet.first)

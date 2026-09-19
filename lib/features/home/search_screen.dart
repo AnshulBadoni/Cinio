@@ -20,8 +20,8 @@ import '../../core/playback/search_source_prefs.dart';
 import '../../core/playback/source_health_store.dart' show SourceOutcome;
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/repository/source_repository.dart';
-import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/media_info_sheet.dart';
@@ -145,7 +145,6 @@ class _SearchViewState extends State<_SearchView>
 
   /// Owns the ecosystem [TabBar]'s controller — see [_ecoTabControllerFor].
   TabController? _ecoTabController;
-  List<SearchEcosystem> _ecoTabs = const [];
 
   /// [_repo.loadedSources] narrowed to the active content mode. Anime narrows
   /// too — it used to short-circuit to the unfiltered list, which meant manga
@@ -655,53 +654,6 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
-  /// Bottom sheet listing "All sources" then every source in the current mode
-  /// — plain rows, no health/counts. Tapping a row scopes the search to it (or
-  /// clears the scope for "All sources") and re-runs, reusing the exact same
-  /// [SearchScopeChanged] event the old scope pill dispatched. Switching from
-  /// one specific source to another (both already scoped) needs a second,
-  /// already-existing event — [SearchScopeChanged] alone no-ops when the
-  /// current-source-only flag doesn't change — so that case sets the new
-  /// active source then dispatches [SearchSubmitted] to re-run against it.
-
-  /// [hint] labels the row without selecting it — used to point out the active
-  /// source while the scope is "All sources", so it's clear what "current
-  /// source" would switch to.
-  Widget _sourcePickerRow({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-    String? hint,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: AppText.body.copyWith(
-                  color: selected ? AppColors.accent : AppColors.textPrimary,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (hint != null && !selected)
-              Text(
-                hint,
-                style: AppText.caption.copyWith(color: AppColors.textTertiary),
-              ),
-            if (selected)
-              Icon(Icons.check_rounded, size: 20, color: AppColors.accent),
-          ],
-        ),
-      ),
-    );
-  }
 
   // ── Control row (ecosystem tabs / result count + sort + filter) ────────────
   /// Left: ecosystem tabs when searching all sources (unchanged strip), or a
@@ -730,6 +682,7 @@ class _SearchViewState extends State<_SearchView>
       buildWhen: (p, c) =>
           p.status != c.status ||
           p.currentSourceOnly != c.currentSourceOnly ||
+          p.catalogSource != c.catalogSource ||
           p.ecosystem != c.ecosystem ||
           p.suggestions != c.suggestions ||
           p.groups != c.groups ||
@@ -757,23 +710,7 @@ class _SearchViewState extends State<_SearchView>
         if (showingSuggestions || state.status != SearchStatus.success) {
           return const SizedBox.shrink();
         }
-        final tabs = ecosystemTabsFor(modeSources.map((s) => s.id));
-        // Fewer than three means "All" plus at most one real ecosystem — the
-        // two would show identical results, so the strip is pointless. Show
-        // the result count instead of leaving the row blank next to a lone
-        // filter icon, which reads as something failing to load. (Manga mode
-        // hits this whenever every installed source is a Mihon one.)
-        if (tabs.length < 3) {
-          final n = state.totalCount;
-          return Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '$n result${n == 1 ? '' : 's'}',
-              style: AppText.caption.copyWith(fontSize: 12.5),
-            ),
-          );
-        }
-        return _ecosystemTabs(state, tabs);
+        return _searchTabs(state);
       },
     );
   }
@@ -908,15 +845,17 @@ class _SearchViewState extends State<_SearchView>
   /// keep it left-anchored regardless of how many tabs are present. "All"
   /// (first, default) applies no filter — selecting a tab is a pure view
   /// filter over already-fetched groups; see [SearchEcosystemChanged].
-  Widget _ecosystemTabs(SearchState state, List<SearchEcosystem> tabs) {
-    final controller = _ecoTabControllerFor(tabs, state.ecosystem);
+  Widget _searchTabs(SearchState state) {
+    final isProviders = state.catalogSource == SearchCatalogSource.providers;
+    final tabs = const ['All', 'Providers'];
+    final selectedIndex = isProviders ? 1 : 0;
+    final controller = _searchTabControllerFor(tabs.length, selectedIndex);
     return TabBar(
       controller: controller,
       isScrollable: true,
       tabAlignment: TabAlignment.start,
       padding: EdgeInsets.zero,
       labelPadding: const EdgeInsets.only(right: 20),
-      // Drop the default full-width hairline under the bar, same as History.
       dividerColor: Colors.transparent,
       dividerHeight: 0,
       indicatorSize: TabBarIndicatorSize.label,
@@ -927,8 +866,6 @@ class _SearchViewState extends State<_SearchView>
       ),
       labelColor: AppColors.accent,
       unselectedLabelColor: AppColors.textSecondary,
-      // History uses 14.5 — sized down here since this row also hosts the
-      // sort/filter icons and has less height to spend.
       labelStyle: const TextStyle(
         fontFamily: 'Inter',
         fontSize: 13,
@@ -940,32 +877,28 @@ class _SearchViewState extends State<_SearchView>
         fontWeight: FontWeight.w600,
       ),
       overlayColor: WidgetStateProperty.all(Colors.transparent),
-      onTap: (i) =>
-          context.read<SearchBloc>().add(SearchEcosystemChanged(tabs[i])),
-      tabs: [for (final t in tabs) Tab(text: t.label)],
+      onTap: (i) {
+        if (i == 1) {
+          context.read<SearchBloc>().add(const SearchCatalogSourceChanged('providers'));
+        } else {
+          final pref = sl<CatalogSourcePrefs>().source;
+          final catName = switch (pref) {
+            CatalogSource.thePornDb => 'theporndb',
+            CatalogSource.mixed => 'mixed',
+            _ => 'tmdb',
+          };
+          context.read<SearchBloc>().add(SearchCatalogSourceChanged(catName));
+        }
+      },
+      tabs: [for (final t in tabs) Tab(text: t)],
     );
   }
 
-  /// Keeps [_ecoTabController] glued to the CURRENT tab set/selection so it
-  /// can never throw from a length mismatch: [ecosystemTabsFor] is recomputed
-  /// every relevant build (tabs appear/disappear as sources are
-  /// installed/removed while the screen is open), so the controller is
-  /// recreated whenever the tab list itself changes, and just re-indexed in
-  /// place when only the selection changes (e.g. [SearchState.ecosystem]
-  /// getting reset to "All" by a fresh search or a scope change). Falls back
-  /// to index 0 ("All") if the previously-selected ecosystem isn't in the new
-  /// tab set.
-  TabController _ecoTabControllerFor(
-    List<SearchEcosystem> tabs,
-    SearchEcosystem selected,
-  ) {
-    final target = tabs.indexOf(selected);
-    final index = target < 0 ? 0 : target;
-    if (_ecoTabController == null || !listEquals(_ecoTabs, tabs)) {
+  TabController _searchTabControllerFor(int length, int index) {
+    if (_ecoTabController == null || _ecoTabController!.length != length) {
       _ecoTabController?.dispose();
-      _ecoTabs = tabs;
       _ecoTabController = TabController(
-        length: tabs.length,
+        length: length,
         vsync: this,
         initialIndex: index,
       );

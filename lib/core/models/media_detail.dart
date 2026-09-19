@@ -104,6 +104,11 @@ class MediaDetail extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final String? tmdbStatus;
 
+  /// Known season numbers (e.g. [1, 2, 3, 4]) reported by metadata (e.g. TMDB).
+  /// Runtime-only — not serialized to JSON.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final List<int> availableSeasons;
+
   const MediaDetail({
     required this.id,
     required this.title,
@@ -131,6 +136,7 @@ class MediaDetail extends Equatable {
     this.relations = const [],
     this.releaseDate,
     this.tmdbStatus,
+    this.availableSeasons = const [],
   });
 
   factory MediaDetail.fromJson(Map<String, dynamic> json) =>
@@ -164,6 +170,7 @@ class MediaDetail extends Equatable {
     List<MediaRelation>? relations,
     String? releaseDate,
     String? tmdbStatus,
+    List<int>? availableSeasons,
   }) => MediaDetail(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -191,6 +198,7 @@ class MediaDetail extends Equatable {
     relations: relations ?? this.relations,
     releaseDate: releaseDate ?? this.releaseDate,
     tmdbStatus: tmdbStatus ?? this.tmdbStatus,
+    availableSeasons: availableSeasons ?? this.availableSeasons,
   );
 
   @override
@@ -221,5 +229,6 @@ class MediaDetail extends Equatable {
     relations,
     releaseDate,
     tmdbStatus,
+    availableSeasons,
   ];
 }

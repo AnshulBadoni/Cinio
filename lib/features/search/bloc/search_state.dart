@@ -459,12 +459,14 @@ class SearchState extends Equatable {
   /// Total results across every source in the active ecosystem, honouring all
   /// client-side filters.
   int get totalCount {
-    if (query.trim().isEmpty) return discoverItems.length;
-    return groups.fold(
-      0,
-      (sum, g) =>
-          sum + (_inEcosystem(g.sourceId) ? g.items.where(_passes).length : 0),
-    );
+    if (groups.isNotEmpty) {
+      return groups.fold(
+        0,
+        (sum, g) =>
+            sum + (_inEcosystem(g.sourceId) ? g.items.where(_passes).length : 0),
+      );
+    }
+    return discoverItems.length;
   }
 
   /// Result count for one source group under the active filters.

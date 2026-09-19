@@ -110,20 +110,25 @@ class DetailCubit extends Cubit<DetailState> {
        // Seed the INITIAL category from the per-title remembered choice so the
        // Sub/Dub toggle reflects the saved value on the very first render (no
        // flash from 'sub' → remembered). Falls back to 'sub' when unset.
-       super(
-         DetailState(
-           // Catalog details render immediately from the tapped card. The full
-           // catalog response is fetched in the background and replaces this
-           // lightweight shell, so TPDB/TMDB latency never blocks navigation.
-           status: catalogDetail != null || catalogItem != null
-               ? DetailStatus.success
-               : DetailStatus.loading,
-           detail: catalogDetail ?? _shellDetail(catalogItem, sourceId, url),
-           category:
-               (prefs ?? sl<TitlePrefsStore>()).category(sourceId ?? '', url) ??
-               'sub',
-         ),
-       ) {
+        super(
+          DetailState(
+            // Catalog details render immediately from the tapped card. The full
+            // catalog response is fetched in the background and replaces this
+            // lightweight shell, so TPDB/TMDB latency never blocks navigation.
+            status: catalogDetail != null || catalogItem != null
+                ? DetailStatus.success
+                : DetailStatus.loading,
+            detail: catalogDetail ?? _shellDetail(catalogItem, sourceId, url),
+            category:
+                (prefs ?? sl<TitlePrefsStore>()).category(sourceId ?? '', url) ??
+                'sub',
+            extrasLoading: sourceId == 'tmdb:catalog' ||
+                sourceId == 'tpdb:catalog' ||
+                catalogItem?.sourceId == 'tmdb:catalog' ||
+                catalogItem?.sourceId == 'tpdb:catalog' ||
+                catalogDetail != null,
+          ),
+        ) {
     // Prefetch episode metadata using the MAL id we already know from the
     // tapped item, so the AniZip call overlaps the detail fetch and episodes
     // render already-enriched instead of popping in ~0.3s later. Fire-and-
@@ -470,10 +475,13 @@ int? parseSeason(String title) {
 /// prefix. Sources that report neither are treated as single-season.
 int? seasonOf(Episode ep) => ep.season ?? parseSeason(ep.title);
 
-/// Derive the set of seasons present in the episode list.
+/// Derive the set of seasons present in the episode list or known from metadata.
 /// Returns an empty set when no episode reports a season (single-season).
-Set<int> seasonsOf(List<Episode> eps) {
+Set<int> seasonsOf(List<Episode> eps, [List<int>? knownSeasons]) {
   final result = <int>{};
+  if (knownSeasons != null && knownSeasons.isNotEmpty) {
+    result.addAll(knownSeasons);
+  }
   for (final ep in eps) {
     final s = seasonOf(ep);
     if (s != null) result.add(s);

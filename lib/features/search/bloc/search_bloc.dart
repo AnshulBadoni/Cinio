@@ -75,8 +75,10 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   final SearchHistory _history;
   final SearchPrefs _prefs;
   final TitleSuggestionService _suggestions;
-  final TmdbDiscoverService _tmdb = sl<TmdbDiscoverService>();
-  final ThePornDb _tpdb = sl<ThePornDb>();
+  TmdbDiscoverService? get _tmdb =>
+      sl.isRegistered<TmdbDiscoverService>() ? sl<TmdbDiscoverService>() : null;
+  ThePornDb? get _tpdb =>
+      sl.isRegistered<ThePornDb>() ? sl<ThePornDb>() : null;
   StreamSubscription<ContentMode>? _modeSub;
 
   /// Hard cap on one source's search.
@@ -152,12 +154,14 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       (f) => f.name == prefs.statusFilterName,
       orElse: () => SearchStatusFilter.any,
     );
-    final catalogSource = switch (sl<CatalogSourcePrefs>().source) {
-      CatalogSource.provider => SearchCatalogSource.providers,
-      CatalogSource.tmdb => SearchCatalogSource.tmdb,
-      CatalogSource.thePornDb => SearchCatalogSource.thePornDb,
-      CatalogSource.mixed => SearchCatalogSource.mixed,
-    };
+    final catalogSource = sl.isRegistered<CatalogSourcePrefs>()
+        ? switch (sl<CatalogSourcePrefs>().source) {
+            CatalogSource.provider => SearchCatalogSource.providers,
+            CatalogSource.tmdb => SearchCatalogSource.tmdb,
+            CatalogSource.thePornDb => SearchCatalogSource.thePornDb,
+            CatalogSource.mixed => SearchCatalogSource.mixed,
+          }
+        : SearchCatalogSource.providers;
     return SearchState(
       catalogSource: catalogSource,
       contentFilter: content,
@@ -274,11 +278,16 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     }
   }
 
+  bool get _isCatalogMode {
+    final mode = sl.isRegistered<ContentModeCubit>() ? sl<ContentModeCubit>().state : ContentMode.anime;
+    return mode == ContentMode.anime && state.catalogSource != SearchCatalogSource.providers;
+  }
+
   Future<void> _onDiscoverRequested(
     SearchDiscoverRequested event,
     Emitter<SearchState> emit,
   ) async {
-    if (state.query.trim().isNotEmpty) return;
+    if (state.query.trim().isNotEmpty || !_isCatalogMode) return;
     final gen = ++_discoverGen;
     emit(state.copyWith(
       status: SearchStatus.loading,
@@ -340,8 +349,11 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       SearchDiscoverType.all => 'all',
     };
     final genre = state.genreFilter;
+    final tmdb = _tmdb;
+    final tpdb = _tpdb;
     if (state.catalogSource == SearchCatalogSource.tmdb) {
-      return _tmdb.discover(
+      if (tmdb == null) return const [];
+      return tmdb.discover(
         catalog: switch (state.catalog) {
           SearchCatalog.trending => 'trending',
           SearchCatalog.popular => 'popular',
@@ -354,8 +366,8 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       );
     }
     if (state.catalogSource == SearchCatalogSource.thePornDb) {
-      if (state.discoverType == SearchDiscoverType.series || state.discoverType == SearchDiscoverType.anime) return const [];
-      final items = await _tpdb.movies(
+      if (tpdb == null || state.discoverType == SearchDiscoverType.series || state.discoverType == SearchDiscoverType.anime) return const [];
+      final items = await tpdb.movies(
         page: page,
         orderBy: switch (state.catalog) {
           SearchCatalog.trending => 'recently_released',
@@ -369,29 +381,36 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     }
     if (state.catalogSource == SearchCatalogSource.mixed) {
       if (state.discoverType == SearchDiscoverType.series || state.discoverType == SearchDiscoverType.anime) {
-        return _tmdb.discover(catalog: state.catalog.name == 'trending' ? 'trending' : state.catalog.name == 'popular' ? 'popular' : state.catalog.name == 'topRated' ? 'top_rated' : 'discover_new', type: type, genre: genre, page: page);
+        if (tmdb == null) return const [];
+        return tmdb.discover(catalog: state.catalog.name == 'trending' ? 'trending' : state.catalog.name == 'popular' ? 'popular' : state.catalog.name == 'topRated' ? 'top_rated' : 'discover_new', type: type, genre: genre, page: page);
       }
       final results = await Future.wait<List<MediaItem>>([
-        _tmdb.discover(
-          catalog: switch (state.catalog) {
-            SearchCatalog.trending => 'trending',
-            SearchCatalog.popular => 'popular',
-            SearchCatalog.topRated => 'top_rated',
-            SearchCatalog.discoverNew => 'discover_new',
-          },
-          type: type,
-          genre: genre,
-          page: page,
-        ).then<List<MediaItem>>((items) => items, onError: (_, __) => const <MediaItem>[]),
-        _tpdb.movies(
-          page: page,
-          orderBy: switch (state.catalog) {
-            SearchCatalog.trending => 'recently_released',
-            SearchCatalog.popular => 'most_relevant',
-            SearchCatalog.topRated => 'recently_released',
-            SearchCatalog.discoverNew => 'recently_created',
-          },
-        ).then<List<MediaItem>>((items) => items, onError: (_, __) => const <MediaItem>[]),
+        if (tmdb != null)
+          tmdb.discover(
+            catalog: switch (state.catalog) {
+              SearchCatalog.trending => 'trending',
+              SearchCatalog.popular => 'popular',
+              SearchCatalog.topRated => 'top_rated',
+              SearchCatalog.discoverNew => 'discover_new',
+            },
+            type: type,
+            genre: genre,
+            page: page,
+          ).then<List<MediaItem>>((items) => items, onError: (_, __) => const <MediaItem>[])
+        else
+          Future.value(const <MediaItem>[]),
+        if (tpdb != null)
+          tpdb.movies(
+            page: page,
+            orderBy: switch (state.catalog) {
+              SearchCatalog.trending => 'recently_released',
+              SearchCatalog.popular => 'most_relevant',
+              SearchCatalog.topRated => 'recently_released',
+              SearchCatalog.discoverNew => 'recently_created',
+            },
+          ).then<List<MediaItem>>((items) => items, onError: (_, __) => const <MediaItem>[])
+        else
+          Future.value(const <MediaItem>[]),
       ]);
       final tmdbItems = results[0];
       final tpdbItems = results[1];
@@ -465,14 +484,19 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     SearchDiscoverMore event,
     Emitter<SearchState> emit,
   ) async {
+    if (!_isCatalogMode) return;
     if (state.catalogSource == SearchCatalogSource.thePornDb || state.catalogSource == SearchCatalogSource.mixed) {
       if (state.query.trim().isEmpty || state.searchLoadingMore || state.searchAtEnd) return;
       final next = state.searchPage + 1;
       emit(state.copyWith(searchLoadingMore: true));
+      final tmdb = _tmdb;
+      final tpdb = _tpdb;
       try {
-        final tpdbFuture = _tpdb.search(state.query.trim(), page: next).then<List<MediaItem>>((items) => items, onError: (_, __) => const <MediaItem>[]);
-        final tmdbFuture = state.catalogSource == SearchCatalogSource.mixed
-            ? _tmdb.search(query: state.query.trim(), type: switch (state.discoverType) { SearchDiscoverType.anime => 'anime', SearchDiscoverType.movies => 'movies', SearchDiscoverType.series => 'series', SearchDiscoverType.all => 'all' }, genre: state.genreFilter, page: next).then<List<MediaItem>>((items) => items, onError: (_, __) => const <MediaItem>[])
+        final tpdbFuture = tpdb != null
+            ? tpdb.search(state.query.trim(), page: next).then<List<MediaItem>>((items) => items, onError: (_, __) => const <MediaItem>[])
+            : Future.value(const <MediaItem>[]);
+        final tmdbFuture = (state.catalogSource == SearchCatalogSource.mixed && tmdb != null)
+            ? tmdb.search(query: state.query.trim(), type: switch (state.discoverType) { SearchDiscoverType.anime => 'anime', SearchDiscoverType.movies => 'movies', SearchDiscoverType.series => 'series', SearchDiscoverType.all => 'all' }, genre: state.genreFilter, page: next).then<List<MediaItem>>((items) => items, onError: (_, __) => const <MediaItem>[])
             : Future.value(const <MediaItem>[]);
         final results = await Future.wait([tpdbFuture, tmdbFuture]);
         final tpdbItems = results[0];
@@ -492,6 +516,8 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       return;
     }
 
+    final tmdb = _tmdb;
+    if (tmdb == null) return;
     final next = state.searchPage + 1;
     emit(state.copyWith(searchLoadingMore: true));
     try {
@@ -501,7 +527,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         SearchDiscoverType.series => 'series',
         SearchDiscoverType.all => 'all',
       };
-      final items = await _tmdb.search(
+      final items = await tmdb.search(
         query: state.query.trim(),
         type: type,
         genre: state.genreFilter,
@@ -742,47 +768,58 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   /// results as soon as they arrive (fast sources show first; one slow/broken
   /// source never blocks the rest).
   Future<void> _runSearch(String q, Emitter<SearchState> emit) async {
-    if (state.catalogSource == SearchCatalogSource.thePornDb || state.catalogSource == SearchCatalogSource.mixed) {
-      final gen = ++_runGen;
-      _lastRunQuery = q;
-      _history.add(q);
-      emit(state.copyWith(status: SearchStatus.loading, groups: const [], discoverItems: const [], searchPage: 1, searchLoadingMore: false, searchAtEnd: false, clearError: true));
-      try {
-        final tpdbFuture = _tpdb.search(q).then<List<MediaItem>>((items) => items, onError: (_, __) => const <MediaItem>[]);
-        final tmdbFuture = state.catalogSource == SearchCatalogSource.mixed
-            ? _tmdb.search(query: q, type: switch (state.discoverType) { SearchDiscoverType.anime => 'anime', SearchDiscoverType.movies => 'movies', SearchDiscoverType.series => 'series', SearchDiscoverType.all => 'all' }, genre: state.genreFilter).then<List<MediaItem>>((items) => items, onError: (_, __) => const <MediaItem>[])
-            : Future.value(const <MediaItem>[]);
-        final results = await Future.wait([tpdbFuture, tmdbFuture]);
-        if (isClosed || gen != _runGen) return;
-        final tpdbItems = results[0];
-        final tmdbItems = results[1];
-        final merged = _dedupe(_interleaveCatalogs(tmdbItems, tpdbItems));
-        emit(state.copyWith(status: SearchStatus.success, groups: [SourceResultGroup(sourceId: 'catalog:mixed', sourceName: state.catalogSource == SearchCatalogSource.mixed ? 'Mixed' : 'ThePornDB', items: merged)], discoverItems: const [], searchPage: 1, searchLoadingMore: false, searchAtEnd: merged.isEmpty));
-      } catch (_) {
-        if (!isClosed && gen == _runGen) emit(state.copyWith(status: SearchStatus.error, groups: const [], error: state.catalogSource == SearchCatalogSource.mixed ? 'Catalog search failed' : 'ThePornDB search failed'));
+    if (_isCatalogMode) {
+      if (state.catalogSource == SearchCatalogSource.thePornDb || state.catalogSource == SearchCatalogSource.mixed) {
+        final gen = ++_runGen;
+        _lastRunQuery = q;
+        _history.add(q);
+        emit(state.copyWith(status: SearchStatus.loading, groups: const [], discoverItems: const [], searchPage: 1, searchLoadingMore: false, searchAtEnd: false, clearError: true));
+        try {
+          final tmdb = _tmdb;
+          final tpdb = _tpdb;
+          final tpdbFuture = tpdb != null
+              ? tpdb.search(q).then<List<MediaItem>>((items) => items, onError: (_, __) => const <MediaItem>[])
+              : Future.value(const <MediaItem>[]);
+          final tmdbFuture = (state.catalogSource == SearchCatalogSource.mixed && tmdb != null)
+              ? tmdb.search(query: q, type: switch (state.discoverType) { SearchDiscoverType.anime => 'anime', SearchDiscoverType.movies => 'movies', SearchDiscoverType.series => 'series', SearchDiscoverType.all => 'all' }, genre: state.genreFilter).then<List<MediaItem>>((items) => items, onError: (_, __) => const <MediaItem>[])
+              : Future.value(const <MediaItem>[]);
+          final results = await Future.wait([tpdbFuture, tmdbFuture]);
+          if (isClosed || gen != _runGen) return;
+          final tpdbItems = results[0];
+          final tmdbItems = results[1];
+          final merged = _dedupe(_interleaveCatalogs(tmdbItems, tpdbItems));
+          emit(state.copyWith(status: SearchStatus.success, groups: [SourceResultGroup(sourceId: 'catalog:mixed', sourceName: state.catalogSource == SearchCatalogSource.mixed ? 'Mixed' : 'ThePornDB', items: merged)], discoverItems: const [], searchPage: 1, searchLoadingMore: false, searchAtEnd: merged.isEmpty));
+        } catch (_) {
+          if (!isClosed && gen == _runGen) emit(state.copyWith(status: SearchStatus.error, groups: const [], error: state.catalogSource == SearchCatalogSource.mixed ? 'Catalog search failed' : 'ThePornDB search failed'));
+        }
+        return;
       }
-      return;
-    }
 
-    if (state.catalogSource == SearchCatalogSource.tmdb) {
-      final gen = ++_runGen;
-      _lastRunQuery = q;
-      _history.add(q);
-      emit(state.copyWith(status: SearchStatus.loading, groups: const [], discoverItems: const [], searchPage: 1, searchLoadingMore: false, searchAtEnd: false, clearError: true));
-      try {
-        final type = switch (state.discoverType) {
-          SearchDiscoverType.anime => 'anime',
-          SearchDiscoverType.movies => 'movies',
-          SearchDiscoverType.series => 'series',
-          SearchDiscoverType.all => 'all',
-        };
-        final items = await _tmdb.search(query: q, type: type, genre: state.genreFilter);
-        if (isClosed || gen != _runGen) return;
-        emit(state.copyWith(status: SearchStatus.success, groups: [SourceResultGroup(sourceId: 'tmdb:catalog', sourceName: 'TMDB', items: items)], discoverItems: const [], searchPage: 1, searchLoadingMore: false, searchAtEnd: items.isEmpty));
-      } catch (_) {
-        if (!isClosed && gen == _runGen) emit(state.copyWith(status: SearchStatus.error, groups: const [], error: 'TMDB search failed'));
+      if (state.catalogSource == SearchCatalogSource.tmdb) {
+        final gen = ++_runGen;
+        _lastRunQuery = q;
+        _history.add(q);
+        emit(state.copyWith(status: SearchStatus.loading, groups: const [], discoverItems: const [], searchPage: 1, searchLoadingMore: false, searchAtEnd: false, clearError: true));
+        try {
+          final tmdb = _tmdb;
+          if (tmdb == null) {
+            emit(state.copyWith(status: SearchStatus.success, groups: const []));
+            return;
+          }
+          final type = switch (state.discoverType) {
+            SearchDiscoverType.anime => 'anime',
+            SearchDiscoverType.movies => 'movies',
+            SearchDiscoverType.series => 'series',
+            SearchDiscoverType.all => 'all',
+          };
+          final items = await tmdb.search(query: q, type: type, genre: state.genreFilter);
+          if (isClosed || gen != _runGen) return;
+          emit(state.copyWith(status: SearchStatus.success, groups: [SourceResultGroup(sourceId: 'tmdb:catalog', sourceName: 'TMDB', items: items)], discoverItems: const [], searchPage: 1, searchLoadingMore: false, searchAtEnd: items.isEmpty));
+        } catch (_) {
+          if (!isClosed && gen == _runGen) emit(state.copyWith(status: SearchStatus.error, groups: const [], error: 'TMDB search failed'));
+        }
+        return;
       }
-      return;
     }
 
     final gen = ++_runGen; // this run is superseded once a newer one starts

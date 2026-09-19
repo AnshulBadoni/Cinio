@@ -1743,7 +1743,7 @@ class _DetailViewState extends State<_DetailView>
     _resolveTrailer(detail);
 
     // Season data. PRESERVED.
-    final seasonSet = seasonsOf(eps);
+    final seasonSet = seasonsOf(eps, detail.availableSeasons);
     final hasMultipleSeasons = seasonSet.length > 1;
     final currentSeason = hasMultipleSeasons
         ? (seasonSet.contains(selectedSeason)
@@ -1984,6 +1984,43 @@ class _DetailViewState extends State<_DetailView>
                 onReadMore: () => _revealTab(showEpisodesTab ? 3 : 2),
               ),
             ),
+          )
+        else if (state.extrasLoading)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 12,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: AppColors.surface2,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    height: 12,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: AppColors.surface2,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    height: 12,
+                    width: 200,
+                    decoration: BoxDecoration(
+                      color: AppColors.surface2,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
 
         // ── 5. Starring / Creators / Genres muted lines ─────────────────────
@@ -2196,57 +2233,52 @@ class _DetailViewState extends State<_DetailView>
   }
 }
 
-/// Checks if a movie / title has a confirmed release date strictly in the future.
+/// Checks if a title is unreleased ("Coming Soon").
+/// - For movies: unreleased TMDB status (e.g. "Post Production", "Planned", "In Production") or future release date.
+/// - For TV series: only "Coming Soon" if Episode 1 has not premiered yet (future first air date). Ongoing/released shows always show Play & Download.
+/// - For non-TMDB items (TPDB, providers): always shows Play & Download.
 bool _isFutureRelease(MediaDetail? detail) {
   if (detail == null) return false;
-
-  // 1. Official TMDB release status check
-  final tmdbStatus = detail.tmdbStatus?.trim().toLowerCase();
-  if (tmdbStatus != null && tmdbStatus.isNotEmpty) {
-    if (tmdbStatus != 'released' && tmdbStatus != 'ended') {
-      return true;
-    }
-  }
 
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
 
-  // 2. Full release date check (e.g. "2026-09-25")
+  if (detail.isSeries) {
+    final tmdbStatus = detail.tmdbStatus?.trim().toLowerCase();
+    if (tmdbStatus == 'returning series' || tmdbStatus == 'ended') return false;
+
+    if (detail.episodes.isNotEmpty) {
+      final firstEp = detail.episodes.first;
+      final epDate = firstEp.date?.trim();
+      if (epDate != null && epDate.isNotEmpty) {
+        final parsed = DateTime.tryParse(epDate);
+        if (parsed != null) {
+          return parsed.isAfter(today);
+        }
+      }
+      return false;
+    }
+
+    final firstAir = detail.releaseDate?.trim();
+    if (firstAir != null && firstAir.isNotEmpty) {
+      final parsed = DateTime.tryParse(firstAir);
+      if (parsed != null) {
+        return parsed.isAfter(today);
+      }
+    }
+    return tmdbStatus == 'planned' || tmdbStatus == 'in production';
+  }
+
+  final tmdbStatus = detail.tmdbStatus?.trim().toLowerCase();
+  if (tmdbStatus != null && tmdbStatus.isNotEmpty) {
+    return tmdbStatus != 'released' && tmdbStatus != 'ended';
+  }
+
   final fullDate = detail.releaseDate?.trim();
   if (fullDate != null && fullDate.isNotEmpty) {
     final parsed = DateTime.tryParse(fullDate);
     if (parsed != null) {
       return parsed.isAfter(today);
-    }
-  }
-
-  // 3. Fallback: inspect raw year / date string in detail.year
-  final raw = detail.year?.trim();
-  if (raw != null && raw.isNotEmpty) {
-    final parsed = DateTime.tryParse(raw);
-    if (parsed != null) {
-      return parsed.isAfter(today);
-    }
-    if (RegExp(r'^\d{4}$').hasMatch(raw)) {
-      final y = int.tryParse(raw);
-      return y != null && y > now.year;
-    }
-    final yearMatch = RegExp(r'\b(20\d\d)\b').firstMatch(raw);
-    if (yearMatch != null) {
-      final y = int.tryParse(yearMatch.group(1)!);
-      if (y != null && y > now.year) return true;
-    }
-  }
-
-  // 4. For TV series: if season 1 episode 1 has a future air date
-  if (detail.isSeries && detail.episodes.isNotEmpty) {
-    final firstEp = detail.episodes.first;
-    final epDate = firstEp.date?.trim();
-    if (epDate != null && epDate.isNotEmpty) {
-      final parsed = DateTime.tryParse(epDate);
-      if (parsed != null && parsed.isAfter(today)) {
-        return true;
-      }
     }
   }
 

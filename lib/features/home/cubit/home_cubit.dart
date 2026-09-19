@@ -124,12 +124,12 @@ class HomeCubit extends Cubit<HomeState> {
     List<HomeSection> sections;
     String? cloudflareUrl;
     try {
-      if (source == CatalogSource.tmdb || source == CatalogSource.thePornDb) {
+      if (source == CatalogSource.tmdb ||
+          source == CatalogSource.thePornDb ||
+          source == CatalogSource.mixed) {
         sections = await _loadCatalogProgressively(source, gen);
       } else {
-        final homeFuture = source == CatalogSource.provider
-            ? _repo.home()
-            : _mixedHome();
+        final homeFuture = _repo.home();
         sections = isAppleTv
             ? await homeFuture.timeout(const Duration(seconds: 20))
             : await homeFuture;
@@ -172,27 +172,85 @@ class HomeCubit extends Cubit<HomeState> {
     int gen,
   ) async {
     final kinds = source == CatalogSource.thePornDb
-        ? const ['tpdb_recent', 'tpdb_trending', 'tpdb_performers', 'tpdb_popular', 'tpdb_top_rated']
-        : const [
-            'tmdb_recent',
-            'tmdb_new_releases',
-            'tmdb_trending_movies',
-            'tmdb_trending_series',
-            'tmdb_popular_movies',
-            'tmdb_popular_series',
-            'tmdb_trending_anime',
-            'tmdb_top_rated_movies',
-            'tmdb_top_rated_series',
-          ];
+        ? const [
+            'tpdb_recent',
+            'tpdb_trending',
+            'tpdb_performers',
+            'tpdb_popular',
+            'tpdb_top_rated',
+          ]
+        : source == CatalogSource.mixed
+            ? const [
+                'mixed_recent',
+                'tmdb_new_releases',
+                'mixed_trending_movies',
+                'tmdb_trending_series',
+                'mixed_popular_movies',
+                'tmdb_popular_series',
+                'tmdb_trending_anime',
+                'mixed_top_rated_movies',
+                'tmdb_top_rated_series',
+                'tpdb_performers',
+              ]
+            : const [
+                'tmdb_recent',
+                'tmdb_new_releases',
+                'tmdb_trending_movies',
+                'tmdb_trending_series',
+                'tmdb_popular_movies',
+                'tmdb_popular_series',
+                'tmdb_trending_anime',
+                'tmdb_top_rated_movies',
+                'tmdb_top_rated_series',
+              ];
     final byKind = <String, HomeSection>{};
 
     Future<HomeSection?> fetch(String kind) async {
       for (var attempt = 0; attempt < 3; attempt++) {
         try {
-          final section = (source == CatalogSource.thePornDb)
-              ? await _tpdb!.homeSection(kind)
-              : await _tmdb!.homeSection(kind);
-          if (section != null && section.items.isNotEmpty) return section;
+          if (source == CatalogSource.thePornDb) {
+            final section = await _tpdb!.homeSection(kind);
+            if (section != null && section.items.isNotEmpty) return section;
+          } else if (source == CatalogSource.mixed) {
+            if (kind.startsWith('mixed_')) {
+              final tmdbKind = kind.replaceFirst('mixed_', 'tmdb_');
+              final tpdbKind = switch (kind) {
+                'mixed_recent' => 'tpdb_recent',
+                'mixed_trending_movies' => 'tpdb_trending',
+                'mixed_popular_movies' => 'tpdb_popular',
+                'mixed_top_rated_movies' => 'tpdb_top_rated',
+                _ => 'tpdb_recent',
+              };
+              final tpdb = _tpdb;
+              final results = await Future.wait([
+                _tmdb!.homeSection(tmdbKind),
+                tpdb != null ? tpdb.homeSection(tpdbKind) : Future.value(null),
+              ]);
+              final tmdbSec = results[0];
+              final tpdbSec = results[1];
+              if (tmdbSec == null && tpdbSec == null) return null;
+              final tmdbItems = tmdbSec?.items ?? const <MediaItem>[];
+              final tpdbItems = tpdbSec?.items ?? const <MediaItem>[];
+              final merged = _interleave([...tmdbItems, ...tpdbItems]);
+              if (merged.isEmpty) return null;
+              return HomeSection(
+                title: tmdbSec?.title ?? tpdbSec?.title ?? 'Recent',
+                items: merged,
+                more: BrowseMore(sourceId: 'mixed:catalog', kind: kind),
+              );
+            } else if (kind.startsWith('tpdb_')) {
+              final tpdb = _tpdb;
+              if (tpdb == null) return null;
+              final section = await tpdb.homeSection(kind);
+              if (section != null && section.items.isNotEmpty) return section;
+            } else {
+              final section = await _tmdb!.homeSection(kind);
+              if (section != null && section.items.isNotEmpty) return section;
+            }
+          } else {
+            final section = await _tmdb!.homeSection(kind);
+            if (section != null && section.items.isNotEmpty) return section;
+          }
         } catch (e) {
           if (attempt == 2) {
             debugPrint('[home] failed to load section $kind after 3 attempts: $e');
@@ -220,47 +278,6 @@ class HomeCubit extends Cubit<HomeState> {
     }
     return finalOrdered;
   }
-
-  Future<List<HomeSection>> _mixedHome() async {
-    final results = await Future.wait([
-      _tmdb!.home().catchError((_) => <HomeSection>[]),
-      _tpdb!.home().catchError((_) => <HomeSection>[]),
-    ]);
-    final tmdb = results[0];
-    final tpdb = results[1];
-    final tpdbRecent = tpdb.firstWhere((s) => s.title == 'Recent' || s.title == 'Trending', orElse: () => const HomeSection(title: '', items: []));
-    final tpdbPopular = tpdb.firstWhere((s) => s.title == 'Popular', orElse: () => const HomeSection(title: '', items: []));
-    final tpdbTop = tpdb.firstWhere((s) => s.title == 'Top Rated', orElse: () => const HomeSection(title: '', items: []));
-    if (tmdb.isEmpty) return tpdb;
-    if (tpdb.isEmpty) return tmdb;
-    List<MediaItem> adult(String name) => switch (name) {
-      'Recent Movies & Series' || 'Trending Movies' => tpdbRecent.items,
-      'Popular Movies' => tpdbPopular.items,
-      'Top Rated Movies' => tpdbTop.items,
-      _ => const <MediaItem>[],
-    };
-    final out = <HomeSection>[];
-    for (final section in tmdb) {
-      final extra = adult(section.title);
-      out.add(HomeSection(
-        title: section.title,
-        items: _interleave([...section.items, ...extra]),
-        more: BrowseMore(sourceId: 'mixed:catalog', kind: 'mixed_${_mixedKind(section.title)}'),
-      ));
-    }
-    return out.where((s) => s.items.isNotEmpty).toList();
-  }
-
-  String _mixedKind(String title) => switch (title) {
-    'Recent Movies & Series' => 'recent',
-    'Trending Movies' => 'trending_movies',
-    'Trending Series' => 'trending_series',
-    'Popular Movies' => 'popular_movies',
-    'Popular Series' => 'popular_series',
-    'Trending Anime' => 'trending_anime',
-    'Top Rated Movies' => 'top_rated_movies',
-    _ => 'recent',
-  };
 
   List<MediaItem> _interleave(List<MediaItem> items) {
     final tmdb = items.where((item) => item.sourceId == 'tmdb:catalog').toList();

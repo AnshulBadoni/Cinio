@@ -291,6 +291,17 @@ class TmdbDiscoverService {
           final sn = sa.compareTo(sb);
           return sn != 0 ? sn : (a.number ?? 0).compareTo(b.number ?? 0);
         });
+
+        return MediaDetail(
+          id: item.id, title: title, englishTitle: item.englishTitle,
+          cover: poster == null ? item.cover : '${Tmdb.img}/w500$poster',
+          url: item.url, description: overview, year: date != null && date.length >= 4 ? date.substring(0,4) : null,
+          type: ProviderType.movie, sourceId: 'tmdb:catalog', tmdbId: id, tmdbIsTv: item.tmdbIsTv,
+          isSeries: item.tmdbIsTv, genres: item.genres, cast: cast, episodes: episodes,
+          releaseDate: date,
+          tmdbStatus: tmdbStatus,
+          availableSeasons: seasonNumbers,
+        );
       }
     } else {
       episodes.add(Episode(
@@ -312,33 +323,38 @@ class TmdbDiscoverService {
   }
 
   Future<List<Episode>> _loadTmdbSeason(int id, int seasonNumber) async {
-    try {
-      final response = await _dio.get<dynamic>(
-        '${Tmdb.base}/tv/$id/season/$seasonNumber',
-        options: Options(receiveTimeout: const Duration(seconds: 10), sendTimeout: const Duration(seconds: 10)),
-      );
-      final rows = response.data is Map ? response.data['episodes'] : null;
-      if (rows is! List) return const [];
-      return [
-        for (final e in rows)
-          if (e is Map && e['episode_number'] is num)
-            Episode(
-              id: 'tmdb:tv:$id:s$seasonNumber:e${(e['episode_number'] as num).toInt()}:${e['id'] ?? ''}',
-              title: (e['name'] ?? 'Episode ${(e['episode_number'] as num).toInt()}').toString(),
-              number: (e['episode_number'] as num).toDouble(),
-              url: 'tmdb://tv/$id/season/$seasonNumber/episode/${(e['episode_number'] as num).toInt()}',
-              date: e['air_date']?.toString(),
-              thumbnail: e['still_path'] is String && (e['still_path'] as String).isNotEmpty ? '${Tmdb.img}/w342${e['still_path']}' : null,
-              season: seasonNumber,
-              description: e['overview']?.toString(),
-              metaTitle: e['name']?.toString(),
-              rating: double.tryParse('${e['vote_average'] ?? ''}'),
-              runtimeMinutes: (e['runtime'] as num?)?.toInt(),
-            ),
-      ];
-    } catch (_) {
-      return const [];
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final response = await _dio.get<dynamic>(
+          '${Tmdb.base}/tv/$id/season/$seasonNumber',
+          options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
+        );
+        final rows = response.data is Map ? response.data['episodes'] : null;
+        if (rows is! List) return const [];
+        return [
+          for (final e in rows)
+            if (e is Map && e['episode_number'] is num)
+              Episode(
+                id: 'tmdb:tv:$id:s$seasonNumber:e${(e['episode_number'] as num).toInt()}:${e['id'] ?? ''}',
+                title: (e['name'] ?? 'Episode ${(e['episode_number'] as num).toInt()}').toString(),
+                number: (e['episode_number'] as num).toDouble(),
+                url: 'tmdb://tv/$id/season/$seasonNumber/episode/${(e['episode_number'] as num).toInt()}',
+                date: e['air_date']?.toString(),
+                thumbnail: e['still_path'] is String && (e['still_path'] as String).isNotEmpty ? '${Tmdb.img}/w342${e['still_path']}' : null,
+                season: seasonNumber,
+                description: e['overview']?.toString(),
+                metaTitle: e['name']?.toString(),
+                rating: double.tryParse('${e['vote_average'] ?? ''}'),
+                runtimeMinutes: (e['runtime'] as num?)?.toInt(),
+              ),
+        ];
+      } catch (_) {
+        if (attempt < 2) {
+          await Future.delayed(Duration(milliseconds: 300 * (attempt + 1)));
+        }
+      }
     }
+    return const [];
   }
 
   Future<List<MediaItem>> discover({
@@ -398,10 +414,46 @@ class TmdbDiscoverService {
     final rows = response.data is Map ? response.data['results'] : null;
     if (rows is! List) return const [];
 
-    return [
-      for (final row in rows)
-        if (row is Map) ..._mapSearchRow(row, type: type, genre: genre),
-    ];
+    final out = <MediaItem>[];
+    for (final row in rows) {
+      if (row is Map) out.addAll(_mapSearchRow(row, type: type, genre: genre));
+    }
+
+    // If query could be a studio/company (e.g. "Marvel", "Pixar", "A24")
+    if (page == 1 && out.length < 10) {
+      try {
+        final companyRes = await _dio.get<dynamic>(
+          '${Tmdb.base}/search/company',
+          queryParameters: {'query': query, 'page': 1},
+          options: Options(receiveTimeout: const Duration(seconds: 8)),
+        );
+        final cRows = companyRes.data is Map ? companyRes.data['results'] : null;
+        if (cRows is List && cRows.isNotEmpty) {
+          final firstComp = cRows.first;
+          final cId = (firstComp is Map ? firstComp['id'] : null)?.toString();
+          if (cId != null) {
+            final compMovies = await _dio.get<dynamic>(
+              '${Tmdb.base}/discover/movie',
+              queryParameters: {'with_companies': cId, 'page': 1, 'sort_by': 'popularity.desc'},
+              options: Options(receiveTimeout: const Duration(seconds: 8)),
+            );
+            final mRows = compMovies.data is Map ? compMovies.data['results'] : null;
+            if (mRows is List) {
+              final seen = out.map((i) => i.id).toSet();
+              for (final r in mRows) {
+                if (r is Map) {
+                  for (final item in _mapSearchRow(r, type: type, genre: genre)) {
+                    if (seen.add(item.id)) out.add(item);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    return out;
   }
 
   Future<List<MediaItem>> _trending({
@@ -530,6 +582,17 @@ class TmdbDiscoverService {
     bool trending = false,
   }) sync* {
     final mediaType = row['media_type']?.toString();
+    if (mediaType == 'person') {
+      final knownFor = row['known_for'];
+      if (knownFor is List) {
+        for (final item in knownFor) {
+          if (item is Map) {
+            yield* _mapSearchRow(item, type: type, genre: genre, trending: trending);
+          }
+        }
+      }
+      return;
+    }
     final isTv = mediaType == 'tv' || (mediaType == null && type == 'series');
     final isMovie = mediaType == 'movie' || (mediaType == null && type == 'movies');
     if (!isTv && !isMovie) return;
