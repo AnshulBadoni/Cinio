@@ -163,14 +163,18 @@ class TitleMatcher {
       }
     }
 
-    // Contiguous substring match: e.g. "SpeedPorn - In Loving Memory" contains "In Loving Memory"
-    if (canonWanted.length >= 4 && canonCand.contains(canonWanted)) {
-      return 0.95;
-    }
-
     final wantedTokens = tokenize(wanted);
     final candTokens = tokenize(candidate);
     if (wantedTokens.isEmpty || candTokens.isEmpty) return 0.0;
+
+    // Contiguous whole-word phrase match: e.g. "SpeedPorn - In Loving Memory" contains "In Loving Memory"
+    // Requires at least 2 tokens (or distinct phrase) with boundary markers to prevent sub-word false positives.
+    if (wantedTokens.length >= 2 && canonWanted.length >= 5) {
+      final phrasePattern = RegExp('(^|\\s)' + RegExp.escape(canonWanted) + '(\\s|\$)');
+      if (phrasePattern.hasMatch(canonCand)) {
+        return 0.95;
+      }
+    }
 
     // Token subset: e.g. "Brazzers - Fantasy 10" contains all tokens of "Fantasy Vol 10"
     final wantedSet = wantedTokens.toSet();

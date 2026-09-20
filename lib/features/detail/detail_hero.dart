@@ -501,6 +501,7 @@ class _PlayButton extends StatelessWidget {
     this.onPressed,
     this.onLongPress,
     this.icon = Icons.play_arrow_rounded,
+    this.loading = false,
   });
   final String label;
   final VoidCallback? onPressed;
@@ -509,30 +510,49 @@ class _PlayButton extends StatelessWidget {
   /// Reading types (manga/novel) show a book icon instead of the play glyph.
   final IconData icon;
 
+  /// True when the player/stream or catalog match is actively resolving.
+  final bool loading;
+
   @override
   Widget build(BuildContext context) {
-    final enabled = onPressed != null;
+    final enabled = onPressed != null && !loading;
     return Opacity(
-      opacity: enabled ? 1.0 : 0.4,
+      opacity: enabled || loading ? 1.0 : 0.4,
       child: Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
-          onTap: onPressed,
-          onLongPress: onLongPress,
+          onTap: loading ? null : onPressed,
+          onLongPress: loading ? null : onLongPress,
           child: SizedBox(
             height: 52,
             width: double.infinity,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, color: Colors.black, size: 26),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: AppText.button.copyWith(color: Colors.black),
-                ),
+                if (loading) ...[
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Loading...',
+                    style: AppText.button.copyWith(color: Colors.black),
+                  ),
+                ] else ...[
+                  Icon(icon, color: Colors.black, size: 26),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: AppText.button.copyWith(color: Colors.black),
+                  ),
+                ],
               ],
             ),
           ),

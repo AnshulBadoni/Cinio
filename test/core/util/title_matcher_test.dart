@@ -59,8 +59,12 @@ void main() {
       expect(TitleMatcher.isMatch('Fantasy Vol 2', 'Fantasy Vol 3'), isFalse);
     });
 
-    test('does NOT match unrelated titles', () {
+    test('does NOT match unrelated titles or partial sub-words or distinct sequels', () {
       expect(TitleMatcher.isMatch('Fantasy 10', 'Doctor Who 10'), isFalse);
+      expect(TitleMatcher.isMatch('Alien', 'Alien vs Predator'), isFalse);
+      expect(TitleMatcher.isMatch('Love', 'Glove'), isFalse);
+      expect(TitleMatcher.isMatch('Her', 'Father'), isFalse);
+      expect(TitleMatcher.isMatch('Dune', 'Dune Part Two'), isFalse);
     });
   });
 

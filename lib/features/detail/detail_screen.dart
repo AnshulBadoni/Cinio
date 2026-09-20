@@ -19,7 +19,6 @@ import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/discord/discord_rpc.dart';
 import '../../core/metadata/episode_metadata_service.dart';
-import '../../core/metadata/metadata_enrichment.dart';
 import '../../core/metadata/tmdb_discover_service.dart';
 import '../../core/notify/cs_notify.dart';
 import '../../core/notify/notification_service.dart';
@@ -245,6 +244,8 @@ class _DetailViewState extends State<_DetailView>
   // The episode url we've already kicked a background source-prefetch for, so we
   // don't re-fire it on every rebuild (see _maybePrefetch).
   String? _prefetchedEpUrl;
+  bool _prefetchedCatalog = false;
+  bool _resolvingPlay = false;
 
   // Filler episode numbers (from Jikan by MAL id), for the "Filler" badge in the
   // episode list. Fetched once per malId; empty for non-anime / unlisted shows.
@@ -378,6 +379,33 @@ class _DetailViewState extends State<_DetailView>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       sl<SourceRepository>().prefetch(epUrl, sourceId: sourceId);
+    });
+  }
+
+  /// Background-resolve catalog titles (TMDB/TPDB) to the best matching provider
+  /// source and warm up the first/resume episode's stream links, so tapping Play
+  /// starts instantly (0ms delay).
+  void _maybePrefetchCatalog({String category = 'sub'}) {
+    final catalog = widget.item;
+    if (_prefetchedCatalog) return;
+    if (catalog.sourceId != 'tmdb:catalog' && !catalog.sourceId.startsWith('tpdb:')) return;
+    _prefetchedCatalog = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      try {
+        final resolved = await sl<SourceRepository>().resolveCatalogTitle(
+          catalog,
+          category: category,
+        );
+        if (!mounted || resolved == null) return;
+        final eps = resolved.detail.episodes;
+        if (eps.isNotEmpty) {
+          final resume = _resumeTarget(eps);
+          final resumeIdx = resume.index.clamp(0, eps.length - 1);
+          _maybePrefetch(eps[resumeIdx].url, resolved.item.sourceId);
+        }
+      } catch (_) {}
     });
   }
 
@@ -948,59 +976,67 @@ class _DetailViewState extends State<_DetailView>
     /// adaptive default. One-shot — the cubit clears it after this episode.
     VideoSource? initialSource,
   }) async {
+    if (_resolvingPlay) return;
     final targetEp = (index >= 0 && index < episodes.length) ? episodes[index] : null;
+    final inFlightPromotion = context.read<DetailCubit>().animePromotion;
 
     if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
-      var resolved = await _resolveCatalogPlayback(category: category);
-      if (!mounted) return;
-      if (resolved == null) {
-        resolved = await _showProviderPickerSheet(detail, category: category);
+      setState(() => _resolvingPlay = true);
+      try {
+        var resolved = await _resolveCatalogPlayback(category: category);
+        if (!mounted) return;
         if (resolved == null) {
-          if (mounted) _snack('No playable provider result found for ${widget.item.title}');
-          return;
-        }
-      }
-      detail = resolved.detail;
-      episodes = detail.episodes;
-      if (episodes.isEmpty) {
-        if (!detail.isSeries) {
-          episodes = [
-            Episode(
-              id: resolved.item.id,
-              number: 1,
-              title: detail.title.trim().isNotEmpty ? detail.title : widget.item.title,
-              url: resolved.item.url,
-            ),
-          ];
-        } else {
-          _snack('No playable episodes found for ${widget.item.title}');
-          return;
-        }
-      }
-
-      if (targetEp != null && episodes.isNotEmpty) {
-        final wantedSeason = seasonOf(targetEp);
-        final wantedNumber = targetEp.number;
-        var foundIndex = -1;
-        for (var i = 0; i < episodes.length; i++) {
-          final cand = episodes[i];
-          if (cand.number == wantedNumber &&
-              (wantedSeason == null || seasonOf(cand) == wantedSeason)) {
-            foundIndex = i;
-            break;
+          setState(() => _resolvingPlay = false);
+          resolved = await _showProviderPickerSheet(detail, category: category);
+          if (resolved == null) {
+            if (mounted) _snack('No playable provider result found for ${widget.item.title}');
+            return;
           }
         }
-        if (foundIndex < 0 && wantedNumber != null) {
+        detail = resolved.detail;
+        episodes = detail.episodes;
+        if (episodes.isEmpty) {
+          if (!detail.isSeries) {
+            episodes = [
+              Episode(
+                id: resolved.item.id,
+                number: 1,
+                title: detail.title.trim().isNotEmpty ? detail.title : widget.item.title,
+                url: resolved.item.url,
+              ),
+            ];
+          } else {
+            _snack('No playable episodes found for ${widget.item.title}');
+            return;
+          }
+        }
+
+        if (targetEp != null && episodes.isNotEmpty) {
+          final wantedSeason = seasonOf(targetEp);
+          final wantedNumber = targetEp.number;
+          var foundIndex = -1;
           for (var i = 0; i < episodes.length; i++) {
-            if (episodes[i].number == wantedNumber) {
+            final cand = episodes[i];
+            if (cand.number == wantedNumber &&
+                (wantedSeason == null || seasonOf(cand) == wantedSeason)) {
               foundIndex = i;
               break;
             }
           }
+          if (foundIndex < 0 && wantedNumber != null) {
+            for (var i = 0; i < episodes.length; i++) {
+              if (episodes[i].number == wantedNumber) {
+                foundIndex = i;
+                break;
+              }
+            }
+          }
+          index = foundIndex >= 0 ? foundIndex : index.clamp(0, episodes.length - 1);
+        } else {
+          index = index.clamp(0, episodes.length - 1).toInt();
         }
-        index = foundIndex >= 0 ? foundIndex : index.clamp(0, episodes.length - 1);
-      } else {
-        index = index.clamp(0, episodes.length - 1).toInt();
+      } finally {
+        if (mounted) setState(() => _resolvingPlay = false);
       }
     }
     // Opening something other than where they left off? Offer to look at it
@@ -1083,20 +1119,21 @@ class _DetailViewState extends State<_DetailView>
 
     // Scrobble ids. A movie-typed title from a movie source (e.g. MovieBox) may
     // actually be anime — resolve its MAL id here so AniList/MAL scrobble. We
-    // await the detail's in-flight promotion (started on load); if Play beat it,
-    // resolve inline. Best-effort — a miss just leaves it a movie.
+    // check the detail's in-flight promotion without blocking.
     var malId = detail.malId ?? widget.item.malId;
     var scrobbleTitle =
         detail.type == ProviderType.anime ? detail.title : null;
     if (malId == null && detail.type == ProviderType.movie) {
-      try {
-        final promoted = await (context.read<DetailCubit>().animePromotion ??
-            sl<MetadataEnrichment>().promoteMovieToAnimeMalId(detail));
-        if (promoted != null) {
-          malId = promoted;
-          scrobbleTitle = detail.title;
-        }
-      } catch (_) {/* leave as a movie */}
+      final promotion = inFlightPromotion;
+      if (promotion != null) {
+        try {
+          final promoted = await promotion.timeout(const Duration(milliseconds: 50), onTimeout: () => null);
+          if (promoted != null) {
+            malId = promoted;
+            scrobbleTitle = detail.title;
+          }
+        } catch (_) {/* leave as a movie */}
+      }
     }
     if (!mounted) return;
 
@@ -1751,8 +1788,10 @@ class _DetailViewState extends State<_DetailView>
     // — prefetch resolves VIDEO sources, and merely opening a manga/novel
     // detail must never fire that against a chapter URL.
     if (!isReading && eps.isNotEmpty &&
-        !(item.sourceId == 'tmdb:catalog' || item.sourceId == 'tpdb:catalog')) {
+        !(item.sourceId == 'tmdb:catalog' || item.sourceId.startsWith('tpdb:'))) {
       _maybePrefetch(eps[resumeIdx].url, item.sourceId);
+    } else if (!isReading && (item.sourceId == 'tmdb:catalog' || item.sourceId.startsWith('tpdb:'))) {
+      _maybePrefetchCatalog(category: category);
     }
     final hasAnyMark = eps.any(
       (e) => store.get(item.sourceId, item.url, e.id) != null,
@@ -1981,6 +2020,7 @@ class _DetailViewState extends State<_DetailView>
                     children: [
                       _PlayButton(
                         label: buttonLabel,
+                        loading: _resolvingPlay,
                         icon: isReading
                             ? Icons.menu_book_rounded
                             : Icons.play_arrow_rounded,

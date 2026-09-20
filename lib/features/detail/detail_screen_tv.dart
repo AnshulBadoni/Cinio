@@ -98,6 +98,43 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   final FocusScopeNode _leftScope = FocusScopeNode(debugLabel: 'tv-detail-left');
   final FocusScopeNode _rightScope = FocusScopeNode(debugLabel: 'tv-detail-right');
 
+  String? _prefetchedEpUrl;
+  bool _prefetchedCatalog = false;
+  bool _resolvingPlay = false;
+
+  void _maybePrefetch(String epUrl, String sourceId) {
+    if (_prefetchedEpUrl == epUrl) return;
+    _prefetchedEpUrl = epUrl;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      sl<SourceRepository>().prefetch(epUrl, sourceId: sourceId);
+    });
+  }
+
+  void _maybePrefetchCatalog({String category = 'sub'}) {
+    final catalog = widget.item;
+    if (_prefetchedCatalog) return;
+    if (catalog.sourceId != 'tmdb:catalog' && !catalog.sourceId.startsWith('tpdb:')) return;
+    _prefetchedCatalog = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      try {
+        final resolved = await sl<SourceRepository>().resolveCatalogTitle(
+          catalog,
+          category: category,
+        );
+        if (!mounted || resolved == null) return;
+        final eps = resolved.detail.episodes;
+        if (eps.isNotEmpty) {
+          final resume = _resumeTarget(eps);
+          final resumeIdx = resume.index.clamp(0, eps.length - 1);
+          _maybePrefetch(eps[resumeIdx].url, resolved.item.sourceId);
+        }
+      } catch (_) {}
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -187,63 +224,69 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
 
   // ── Player launch (mirrors _DetailViewState._openPlayer exactly) ──────────
   Future<void> _openPlayer(List<Episode> episodes, int index, MediaDetail detail, String category) async {
+    if (_resolvingPlay) return;
     final targetEp = (index >= 0 && index < episodes.length) ? episodes[index] : null;
 
     if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
-      final resolved = await sl<SourceRepository>().resolveCatalogTitle(
-        widget.item,
-        category: category,
-      );
-      if (!mounted) return;
-      if (resolved == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No playable provider result found for ${widget.item.title}')),
+      setState(() => _resolvingPlay = true);
+      try {
+        final resolved = await sl<SourceRepository>().resolveCatalogTitle(
+          widget.item,
+          category: category,
         );
-        return;
-      }
-      detail = resolved.detail;
-      episodes = detail.episodes;
-      if (episodes.isEmpty) {
-        if (!detail.isSeries) {
-          episodes = [
-            Episode(
-              id: resolved.item.id,
-              number: 1,
-              title: detail.title.trim().isNotEmpty ? detail.title : widget.item.title,
-              url: resolved.item.url,
-            ),
-          ];
-        } else {
+        if (!mounted) return;
+        if (resolved == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('No playable episodes found for ${widget.item.title}')),
+            SnackBar(content: Text('No playable provider result found for ${widget.item.title}')),
           );
           return;
         }
-      }
-
-      if (targetEp != null && episodes.isNotEmpty) {
-        final wantedSeason = seasonOf(targetEp);
-        final wantedNumber = targetEp.number;
-        var foundIndex = -1;
-        for (var i = 0; i < episodes.length; i++) {
-          final cand = episodes[i];
-          if (cand.number == wantedNumber &&
-              (wantedSeason == null || seasonOf(cand) == wantedSeason)) {
-            foundIndex = i;
-            break;
+        detail = resolved.detail;
+        episodes = detail.episodes;
+        if (episodes.isEmpty) {
+          if (!detail.isSeries) {
+            episodes = [
+              Episode(
+                id: resolved.item.id,
+                number: 1,
+                title: detail.title.trim().isNotEmpty ? detail.title : widget.item.title,
+                url: resolved.item.url,
+              ),
+            ];
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('No playable episodes found for ${widget.item.title}')),
+            );
+            return;
           }
         }
-        if (foundIndex < 0 && wantedNumber != null) {
+
+        if (targetEp != null && episodes.isNotEmpty) {
+          final wantedSeason = seasonOf(targetEp);
+          final wantedNumber = targetEp.number;
+          var foundIndex = -1;
           for (var i = 0; i < episodes.length; i++) {
-            if (episodes[i].number == wantedNumber) {
+            final cand = episodes[i];
+            if (cand.number == wantedNumber &&
+                (wantedSeason == null || seasonOf(cand) == wantedSeason)) {
               foundIndex = i;
               break;
             }
           }
+          if (foundIndex < 0 && wantedNumber != null) {
+            for (var i = 0; i < episodes.length; i++) {
+              if (episodes[i].number == wantedNumber) {
+                foundIndex = i;
+                break;
+              }
+            }
+          }
+          index = foundIndex >= 0 ? foundIndex : index.clamp(0, episodes.length - 1);
+        } else {
+          index = index.clamp(0, episodes.length - 1).toInt();
         }
-        index = foundIndex >= 0 ? foundIndex : index.clamp(0, episodes.length - 1);
-      } else {
-        index = index.clamp(0, episodes.length - 1).toInt();
+      } finally {
+        if (mounted) setState(() => _resolvingPlay = false);
       }
     }
 
@@ -600,6 +643,15 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     // Resume / play label (mirrors _DetailViewState._buildBody).
     final resume = _resumeTarget(eps);
     final resumeIdx = resume.index;
+
+    // Warm stream / catalog match in background
+    if (eps.isNotEmpty &&
+        !(item.sourceId == 'tmdb:catalog' || item.sourceId.startsWith('tpdb:'))) {
+      _maybePrefetch(eps[resumeIdx].url, item.sourceId);
+    } else if (item.sourceId == 'tmdb:catalog' || item.sourceId.startsWith('tpdb:')) {
+      _maybePrefetchCatalog(category: category);
+    }
+
     final hasAnyMark = eps.any((e) => store.get(item.sourceId, item.url, e.id) != null);
     final episodeNum = eps.isNotEmpty ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1) : 1;
     final resumePercent = detail.isSeries ? null : _resumePercent(eps, resumeIdx);
@@ -751,7 +803,11 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                     key: const ValueKey('tv-detail-play'),
                                     autofocus: true,
                                     variant: TvFocusVariant.pill,
-                                    onTap: eps.isNotEmpty ? () => _openPlayer(eps, resumeIdx, detail, category) : () {},
+                                    onTap: (eps.isNotEmpty ||
+                                            widget.item.sourceId == 'tmdb:catalog' ||
+                                            widget.item.sourceId.startsWith('tpdb:'))
+                                        ? () => _openPlayer(eps, resumeIdx, detail, category)
+                                        : () {},
                                     semanticLabel: buttonLabel,
                                     // _PlayButton is shared with the phone view —
                                     // exclude its own label Text here instead of
@@ -760,7 +816,10 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                     child: ExcludeSemantics(
                                       child: _PlayButton(
                                         label: buttonLabel,
-                                        onPressed: eps.isNotEmpty
+                                        loading: _resolvingPlay,
+                                        onPressed: (eps.isNotEmpty ||
+                                                widget.item.sourceId == 'tmdb:catalog' ||
+                                                widget.item.sourceId.startsWith('tpdb:'))
                                             ? () => _openPlayer(eps, resumeIdx, detail, category)
                                             : null,
                                       ),
