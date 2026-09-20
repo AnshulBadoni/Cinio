@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../aniyomi/aniyomi_provider.dart';
@@ -414,30 +415,29 @@ class SourceSwitcher extends StatelessWidget {
   Widget build(BuildContext context) {
     final (tag, tagColor, name) = _tagAndName;
     if (compact) {
-      final trimmedName = name.trim();
-      final letter = trimmedName.isEmpty
-          ? tag.substring(0, 1)
-          : trimmedName.substring(0, 1).toUpperCase();
       return Semantics(
         button: true,
         label: 'Provider: $name',
         child: GestureDetector(
           onTap: () => showPicker(context),
-          child: Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.black.withValues(alpha: 0.38),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              letter,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withValues(alpha: 0.35),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.layers_rounded,
+                  size: 18,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),

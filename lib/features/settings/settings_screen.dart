@@ -23,6 +23,7 @@ import '../../core/playback/external_player.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/repository/source_repository.dart';
 import '../auth/reconnect.dart';
 import '../../core/privacy/incognito_mode.dart';
 import '../../core/playback/search_prefs.dart';

@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import '../di/injector.dart';
+import '../metadata/theporndb.dart';
 
 /// Context type for alternate NSFW trailer resolution.
 enum TrailerAlternateType { model, studio, movie }
@@ -59,13 +61,16 @@ class AlternateTrailer {
   int get hashCode => url.hashCode;
 }
 
-/// Scrapes NSFW trailers from adultempire.com for model, studio, and movie contexts.
+/// Scrapes NSFW trailers with primary lookup from ThePornDB and fallback to adultempire.com.
 ///
 /// Execution is lazy, best-effort, and fails safely to null without crashing.
 class NsfwTrailerService {
-  NsfwTrailerService([Dio? dio]) : _dio = dio ?? Dio();
+  NsfwTrailerService([Dio? dio, ThePornDb? tpdb])
+      : _dio = dio ?? Dio(),
+        _tpdb = tpdb;
 
   final Dio _dio;
+  final ThePornDb? _tpdb;
 
   static const String _baseUrl = 'https://www.adultempire.com';
 
@@ -128,13 +133,38 @@ class NsfwTrailerService {
     return '$_baseUrl/allsearch/search?q=$encoded';
   }
 
-  /// Fetches an alternate trailer for the given [context].
-  /// Returns null if no scenes or video streams are found, or on network/parse error.
+  /// Fetches an alternate trailer for the given [context] and optional [tpdbId].
+  /// 1. Tries direct ThePornDB API official trailer stream first.
+  /// 2. Falls back to AdultEmpire search & scrape if TPDB has no trailer.
   Future<AlternateTrailer?> fetch({
     required TrailerAlternateContext context,
+    String? tpdbId,
   }) async {
-    if (context.name.trim().isEmpty) return null;
+    if (context.name.trim().isEmpty && (tpdbId == null || tpdbId.isEmpty)) return null;
 
+    // 1. Primary: Try ThePornDB official direct trailer
+    try {
+      final tpdbService = _tpdb ?? (sl.isRegistered<ThePornDb>() ? sl<ThePornDb>() : null);
+      if (tpdbService != null) {
+        final tpdbUrl = await tpdbService.fetchTrailer(
+          id: tpdbId,
+          title: context.isMovie ? context.name : null,
+          performer: context.isModel ? context.name : null,
+          studio: context.isStudio ? context.name : null,
+        );
+        if (tpdbUrl != null && tpdbUrl.isNotEmpty) {
+          return AlternateTrailer(
+            url: tpdbUrl,
+            headers: const {
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+          );
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fallback: AdultEmpire scraper
     try {
       final listingUrl = buildListingUrl(context);
 

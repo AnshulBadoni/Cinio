@@ -493,4 +493,92 @@ class ThePornDb {
 
 
   double _rating(MediaItem item) => item.rating ?? 0;
+
+  /// Fetches a direct official trailer stream URL from ThePornDB for an item id,
+  /// title, performer, or studio. Returns null if no trailer is indexed.
+  Future<String?> fetchTrailer({
+    String? id,
+    String? title,
+    String? performer,
+    String? studio,
+  }) async {
+    try {
+      if (id != null && id.isNotEmpty) {
+        final rawId = id.replaceFirst(RegExp(r'^tpdb:(movie|scene|performer|studio):'), '');
+        if (id.contains('scene')) {
+          final data = await _get('/scenes/$rawId');
+          final row = data['data'] is Map ? data['data'] as Map : null;
+          final tr = _extractTrailer(row);
+          if (tr != null) return tr;
+        } else if (id.contains('movie')) {
+          final data = await _get('/movies/$rawId');
+          final row = data['data'] is Map ? data['data'] as Map : null;
+          final tr = _extractTrailer(row);
+          if (tr != null) return tr;
+          final scenes = row?['scenes'];
+          if (scenes is List && scenes.isNotEmpty) {
+            for (final s in scenes) {
+              if (s is Map) {
+                final str = _extractTrailer(s);
+                if (str != null) return str;
+              }
+            }
+          }
+        }
+      }
+
+      final q = title ?? performer ?? studio;
+      if (q != null && q.trim().isNotEmpty) {
+        final clean = q.trim();
+        // 1. Check scenes first — primary location for official studio trailers in TPDB
+        final sceneData = await _get('/scenes', queryParameters: {
+          'q': clean,
+          'per_page': 5,
+          'orderBy': 'most_relevant',
+        });
+        final sceneRows = sceneData['data'];
+        if (sceneRows is List) {
+          for (final row in sceneRows) {
+            if (row is Map) {
+              final tr = _extractTrailer(row);
+              if (tr != null) return tr;
+            }
+          }
+        }
+
+        // 2. Check movies if scene trailer not found
+        final movieData = await _get('/movies', queryParameters: {
+          'q': clean,
+          'per_page': 5,
+          'orderBy': 'most_relevant',
+        });
+        final movieRows = movieData['data'];
+        if (movieRows is List) {
+          for (final row in movieRows) {
+            if (row is Map) {
+              final tr = _extractTrailer(row);
+              if (tr != null) return tr;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  String? _extractTrailer(Map? row) {
+    if (row == null) return null;
+    final direct = row['trailer']?.toString();
+    if (direct != null && direct.startsWith('http')) return direct;
+    final trailerObj = row['trailer_url'] ?? row['preview'] ?? row['trailer_src'];
+    if (trailerObj != null && trailerObj.toString().startsWith('http')) {
+      return trailerObj.toString();
+    }
+    final extras = row['extras'];
+    if (extras is Map) {
+      final et = extras['trailer']?.toString();
+      if (et != null && et.startsWith('http')) return et;
+    }
+    return null;
+  }
 }

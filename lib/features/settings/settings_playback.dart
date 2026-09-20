@@ -389,6 +389,46 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     );
   }
 
+  String _sourceNameFor(String id) {
+    if (id.isEmpty) return 'Auto (fastest match)';
+    if (!sl.isRegistered<SourceRepository>()) return id;
+    return sl<SourceRepository>().displayName(id);
+  }
+
+  Future<void> _pickTmdbPrimarySource() async {
+    final repo = sl<SourceRepository>();
+    final sources = repo.loadedSources;
+    final options = <(String, String)>[
+      ('', 'Auto (fastest match)'),
+      for (final s in sources) (s.id, s.name),
+    ];
+    final picked = await _pick<String>(
+      title: 'Primary TMDB source',
+      options: options,
+      current: _prefs.tmdbPrimaryProvider,
+    );
+    if (picked == null) return;
+    await _prefs.setTmdbPrimaryProvider(picked);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickTpdbPrimarySource() async {
+    final repo = sl<SourceRepository>();
+    final sources = repo.loadedSources;
+    final options = <(String, String)>[
+      ('', 'Auto (fastest match)'),
+      for (final s in sources) (s.id, s.name),
+    ];
+    final picked = await _pick<String>(
+      title: 'Primary TPDB source',
+      options: options,
+      current: _prefs.tpdbPrimaryProvider,
+    );
+    if (picked == null) return;
+    await _prefs.setTpdbPrimaryProvider(picked);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _pickQuality() async {
     final picked = await _pick<String>(
       title: 'Default quality',
@@ -677,6 +717,25 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   subtitle: ShaderPresets.tierLabel(_prefs.videoShaderTier),
                   onTap: _pickShaderTier,
                 ),
+            ],
+          ),
+
+          // ── Catalog streaming sources ──────────────────────────────────
+          const SettingsSectionLabel('Catalog streaming sources'),
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.movie_filter_outlined,
+                title: 'Primary TMDB source',
+                subtitle: _sourceNameFor(_prefs.tmdbPrimaryProvider),
+                onTap: _pickTmdbPrimarySource,
+              ),
+              SettingsTile(
+                icon: Icons.lock_outline_rounded,
+                title: 'Primary TPDB source',
+                subtitle: _sourceNameFor(_prefs.tpdbPrimaryProvider),
+                onTap: _pickTpdbPrimarySource,
+              ),
             ],
           ),
 

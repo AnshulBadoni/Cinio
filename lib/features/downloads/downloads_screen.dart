@@ -434,7 +434,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                     const gap = 12.0;
                     final cardWidth =
                         (constraints.maxWidth - gap * (columns - 1)) / columns;
-                    final cardHeight = cardWidth / 0.62;
+                    final cardHeight = cardWidth / 0.68;
                     return GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -443,7 +443,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                         crossAxisCount: columns,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 16,
-                        childAspectRatio: 0.62,
+                        childAspectRatio: 0.68,
                       ),
                       itemBuilder: (context, i) {
                         final showId = cardRecords[i].showId;
@@ -738,13 +738,6 @@ class _DownloadShowCard extends StatelessWidget {
               color: AppColors.textPrimary,
               fontWeight: FontWeight.w600,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            '$done of ${records.length} downloaded',
-            style: AppText.caption,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),

@@ -75,11 +75,13 @@ class TrailerService {
     required ProviderType type,
     String? year,
     TrailerAlternateContext? alternateContext,
+    String? tpdbId,
   }) async {
     if (alternateContext != null) {
       try {
         final alternate = await _nsfwTrailerService.fetch(
           context: alternateContext,
+          tpdbId: tpdbId,
         );
         if (alternate != null && alternate.url.isNotEmpty) {
           return TrailerSource.direct(

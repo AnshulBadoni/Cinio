@@ -521,7 +521,8 @@ class SourceRepository {
     }
 
     final isTpdb = catalog.sourceId.startsWith('tpdb:');
-    final preferred = sourceId;
+    final primaryPref = isTpdb ? _prefs.tpdbPrimaryProvider : _prefs.tmdbPrimaryProvider;
+    final preferred = primaryPref.isNotEmpty ? primaryPref : sourceId;
     final allCandidates = loadedSources.map((s) => s.id).toList();
 
     bool isAdultProvider(String id) {
@@ -557,9 +558,13 @@ class SourceRepository {
       }
     }
 
-    // Sort candidates according to content type
+    // Sort candidates according to content type and preferred provider
     final candidates = List<String>.from(allCandidates);
     candidates.sort((a, b) {
+      if (preferred.isNotEmpty) {
+        if (a == preferred) return -1;
+        if (b == preferred) return 1;
+      }
       final aAdult = isAdultProvider(a) ? 1 : 0;
       final bAdult = isAdultProvider(b) ? 1 : 0;
       if (isTpdb) {
@@ -569,7 +574,7 @@ class SourceRepository {
       }
     });
 
-    // Preferred provider is attempted first if it aligns with content type or is active.
+    // Preferred provider is attempted first if it aligns with content type or is configured.
     final tried = <String>{};
     final preferredMatchesType = !isTpdb || isAdultProvider(preferred);
     if (preferred.isNotEmpty && hasSource(preferred) && preferredMatchesType) {

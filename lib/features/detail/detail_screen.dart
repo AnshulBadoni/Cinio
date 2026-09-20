@@ -332,6 +332,7 @@ class _DetailViewState extends State<_DetailView>
       type: detail.type,
       year: detail.year,
       alternateContext: alternateContext,
+      tpdbId: isTpdb ? widget.item.id : null,
     )..then((source) {
           if (!mounted) return;
           if (source != null && source != _trailerSource) {

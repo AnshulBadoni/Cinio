@@ -43,6 +43,8 @@ const settingsLeaves = <SettingsLeaf>[
   SettingsLeaf('Video renderer', 'Playback', keywords: 'output gpu vulkan'),
   SettingsLeaf('Anime4K Enhancement', 'Playback', keywords: 'upscale shader glsl'),
   SettingsLeaf('Anime4K GPU tier', 'Playback', keywords: 'upscale shader quality'),
+  SettingsLeaf('Primary TMDB source', 'Playback', keywords: 'tmdb primary source provider stream catalog resolution'),
+  SettingsLeaf('Primary TPDB source', 'Playback', keywords: 'tpdb adult primary source provider stream catalog resolution'),
   SettingsLeaf('Default player', 'Playback', keywords: 'external mpv exoplayer vlc'),
   SettingsLeaf('Player controls', 'Playback', keywords: 'buttons reorder hide bar'),
   SettingsLeaf('Resume playback', 'Playback', keywords: 'continue where left off'),

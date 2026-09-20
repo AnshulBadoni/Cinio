@@ -112,6 +112,20 @@ class PlaybackPrefs {
       _box.get('nsfwTrailers', defaultValue: false) as bool;
   Future<void> setNsfwTrailers(bool value) => _box.put('nsfwTrailers', value);
 
+  /// Primary provider for TMDB catalog playback resolution (e.g. 'cs:sflix').
+  /// Empty string = Auto (first/fastest available match).
+  String get tmdbPrimaryProvider =>
+      _box.get('tmdbPrimaryProvider', defaultValue: '') as String;
+  Future<void> setTmdbPrimaryProvider(String value) =>
+      _box.put('tmdbPrimaryProvider', value);
+
+  /// Primary provider for TPDB catalog playback resolution (e.g. 'cs:speedporn').
+  /// Empty string = Auto (first/fastest available match).
+  String get tpdbPrimaryProvider =>
+      _box.get('tpdbPrimaryProvider', defaultValue: '') as String;
+  Future<void> setTpdbPrimaryProvider(String value) =>
+      _box.put('tpdbPrimaryProvider', value);
+
   /// Default playback speed multiplier.
   double get defaultSpeed =>
       (_box.get('defaultSpeed', defaultValue: 1.0) as num).toDouble();
