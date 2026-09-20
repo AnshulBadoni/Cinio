@@ -47,6 +47,7 @@ import '../provider/provider_registry.dart';
 import '../provider/provider_repo_registry.dart';
 import '../repository/provider_settings_repository.dart';
 import '../repository/source_repository.dart';
+import '../logging/app_logger.dart';
 import '../state/active_source_cubit.dart';
 import '../theme/theme_controller.dart';
 import '../metadata/episode_metadata_service.dart';
