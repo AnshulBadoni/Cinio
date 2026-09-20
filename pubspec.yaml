@@ -256,6 +256,7 @@ flutter:
     - extractors/mp4upload.js
     - extractors/streamlare.js
     - extractors/doodstream.js
+    - extractors/mixdrop.js
     # Cheerio + htmlparser2 bundle for LNReader-style novel source scripts.
     - assets/js/lnreader_cheerio.js
     # require()/fetch shims + plugin loader that runs LNReader plugins on top.
