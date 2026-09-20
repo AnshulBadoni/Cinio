@@ -492,6 +492,16 @@ class CloudStreamProvider implements BaseProvider {
         }
         if (referer.isNotEmpty) headers['Referer'] = referer;
 
+        // Mixdrop streams require Mixdrop origin Referer + browser User-Agent or CDN 403s
+        if (lower.contains('mixdrop') ||
+            lower.contains('delivery-node') ||
+            lower.contains('s-delivery') ||
+            lower.contains('mdf.')) {
+          headers['Referer'] = 'https://mixdrop.ag/';
+          headers['User-Agent'] ??=
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+        }
+
         // ClearKey DRM (CNC/PlayzTV live channels): mpv can't decrypt these, so
         // carry the key id/key through and let the player route them to the
         // native ExoPlayer. Empty/absent for every ordinary source.

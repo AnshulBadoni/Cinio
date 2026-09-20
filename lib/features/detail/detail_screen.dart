@@ -1534,21 +1534,33 @@ class _DetailViewState extends State<_DetailView>
           var targetEp = ep;
 
           if (isCatalog) {
-            var resolved = await _resolveCatalogPlayback(category: category);
-            if (resolved == null) {
-              resolved = await _showProviderPickerSheet(detail, category: category);
-            }
-            if (resolved == null) {
-              return (
-                sources: <VideoSource>[],
-                resolvedItem: null,
-                resolvedDetail: null,
-                resolvedEpisode: null,
-                error: 'No download sources found on installed providers',
+            if (detail.sourceId != 'tmdb:catalog' && !detail.sourceId.startsWith('tpdb:')) {
+              targetItem = MediaItem(
+                id: detail.id,
+                title: detail.title,
+                url: detail.url,
+                type: detail.type,
+                sourceId: detail.sourceId,
               );
+              targetDetail = detail;
+              targetEp = ep;
+            } else {
+              var resolved = await _resolveCatalogPlayback(category: category);
+              if (resolved == null) {
+                resolved = await _showProviderPickerSheet(detail, category: category);
+              }
+              if (resolved == null) {
+                return (
+                  sources: <VideoSource>[],
+                  resolvedItem: null,
+                  resolvedDetail: null,
+                  resolvedEpisode: null,
+                  error: 'No download sources found on installed providers',
+                );
+              }
+              targetItem = resolved.item;
+              targetDetail = resolved.detail;
             }
-            targetItem = resolved.item;
-            targetDetail = resolved.detail;
             if (targetDetail.episodes.isNotEmpty) {
               Episode? byId;
               for (final candidate in targetDetail.episodes) {

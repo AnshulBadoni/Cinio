@@ -80,6 +80,13 @@ void main() {
       expect(TitleMatcher.isMatch('Her', 'Father'), isFalse);
       expect(TitleMatcher.isMatch('Dune', 'Dune Part Two'), isFalse);
     });
+    test('matches volume numbering variations like Young Housewives Vol.3 with Vol 3 / 3', () {
+      expect(TitleMatcher.isMatch('Young Housewives Vol.3', 'Young Housewives Vol. 3'), isTrue);
+      expect(TitleMatcher.isMatch('young housewives vol.3', 'Young Housewives Vol 3'), isTrue);
+      expect(TitleMatcher.isMatch('young housewives vol.3', 'Young Housewives Volume 3'), isTrue);
+      expect(TitleMatcher.isMatch('young housewives vol.3', 'Young Housewives 3'), isTrue);
+      expect(TitleMatcher.matchScore('young housewives vol.3', 'Young Housewives Vol. 3'), equals(1.0));
+    });
   });
 
   group('TitleMatcher - searchQueries generation', () {
@@ -88,6 +95,16 @@ void main() {
       expect(queries, contains('Fantasy Vol. 10'));
       expect(queries, contains('fantasy 10'));
       expect(queries, contains('Fantasy'));
+    });
+
+    test('generates volume variation search queries for vol.3', () {
+      final queries = TitleMatcher.searchQueries('young housewives vol.3');
+      expect(queries, contains('young housewives 3'));
+      expect(queries, contains('young housewives vol.3'));
+      expect(queries, contains('young housewives Vol 3'));
+      expect(queries, contains('young housewives Vol. 3'));
+      expect(queries, contains('young housewives Volume 3'));
+      expect(queries, contains('young housewives'));
     });
 
     test('generates stripped studio prefix queries', () {

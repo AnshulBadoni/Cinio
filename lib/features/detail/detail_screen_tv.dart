@@ -460,7 +460,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         availableCategories: availableCategories,
         coverUrl: detail.cover ?? widget.item.cover ?? '',
         coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-        resolve: (ep) => sl<SourceRepository>().sources(ep.url, sourceId: widget.item.sourceId),
+        resolve: (ep) => sl<SourceRepository>().sources(ep.url, sourceId: detail.sourceId),
         resolveEpisodes: _episodesByCategory,
       ),
     );
@@ -469,7 +469,15 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   }
 
   Future<Map<int, List<Episode>>> _episodesByCategory(String category) async {
-    final d = await sl<SourceRepository>().detail(widget.item.url, category: category, sourceId: widget.item.sourceId);
+    final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
+    final MediaDetail d;
+    if (isCatalog) {
+      final resolved = await sl<SourceRepository>().resolveCatalogTitle(widget.item, category: category);
+      if (resolved == null) return const {};
+      d = resolved.detail;
+    } else {
+      d = await sl<SourceRepository>().detail(widget.item.url, category: category, sourceId: widget.item.sourceId);
+    }
     final byS = <int, List<Episode>>{};
     for (final e in d.episodes) {
       (byS[seasonOf(e) ?? 1] ??= <Episode>[]).add(e);
@@ -479,7 +487,13 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   }
 
   Future<void> _pickSourceAndDownload(Episode ep, MediaDetail detail, String category) async {
-    final item = widget.item;
+    final item = MediaItem(
+      id: detail.id,
+      title: detail.title,
+      url: detail.url,
+      type: detail.type,
+      sourceId: detail.sourceId,
+    );
     final res = await showModalBottomSheet<SourcePickerResult>(
       context: context,
       backgroundColor: AppColors.surface,
@@ -490,15 +504,15 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         resolve: ([onProgress]) async {
           var s = await sl<SourceRepository>().sources(
             ep.url,
-            sourceId: item.sourceId,
+            sourceId: detail.sourceId,
             fast: true,
           );
           if (s.isNotEmpty) {
             onProgress?.call(
               sources: s,
-              resolvedItem: item as MediaItem?,
-              resolvedDetail: detail as MediaDetail?,
-              resolvedEpisode: ep as Episode?,
+              resolvedItem: item,
+              resolvedDetail: detail,
+              resolvedEpisode: ep,
             );
           }
 
@@ -511,7 +525,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
             pollTries++;
             final polled = await sl<SourceRepository>().polledSources(
               ep.url,
-              sourceId: item.sourceId,
+              sourceId: detail.sourceId,
             );
             done = polled.done;
             final newSources = polled.sources.where((e) => !knownUrls.contains(e.url)).toList();
@@ -522,18 +536,18 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
               s = [...s, ...newSources];
               onProgress?.call(
                 sources: s,
-                resolvedItem: item as MediaItem?,
-                resolvedDetail: detail as MediaDetail?,
-                resolvedEpisode: ep as Episode?,
+                resolvedItem: item,
+                resolvedDetail: detail,
+                resolvedEpisode: ep,
               );
             }
           }
 
           return (
             sources: s,
-            resolvedItem: item as MediaItem?,
-            resolvedDetail: detail as MediaDetail?,
-            resolvedEpisode: ep as Episode?,
+            resolvedItem: item,
+            resolvedDetail: detail,
+            resolvedEpisode: ep,
             error: s.isEmpty ? 'No download sources found on installed providers' : null,
           );
         },

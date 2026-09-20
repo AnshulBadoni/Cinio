@@ -537,7 +537,9 @@ class SourceRepository {
           lower.contains('jav') ||
           lower.contains('missav') ||
           lower.contains('supjav') ||
-          lower.contains('spankbang')) {
+          lower.contains('spankbang') ||
+          lower.contains('paradisehill') ||
+          lower.contains('paradise')) {
         return true;
       }
       try {
@@ -552,27 +554,30 @@ class SourceRepository {
             name.contains('porn') ||
             name.contains('nsfw') ||
             name.contains('hentai') ||
-            name.contains('jav');
+            name.contains('jav') ||
+            name.contains('paradise');
       } catch (_) {
         return false;
       }
     }
 
-    // Sort candidates according to content type and preferred provider
-    final candidates = List<String>.from(allCandidates);
-    candidates.sort((a, b) {
-      if (preferred.isNotEmpty) {
-        if (a == preferred) return -1;
-        if (b == preferred) return 1;
-      }
-      final aAdult = isAdultProvider(a) ? 1 : 0;
-      final bAdult = isAdultProvider(b) ? 1 : 0;
-      if (isTpdb) {
-        return bAdult.compareTo(aAdult);
-      } else {
-        return aAdult.compareTo(bAdult);
-      }
-    });
+    // Build candidate list with content-type awareness
+    final adultSources = allCandidates.where(isAdultProvider).toList();
+    final nonAdultSources = allCandidates.where((id) => !isAdultProvider(id)).toList();
+    final List<String> candidates;
+    if (isTpdb) {
+      // For TPDB adult catalog titles, prioritize adult providers.
+      // If adult providers exist, search only adult providers to avoid saturating
+      // the channel with 30 non-adult scrapers which causes Himeros / ParadiseHill timeouts.
+      candidates = adultSources.isNotEmpty ? adultSources : allCandidates;
+    } else {
+      candidates = [...nonAdultSources, ...adultSources];
+    }
+
+    if (preferred.isNotEmpty && candidates.contains(preferred)) {
+      candidates.remove(preferred);
+      candidates.insert(0, preferred);
+    }
 
     // Preferred provider is attempted first if it aligns with content type or is configured.
     final tried = <String>{};
@@ -580,7 +585,7 @@ class SourceRepository {
     if (preferred.isNotEmpty && hasSource(preferred) && preferredMatchesType) {
       tried.add(preferred);
       final hit = await _resolveCatalogOnSource(catalog, preferred, category)
-          .timeout(const Duration(milliseconds: 2500), onTimeout: () => null);
+          .timeout(const Duration(milliseconds: 3000), onTimeout: () => null);
       if (hit != null) {
         _catalogResolutionCache[key] = (at: DateTime.now(), value: hit);
         return hit;

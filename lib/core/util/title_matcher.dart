@@ -279,6 +279,20 @@ class TitleMatcher {
       if (!list.contains(withAmp)) list.add(withAmp);
     }
 
+    // Volume variations: "vol.3" / "vol 3" / "volume 3"
+    final volMatch = RegExp(r'\b(vol|volume)\.?\s*(\d+)\b', caseSensitive: false).firstMatch(trimmed);
+    if (volMatch != null) {
+      final numStr = volMatch.group(2)!;
+      final withVolSpace = trimmed.replaceAll(volMatch.group(0)!, 'Vol $numStr').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (!list.contains(withVolSpace)) list.add(withVolSpace);
+
+      final withVolDot = trimmed.replaceAll(volMatch.group(0)!, 'Vol. $numStr').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (!list.contains(withVolDot)) list.add(withVolDot);
+
+      final withVolume = trimmed.replaceAll(volMatch.group(0)!, 'Volume $numStr').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (!list.contains(withVolume)) list.add(withVolume);
+    }
+
     // Strip year in parentheses, e.g. "Meant to Fuck (2026)" -> "Meant to Fuck"
     final withoutYear = trimmed.replaceAll(RegExp(r'\s*\(\d{4}\)'), '').trim();
     if (withoutYear.length >= 3 && !list.contains(withoutYear)) {
