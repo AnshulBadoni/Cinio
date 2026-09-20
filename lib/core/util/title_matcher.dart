@@ -251,65 +251,50 @@ class TitleMatcher {
     return bestScore >= 0.70 ? best : null;
   }
 
-  /// Generate fallback search queries for a given title to maximize provider search hits.
+  /// Generate provider search queries for a catalog title.
+  /// Generates a concise set of targeted variations (exact title, canonical/number,
+  /// ampersand synonym, stripped year/prefix) to prevent network saturation.
   static List<String> searchQueries(String title) {
-    final list = <String>[];
     final trimmed = title.trim();
-    if (trimmed.isEmpty) return list;
+    if (trimmed.isEmpty) return const [];
+    final list = <String>[];
 
-    // Canonical version without noise (e.g. "Fantasy Vol 10" -> "Fantasy 10").
-    // Prioritized first because provider SQL/text search routinely returns 0 results
-    // on noise terms like "Vol." while matching cleanly on digits.
+    // 1. Exact raw title as given in catalog
+    list.add(trimmed);
+
+    // 2. Canonical version without noise (e.g. "Fantasy Vol 10" -> "Fantasy 10").
     final canon = canonicalize(trimmed);
-    if (canon.isNotEmpty) {
+    if (canon.isNotEmpty && !list.contains(canon)) {
       list.add(canon);
     }
 
-    if (!list.contains(trimmed)) {
-      list.add(trimmed);
-    }
-
-    // Replace '&' with 'and' or vice-versa to maximize provider search hits
-    if (trimmed.contains('&')) {
-      final withAnd = trimmed.replaceAll('&', 'and').replaceAll(RegExp(r'\s+'), ' ').trim();
-      if (!list.contains(withAnd)) list.add(withAnd);
-    }
-    if (RegExp(r'\band\b', caseSensitive: false).hasMatch(trimmed)) {
-      final withAmp = trimmed.replaceAll(RegExp(r'\band\b', caseSensitive: false), '&').replaceAll(RegExp(r'\s+'), ' ').trim();
-      if (!list.contains(withAmp)) list.add(withAmp);
-    }
-
-    // Volume variations: "vol.3" / "vol 3" / "volume 3"
-    final volMatch = RegExp(r'\b(vol|volume)\.?\s*(\d+)\b', caseSensitive: false).firstMatch(trimmed);
+    // 3. Volume variation: "vol.3" / "vol 3" / "volume 3" -> "Vol 3"
+    final volMatch = RegExp(r'\b(?:vol|volume)\.?\s*(\d+)\b', caseSensitive: false).firstMatch(trimmed);
     if (volMatch != null) {
-      final numStr = volMatch.group(2)!;
+      final numStr = volMatch.group(1)!;
       final withVolSpace = trimmed.replaceAll(volMatch.group(0)!, 'Vol $numStr').replaceAll(RegExp(r'\s+'), ' ').trim();
       if (!list.contains(withVolSpace)) list.add(withVolSpace);
 
       final withVolDot = trimmed.replaceAll(volMatch.group(0)!, 'Vol. $numStr').replaceAll(RegExp(r'\s+'), ' ').trim();
       if (!list.contains(withVolDot)) list.add(withVolDot);
-
-      final withVolume = trimmed.replaceAll(volMatch.group(0)!, 'Volume $numStr').replaceAll(RegExp(r'\s+'), ' ').trim();
-      if (!list.contains(withVolume)) list.add(withVolume);
     }
 
-    // Strip year in parentheses, e.g. "Meant to Fuck (2026)" -> "Meant to Fuck"
+    // 4. Ampersand / word synonyms (& <-> and)
+    if (trimmed.contains('&')) {
+      final withAnd = trimmed.replaceAll('&', 'and').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (!list.contains(withAnd)) list.add(withAnd);
+    } else if (RegExp(r'\band\b', caseSensitive: false).hasMatch(trimmed)) {
+      final withAmp = trimmed.replaceAll(RegExp(r'\band\b', caseSensitive: false), '&').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (!list.contains(withAmp)) list.add(withAmp);
+    }
+
+    // 5. Strip year in parentheses, e.g. "Meant to Fuck (2026)" -> "Meant to Fuck"
     final withoutYear = trimmed.replaceAll(RegExp(r'\s*\(\d{4}\)'), '').trim();
     if (withoutYear.length >= 3 && !list.contains(withoutYear)) {
       list.add(withoutYear);
-      if (withoutYear.contains('&')) {
-        final withAnd = withoutYear.replaceAll('&', 'and').replaceAll(RegExp(r'\s+'), ' ').trim();
-        if (!list.contains(withAnd)) list.add(withAnd);
-      }
     }
 
-    // Base title without trailing numbers/volumes (e.g. "Fantasy Vol 10" -> "Fantasy")
-    final withoutNumbers = trimmed.replaceAll(RegExp(r'\s*(vol|volume|pt|part|episode|ep|scene)?\.?\s*\d+\s*$', caseSensitive: false), '').trim();
-    if (withoutNumbers.length >= 3 && !list.contains(withoutNumbers)) {
-      list.add(withoutNumbers);
-    }
-
-    // Strip prefix before hyphen (e.g. "Studio - Title" -> "Title")
+    // 6. Strip prefix before hyphen (e.g. "Studio - Title" -> "Title")
     if (trimmed.contains(' - ')) {
       final afterHyphen = trimmed.split(' - ').last.trim();
       if (afterHyphen.length >= 3 && !list.contains(afterHyphen)) {
@@ -317,12 +302,10 @@ class TitleMatcher {
       }
     }
 
-    // Strip prefix before colon (e.g. "Studio: Title" -> "Title")
-    if (trimmed.contains(': ')) {
-      final afterColon = trimmed.split(': ').last.trim();
-      if (afterColon.length >= 3 && !list.contains(afterColon)) {
-        list.add(afterColon);
-      }
+    // 7. Base title without trailing numbers/volumes as last fallback
+    final withoutNumbers = trimmed.replaceAll(RegExp(r'\s*(?:vol|volume|pt|part|episode|ep|scene)?\.?\s*\d+\s*$', caseSensitive: false), '').trim();
+    if (withoutNumbers.length >= 3 && !list.contains(withoutNumbers)) {
+      list.add(withoutNumbers);
     }
 
     return list;

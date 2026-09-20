@@ -585,7 +585,7 @@ class SourceRepository {
     if (preferred.isNotEmpty && hasSource(preferred) && preferredMatchesType) {
       tried.add(preferred);
       final hit = await _resolveCatalogOnSource(catalog, preferred, category)
-          .timeout(const Duration(milliseconds: 3000), onTimeout: () => null);
+          .timeout(const Duration(milliseconds: 5000), onTimeout: () => null);
       if (hit != null) {
         _catalogResolutionCache[key] = (at: DateTime.now(), value: hit);
         return hit;
@@ -660,8 +660,10 @@ class SourceRepository {
           category: category,
           sourceId: providerId,
         );
-        final hit = await _findValidCatalogMatch(results, catalog, category);
-        if (hit != null) return hit;
+        if (results.isNotEmpty) {
+          final hit = await _findValidCatalogMatch(results, catalog, category);
+          if (hit != null) return hit;
+        }
 
         if (category != 'dub' && catalog.tmdbIsTv) {
           final dubResults = await search(
@@ -669,8 +671,10 @@ class SourceRepository {
             category: 'dub',
             sourceId: providerId,
           );
-          final dubHit = await _findValidCatalogMatch(dubResults, catalog, 'dub');
-          if (dubHit != null) return dubHit;
+          if (dubResults.isNotEmpty) {
+            final dubHit = await _findValidCatalogMatch(dubResults, catalog, 'dub');
+            if (dubHit != null) return dubHit;
+          }
         }
       }
 
@@ -715,9 +719,9 @@ class SourceRepository {
       return b.score.compareTo(a.score);
     });
 
-    for (final cand in candidates.take(3)) {
+    for (final cand in candidates.take(2)) {
       try {
-        final resolvedDetail = await detail(
+        var resolvedDetail = await detail(
           cand.item.url,
           category: category,
           sourceId: cand.item.sourceId,
@@ -731,15 +735,22 @@ class SourceRepository {
           if (resolvedDetail.episodes.isEmpty) {
             continue;
           }
-        } else if (!catalog.sourceId.startsWith('tpdb:')) {
-          // If catalog is Movie, reject TV series (skip this check for TPDB since scenes/movies often have multipart or scene structures)
-          if (resolvedDetail.isSeries && resolvedDetail.episodes.length > 1) {
-            continue;
+        } else {
+          // For movies, if episodes is empty, synthesize 1 episode so it can play/download
+          if (resolvedDetail.episodes.isEmpty) {
+            resolvedDetail = resolvedDetail.copyWith(
+              episodes: [
+                Episode(
+                  id: cand.item.id,
+                  number: 1,
+                  title: resolvedDetail.title.trim().isNotEmpty
+                      ? resolvedDetail.title
+                      : catalog.title,
+                  url: cand.item.url,
+                ),
+              ],
+            );
           }
-        }
-
-        if (resolvedDetail.episodes.isEmpty) {
-          continue;
         }
 
         return (item: cand.item, detail: resolvedDetail);

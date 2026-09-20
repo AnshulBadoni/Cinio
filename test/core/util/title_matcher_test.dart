@@ -103,7 +103,6 @@ void main() {
       expect(queries, contains('young housewives vol.3'));
       expect(queries, contains('young housewives Vol 3'));
       expect(queries, contains('young housewives Vol. 3'));
-      expect(queries, contains('young housewives Volume 3'));
       expect(queries, contains('young housewives'));
     });
 

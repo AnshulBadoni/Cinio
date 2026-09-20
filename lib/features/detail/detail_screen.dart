@@ -246,6 +246,7 @@ class _DetailViewState extends State<_DetailView>
   String? _prefetchedEpUrl;
   bool _prefetchedCatalog = false;
   bool _resolvingPlay = false;
+  bool _resolvingDownload = false;
 
   // Filler episode numbers (from Jikan by MAL id), for the "Filler" badge in the
   // episode list. Fetched once per malId; empty for non-anime / unlisted shows.
@@ -1382,78 +1383,87 @@ class _DetailViewState extends State<_DetailView>
     required Map<int, List<Episode>> episodesBySeason,
     required int initialSeason,
   }) async {
+    if (_resolvingDownload) return;
     final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
-    if (isCatalog) {
-      var resolved = await _resolveCatalogPlayback(category: category);
-      if (!mounted) return;
-      if (resolved == null) {
-        resolved = await _showProviderPickerSheet(detail, category: category);
+    setState(() => _resolvingDownload = true);
+    try {
+      if (isCatalog) {
+        var resolved = await _resolveCatalogPlayback(category: category);
+        if (!mounted) return;
         if (resolved == null) {
-          if (mounted) _snack('No downloadable provider result found for ${widget.item.title}');
-          return;
+          setState(() => _resolvingDownload = false);
+          resolved = await _showProviderPickerSheet(detail, category: category);
+          if (resolved == null) {
+            if (mounted) _snack('No downloadable provider result found for ${widget.item.title}');
+            return;
+          }
+          if (!mounted) return;
+          setState(() => _resolvingDownload = true);
         }
+        detail = resolved.detail;
+        episodesBySeason = <int, List<Episode>>{};
+        for (final e in detail.episodes) { (episodesBySeason[seasonOf(e) ?? 1] ??= <Episode>[]).add(e); }
       }
-      detail = resolved.detail;
-      episodesBySeason = <int, List<Episode>>{};
-      for (final e in detail.episodes) { (episodesBySeason[seasonOf(e) ?? 1] ??= <Episode>[]).add(e); }
-    }
-    final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
-    if (total == 0) {
-      _snack('No episodes to download');
-      return;
-    }
-    if (total == 1 || (!detail.isSeries && isCatalog)) {
-      final ep = episodesBySeason.values.isNotEmpty && episodesBySeason.values.first.isNotEmpty
-          ? episodesBySeason.values.first.first
-          : (detail.episodes.isNotEmpty
-              ? detail.episodes.first
-              : Episode(id: widget.item.id, number: 1, title: detail.title, url: widget.item.url));
-      await _pickSourceAndDownload(
-        ep,
-        detail,
-        category,
-      );
-      return;
-    }
-    // Sub/Dub the title actually offers; the sheet only shows the toggle when
-    // there's more than one. Defaults to the page's current category (seeded
-    // from the per-title remembered choice).
-    final availableCategories = <String>[
-      if ((detail.subCount ?? 0) > 0) 'sub',
-      if ((detail.dubCount ?? 0) > 0) 'dub',
-    ];
-    final res =
-        await showModalBottomSheet<
-          ({String quality, String category, List<Episode> episodes})
-        >(
-          context: context,
-          backgroundColor: AppColors.surface,
-          isScrollControlled: true,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          builder: (_) => _DownloadSheet(
-            // Phone-only Minimal wheel (Settings → Interface). TV stays on the
-            // well-tested Classic grid regardless of the pref.
-            minimal:
-                !sl<AppMode>().isTv &&
-                sl<PlaybackPrefs>().batchDownloadStyle == 'minimal',
-            title: detail.title,
-            episodesBySeason: episodesBySeason,
-            initialSeason: initialSeason,
-            initialCategory: category,
-            availableCategories: availableCategories,
-            coverUrl: detail.cover ?? widget.item.cover ?? '',
-            coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-            resolve: (ep) => sl<SourceRepository>().sources(
-              ep.url,
-              sourceId: detail.sourceId,
-            ),
-            resolveEpisodes: _episodesByCategory,
-          ),
+      final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
+      if (total == 0) {
+        _snack('No episodes to download');
+        return;
+      }
+      if (total == 1 || (!detail.isSeries && isCatalog)) {
+        final ep = episodesBySeason.values.isNotEmpty && episodesBySeason.values.first.isNotEmpty
+            ? episodesBySeason.values.first.first
+            : (detail.episodes.isNotEmpty
+                ? detail.episodes.first
+                : Episode(id: widget.item.id, number: 1, title: detail.title, url: widget.item.url));
+        await _pickSourceAndDownload(
+          ep,
+          detail,
+          category,
         );
-    if (res == null || !mounted) return;
-    _startDownload(detail, res.category, res.quality, res.episodes);
+        return;
+      }
+      // Sub/Dub the title actually offers; the sheet only shows the toggle when
+      // there's more than one. Defaults to the page's current category (seeded
+      // from the per-title remembered choice).
+      final availableCategories = <String>[
+        if ((detail.subCount ?? 0) > 0) 'sub',
+        if ((detail.dubCount ?? 0) > 0) 'dub',
+      ];
+      final res =
+          await showModalBottomSheet<
+            ({String quality, String category, List<Episode> episodes})
+          >(
+            context: context,
+            backgroundColor: AppColors.surface,
+            isScrollControlled: true,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            builder: (_) => _DownloadSheet(
+              // Phone-only Minimal wheel (Settings → Interface). TV stays on the
+              // well-tested Classic grid regardless of the pref.
+              minimal:
+                  !sl<AppMode>().isTv &&
+                  sl<PlaybackPrefs>().batchDownloadStyle == 'minimal',
+              title: detail.title,
+              episodesBySeason: episodesBySeason,
+              initialSeason: initialSeason,
+              initialCategory: category,
+              availableCategories: availableCategories,
+              coverUrl: detail.cover ?? widget.item.cover ?? '',
+              coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
+              resolve: (ep) => sl<SourceRepository>().sources(
+                ep.url,
+                sourceId: detail.sourceId,
+              ),
+              resolveEpisodes: _episodesByCategory,
+            ),
+          );
+      if (res == null || !mounted) return;
+      _startDownload(detail, res.category, res.quality, res.episodes);
+    } finally {
+      if (mounted) setState(() => _resolvingDownload = false);
+    }
   }
 
   /// Re-resolve a title's episodes for a given sub/dub [category] (without
@@ -2056,6 +2066,7 @@ class _DetailViewState extends State<_DetailView>
                         const SizedBox(height: 10),
                         _DownloadButton(
                           label: downloadLabel,
+                          loading: _resolvingDownload,
                           onPressed: () => _openDownloadSheet(
                             detail: detail,
                             category: category,

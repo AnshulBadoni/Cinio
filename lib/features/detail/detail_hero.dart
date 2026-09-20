@@ -572,10 +572,12 @@ class _DownloadButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.onLongPress,
+    this.loading = false,
   });
   final String label;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final VoidCallback? onLongPress;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -584,21 +586,34 @@ class _DownloadButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        onTap: onPressed,
-        onLongPress: onLongPress,
+        onTap: loading ? null : onPressed,
+        onLongPress: loading ? null : onLongPress,
         child: SizedBox(
           height: 52,
           width: double.infinity,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                Icons.file_download_outlined,
-                color: Colors.white,
-                size: 24,
-              ),
-              const SizedBox(width: 8),
-              Text(label, style: AppText.button.copyWith(color: Colors.white)),
+              if (loading) ...[
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text('Finding sources...', style: AppText.button.copyWith(color: Colors.white)),
+              ] else ...[
+                const Icon(
+                  Icons.file_download_outlined,
+                  color: Colors.white,
+                  size: 24,
+                ),
+                const SizedBox(width: 8),
+                Text(label, style: AppText.button.copyWith(color: Colors.white)),
+              ],
             ],
           ),
         ),
