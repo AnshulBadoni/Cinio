@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPicker;
@@ -12,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/ui/jump_prompt.dart';
+import '../../core/util/title_matcher.dart';
 import '../../core/app_mode.dart';
 import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
@@ -901,6 +903,25 @@ class _DetailViewState extends State<_DetailView>
     }
   }
 
+  Future<({MediaItem item, MediaDetail detail})?> _showProviderPickerSheet(
+    MediaDetail detail, {
+    String category = 'sub',
+  }) async {
+    return showModalBottomSheet<({MediaItem item, MediaDetail detail})>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _ProviderPickerSheet(
+        catalogItem: widget.item,
+        catalogDetail: detail,
+        category: category,
+      ),
+    );
+  }
+
   Future<({MediaItem item, MediaDetail detail})?> _resolveCatalogPlayback({
     String category = 'sub',
   }) async {
@@ -930,9 +951,15 @@ class _DetailViewState extends State<_DetailView>
     final targetEp = (index >= 0 && index < episodes.length) ? episodes[index] : null;
 
     if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
-      final resolved = await _resolveCatalogPlayback(category: category);
+      var resolved = await _resolveCatalogPlayback(category: category);
       if (!mounted) return;
-      if (resolved == null) { _snack('No playable provider result found for ${widget.item.title}'); return; }
+      if (resolved == null) {
+        resolved = await _showProviderPickerSheet(detail, category: category);
+        if (resolved == null) {
+          if (mounted) _snack('No playable provider result found for ${widget.item.title}');
+          return;
+        }
+      }
       detail = resolved.detail;
       episodes = detail.episodes;
       if (episodes.isEmpty) {
@@ -1333,9 +1360,15 @@ class _DetailViewState extends State<_DetailView>
       return;
     }
     if (isCatalog) {
-      final resolved = await _resolveCatalogPlayback(category: category);
+      var resolved = await _resolveCatalogPlayback(category: category);
       if (!mounted) return;
-      if (resolved == null) { _snack('No downloadable provider result found for ${widget.item.title}'); return; }
+      if (resolved == null) {
+        resolved = await _showProviderPickerSheet(detail, category: category);
+        if (resolved == null) {
+          if (mounted) _snack('No downloadable provider result found for ${widget.item.title}');
+          return;
+        }
+      }
       detail = resolved.detail;
       episodesBySeason = <int, List<Episode>>{};
       for (final e in detail.episodes) { (episodesBySeason[seasonOf(e) ?? 1] ??= <Episode>[]).add(e); }
@@ -1464,7 +1497,10 @@ class _DetailViewState extends State<_DetailView>
           var targetEp = ep;
 
           if (isCatalog) {
-            final resolved = await _resolveCatalogPlayback(category: category);
+            var resolved = await _resolveCatalogPlayback(category: category);
+            if (resolved == null) {
+              resolved = await _showProviderPickerSheet(detail, category: category);
+            }
             if (resolved == null) {
               return (
                 sources: <VideoSource>[],
@@ -1953,6 +1989,15 @@ class _DetailViewState extends State<_DetailView>
                                 widget.item.sourceId.startsWith('tpdb:'))
                             ? () => _openPlayer(eps, resumeIdx, detail, category)
                             : null,
+                        onLongPress: (widget.item.sourceId == 'tmdb:catalog' ||
+                                widget.item.sourceId.startsWith('tpdb:'))
+                            ? () async {
+                                final picked = await _showProviderPickerSheet(detail, category: category);
+                                if (picked != null && mounted) {
+                                  _openPlayer(picked.detail.episodes, 0, picked.detail, category);
+                                }
+                              }
+                            : null,
                       ),
                       // Reading downloads are out of scope for this plan.
                       if (!isReading) ...[
@@ -1965,6 +2010,22 @@ class _DetailViewState extends State<_DetailView>
                             episodesBySeason: episodesBySeason,
                             initialSeason: currentSeason,
                           ),
+                          onLongPress: (widget.item.sourceId == 'tmdb:catalog' ||
+                                  widget.item.sourceId.startsWith('tpdb:'))
+                              ? () async {
+                                  final picked = await _showProviderPickerSheet(detail, category: category);
+                                  if (picked != null && mounted) {
+                                    _openDownloadSheet(
+                                      detail: picked.detail,
+                                      category: category,
+                                      episodesBySeason: {
+                                        1: picked.detail.episodes,
+                                      },
+                                      initialSeason: 1,
+                                    );
+                                  }
+                                }
+                              : null,
                         ),
                       ],
                     ],

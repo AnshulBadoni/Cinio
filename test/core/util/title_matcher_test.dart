@@ -46,6 +46,13 @@ void main() {
       expect(TitleMatcher.isMatch('Fantasy Vol 10', 'Fantasy 10 (2023)'), isTrue);
     });
 
+    test('matches wanted title when provider has studio and performer info', () {
+      expect(TitleMatcher.isMatch('In Loving Memory', 'Sweet Sinner - In Loving Memory - Maya Kendrick'), isTrue);
+      expect(TitleMatcher.isMatch('In Loving Memory', 'SpeedPorn - In Loving Memory'), isTrue);
+      expect(TitleMatcher.isMatch('In Loving Memory', 'Blacked: In Loving Memory (Kendra Lust)'), isTrue);
+      expect(TitleMatcher.matchScore('In Loving Memory', 'SpeedPorn - In Loving Memory'), greaterThanOrEqualTo(0.90));
+    });
+
     test('does NOT match different volume numbers', () {
       expect(TitleMatcher.isMatch('Fantasy Vol 10', 'Fantasy Vol 1'), isFalse);
       expect(TitleMatcher.isMatch('Fantasy Vol 10', 'Fantasy 1'), isFalse);

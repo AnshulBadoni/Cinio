@@ -499,10 +499,12 @@ class _PlayButton extends StatelessWidget {
   const _PlayButton({
     required this.label,
     this.onPressed,
+    this.onLongPress,
     this.icon = Icons.play_arrow_rounded,
   });
   final String label;
   final VoidCallback? onPressed;
+  final VoidCallback? onLongPress;
 
   /// Reading types (manga/novel) show a book icon instead of the play glyph.
   final IconData icon;
@@ -518,6 +520,7 @@ class _PlayButton extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
           onTap: onPressed,
+          onLongPress: onLongPress,
           child: SizedBox(
             height: 52,
             width: double.infinity,
@@ -545,9 +548,14 @@ class _PlayButton extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DownloadButton extends StatelessWidget {
-  const _DownloadButton({required this.label, required this.onPressed});
+  const _DownloadButton({
+    required this.label,
+    required this.onPressed,
+    this.onLongPress,
+  });
   final String label;
   final VoidCallback onPressed;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -557,6 +565,7 @@ class _DownloadButton extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: onPressed,
+        onLongPress: onLongPress,
         child: SizedBox(
           height: 52,
           width: double.infinity,

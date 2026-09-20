@@ -520,13 +520,59 @@ class SourceRepository {
       return cached.value;
     }
 
+    final isTpdb = catalog.sourceId.startsWith('tpdb:');
     final preferred = sourceId;
-    final candidates = loadedSources.map((s) => s.id).toList();
+    final allCandidates = loadedSources.map((s) => s.id).toList();
 
-    // Preferred provider is always attempted first. An empty active source is
-    // a valid first-run state, so simply skip it.
+    bool isAdultProvider(String id) {
+      final lower = id.toLowerCase();
+      if (lower.contains('speedporn') ||
+          lower.contains('himeros') ||
+          lower.contains('sora') ||
+          lower.contains('adult') ||
+          lower.contains('porn') ||
+          lower.contains('nsfw') ||
+          lower.contains('hentai') ||
+          lower.contains('jav') ||
+          lower.contains('missav') ||
+          lower.contains('supjav') ||
+          lower.contains('spankbang')) {
+        return true;
+      }
+      try {
+        final p = _providerFor(id);
+        if (p is AniyomiProvider && p.info.nsfw) return true;
+        if (p is MihonProvider && p.info.nsfw) return true;
+        final name = p.displayName.toLowerCase();
+        return name.contains('speedporn') ||
+            name.contains('himeros') ||
+            name.contains('sora') ||
+            name.contains('adult') ||
+            name.contains('porn') ||
+            name.contains('nsfw') ||
+            name.contains('hentai') ||
+            name.contains('jav');
+      } catch (_) {
+        return false;
+      }
+    }
+
+    // Sort candidates according to content type
+    final candidates = List<String>.from(allCandidates);
+    candidates.sort((a, b) {
+      final aAdult = isAdultProvider(a) ? 1 : 0;
+      final bAdult = isAdultProvider(b) ? 1 : 0;
+      if (isTpdb) {
+        return bAdult.compareTo(aAdult);
+      } else {
+        return aAdult.compareTo(bAdult);
+      }
+    });
+
+    // Preferred provider is attempted first if it aligns with content type or is active.
     final tried = <String>{};
-    if (preferred.isNotEmpty && hasSource(preferred)) {
+    final preferredMatchesType = !isTpdb || isAdultProvider(preferred);
+    if (preferred.isNotEmpty && hasSource(preferred) && preferredMatchesType) {
       tried.add(preferred);
       final hit = await _resolveCatalogOnSource(catalog, preferred, category)
           .timeout(const Duration(milliseconds: 2500), onTimeout: () => null);
@@ -536,9 +582,7 @@ class SourceRepository {
       }
     }
 
-    // Only now fan out. The calls are concurrent and each provider is isolated
-    // from failures/timeouts. We return the first usable match rather than
-    // waiting for every installed provider to finish.
+    // Fan out to remaining providers in parallel.
     final remaining = candidates.where((id) => !tried.contains(id)).toList();
     if (remaining.isEmpty) return null;
 
@@ -549,7 +593,7 @@ class SourceRepository {
     double bestFuzzyScore = 0.0;
     Timer? fuzzyGraceTimer;
 
-    void finishWith( ({MediaItem item, MediaDetail detail})? res) {
+    void finishWith(({MediaItem item, MediaDetail detail})? res) {
       if (completer.isCompleted) return;
       fuzzyGraceTimer?.cancel();
       completer.complete(res);
@@ -557,7 +601,7 @@ class SourceRepository {
 
     for (final id in remaining) {
       _resolveCatalogOnSource(catalog, id, category)
-          .timeout(const Duration(seconds: 8), onTimeout: () => null)
+          .timeout(const Duration(seconds: 12), onTimeout: () => null)
           .then((result) {
         if (completer.isCompleted) return;
         if (result != null) {
@@ -569,8 +613,7 @@ class SourceRepository {
           } else if (score > bestFuzzyScore && score >= 0.70) {
             bestFuzzyScore = score;
             bestFuzzyResult = result;
-            // Short 250ms window to give other providers a chance to return an exact full match
-            fuzzyGraceTimer ??= Timer(const Duration(milliseconds: 250), () {
+            fuzzyGraceTimer ??= Timer(const Duration(milliseconds: 500), () {
               finishWith(bestFuzzyResult);
             });
           }
@@ -678,11 +721,15 @@ class SourceRepository {
           if (resolvedDetail.episodes.isEmpty) {
             continue;
           }
-        } else {
-          // If catalog is Movie, reject TV series
+        } else if (!catalog.sourceId.startsWith('tpdb:')) {
+          // If catalog is Movie, reject TV series (skip this check for TPDB since scenes/movies often have multipart or scene structures)
           if (resolvedDetail.isSeries && resolvedDetail.episodes.length > 1) {
             continue;
           }
+        }
+
+        if (resolvedDetail.episodes.isEmpty) {
+          continue;
         }
 
         return (item: cand.item, detail: resolvedDetail);

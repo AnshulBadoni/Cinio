@@ -163,6 +163,11 @@ class TitleMatcher {
       }
     }
 
+    // Contiguous substring match: e.g. "SpeedPorn - In Loving Memory" contains "In Loving Memory"
+    if (canonWanted.length >= 4 && canonCand.contains(canonWanted)) {
+      return 0.95;
+    }
+
     final wantedTokens = tokenize(wanted);
     final candTokens = tokenize(candidate);
     if (wantedTokens.isEmpty || candTokens.isEmpty) return 0.0;
@@ -171,12 +176,13 @@ class TitleMatcher {
     final wantedSet = wantedTokens.toSet();
     final candSet = candTokens.toSet();
     if (wantedSet.isNotEmpty) {
-      if (wantedSet.every(candSet.contains) && (candTokens.length - wantedTokens.length).abs() <= 4) {
-        // Disallow sequel / subtitle drift: any extra tokens in candidate must be
-        // technical release tags, year, or studio tags, NOT distinct subtitle words (e.g. "Afterlife").
+      if (wantedSet.every(candSet.contains)) {
         final extraTokens = candSet.difference(wantedSet);
-        if (extraTokens.isNotEmpty && extraTokens.every(_isReleaseOrYearToken)) {
-          return 0.92;
+        if (extraTokens.isEmpty || extraTokens.every(_isReleaseOrYearToken)) {
+          return 0.95;
+        }
+        if (wantedTokens.length >= 2 && (candTokens.length - wantedTokens.length).abs() <= 6) {
+          return 0.90;
         }
       }
       if (wantedSet.length >= 2 && candSet.every(wantedSet.contains) && (wantedTokens.length - candTokens.length).abs() <= 2) {

@@ -415,12 +415,41 @@ class TmdbDiscoverService {
     if (rows is! List) return const [];
 
     final out = <MediaItem>[];
+    final personIds = <int>[];
     for (final row in rows) {
-      if (row is Map) out.addAll(_mapSearchRow(row, type: type, genre: genre));
+      if (row is Map) {
+        if (row['media_type'] == 'person' && row['id'] is num) {
+          personIds.add((row['id'] as num).toInt());
+        }
+        out.addAll(_mapSearchRow(row, type: type, genre: genre));
+      }
     }
 
-    // If query could be a studio/company (e.g. "Marvel", "Pixar", "A24")
-    if (page == 1 && out.length < 10) {
+    // If search matched an actor/person, fetch their popular filmography
+    if (page == 1 && personIds.isNotEmpty) {
+      for (final pid in personIds.take(2)) {
+        try {
+          final creditsRes = await _dio.get<dynamic>(
+            '${Tmdb.base}/person/$pid/combined_credits',
+            options: Options(receiveTimeout: const Duration(seconds: 8)),
+          );
+          final cast = creditsRes.data is Map ? creditsRes.data['cast'] : null;
+          if (cast is List) {
+            final sortedCast = List<Map>.from(cast.whereType<Map>());
+            sortedCast.sort((a, b) => ((b['popularity'] as num?) ?? 0).compareTo((a['popularity'] as num?) ?? 0));
+            final seen = out.map((i) => i.id).toSet();
+            for (final r in sortedCast.take(15)) {
+              for (final item in _mapSearchRow(r, type: type, genre: genre)) {
+                if (seen.add(item.id)) out.add(item);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    // If query could be a studio/company (e.g. "Marvel", "Pixar", "A24", "HBO")
+    if (page == 1 && out.length < 15) {
       try {
         final companyRes = await _dio.get<dynamic>(
           '${Tmdb.base}/search/company',
@@ -432,20 +461,28 @@ class TmdbDiscoverService {
           final firstComp = cRows.first;
           final cId = (firstComp is Map ? firstComp['id'] : null)?.toString();
           if (cId != null) {
-            final compMovies = await _dio.get<dynamic>(
+            final compMoviesRes = await _dio.get<dynamic>(
               '${Tmdb.base}/discover/movie',
               queryParameters: {'with_companies': cId, 'page': 1, 'sort_by': 'popularity.desc'},
               options: Options(receiveTimeout: const Duration(seconds: 8)),
             );
-            final mRows = compMovies.data is Map ? compMovies.data['results'] : null;
-            if (mRows is List) {
-              final seen = out.map((i) => i.id).toSet();
-              for (final r in mRows) {
-                if (r is Map) {
-                  for (final item in _mapSearchRow(r, type: type, genre: genre)) {
-                    if (seen.add(item.id)) out.add(item);
-                  }
-                }
+            final compTvRes = await _dio.get<dynamic>(
+              '${Tmdb.base}/discover/tv',
+              queryParameters: {'with_companies': cId, 'page': 1, 'sort_by': 'popularity.desc'},
+              options: Options(receiveTimeout: const Duration(seconds: 8)),
+            );
+            final mRows = compMoviesRes.data is Map ? compMoviesRes.data['results'] : null;
+            final tvRows = compTvRes.data is Map ? compTvRes.data['results'] : null;
+            final allCompanyRows = [
+              if (mRows is List) ...mRows.whereType<Map>(),
+              if (tvRows is List) ...tvRows.whereType<Map>(),
+            ];
+            allCompanyRows.sort((a, b) => ((b['popularity'] as num?) ?? 0).compareTo((a['popularity'] as num?) ?? 0));
+
+            final seen = out.map((i) => i.id).toSet();
+            for (final r in allCompanyRows.take(15)) {
+              for (final item in _mapSearchRow(r, type: type, genre: genre)) {
+                if (seen.add(item.id)) out.add(item);
               }
             }
           }

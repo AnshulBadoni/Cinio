@@ -22,7 +22,7 @@ void main() {
     test('search returns matching movies', () async {
       final items = await tpdb.search('nurse', page: 1);
       expect(items, isNotEmpty);
-      expect(items.first.sourceId, 'tpdb:catalog');
+      expect(items.any((item) => item.sourceId == 'tpdb:catalog'), isTrue);
     });
 
     test('performers returns non-empty list of performers', () async {

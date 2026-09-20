@@ -1645,3 +1645,208 @@ class _ThumbnailProgressBar extends StatelessWidget {
     );
   }
 }
+
+class _ProviderPickerSheet extends StatefulWidget {
+  const _ProviderPickerSheet({
+    required this.catalogItem,
+    required this.catalogDetail,
+    required this.category,
+  });
+
+  final MediaItem catalogItem;
+  final MediaDetail catalogDetail;
+  final String category;
+
+  @override
+  State<_ProviderPickerSheet> createState() => _ProviderPickerSheetState();
+}
+
+class _ProviderPickerSheetState extends State<_ProviderPickerSheet> {
+  final List<({MediaItem item, String providerName, double score})> _results = [];
+  bool _searching = true;
+  String? _resolvingItemUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _startSearch();
+  }
+
+  Future<void> _startSearch() async {
+    final repo = sl<SourceRepository>();
+    final sources = repo.loadedSources;
+    final queries = TitleMatcher.searchQueries(widget.catalogItem.title);
+
+    final futures = sources.map((s) async {
+      try {
+        for (final q in queries) {
+          final items = await repo
+              .search(q, category: widget.category, sourceId: s.id)
+              .timeout(const Duration(seconds: 10), onTimeout: () => <MediaItem>[]);
+          for (final item in items) {
+            final s1 = TitleMatcher.matchScore(
+              widget.catalogItem.title,
+              item.title,
+              altWanted: widget.catalogItem.englishTitle,
+            );
+            final s2 = item.englishTitle != null
+                ? TitleMatcher.matchScore(
+                    widget.catalogItem.title,
+                    item.englishTitle!,
+                    altWanted: widget.catalogItem.englishTitle,
+                  )
+                : 0.0;
+            final score = math.max(s1, s2);
+            if (score >= 0.50 ||
+                item.title.toLowerCase().contains(widget.catalogItem.title.toLowerCase())) {
+              if (mounted) {
+                setState(() {
+                  if (!_results.any((r) => r.item.url == item.url && r.item.sourceId == item.sourceId)) {
+                    _results.add((item: item, providerName: s.name, score: score));
+                    _results.sort((a, b) => b.score.compareTo(a.score));
+                  }
+                });
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    });
+
+    await Future.wait(futures);
+    if (mounted) {
+      setState(() => _searching = false);
+    }
+  }
+
+  Future<void> _selectItem(({MediaItem item, String providerName, double score}) entry) async {
+    setState(() => _resolvingItemUrl = entry.item.url);
+    try {
+      final repo = sl<SourceRepository>();
+      final detail = await repo.detail(
+        entry.item.url,
+        category: widget.category,
+        sourceId: entry.item.sourceId,
+      );
+      if (mounted) {
+        Navigator.of(context).pop((item: entry.item, detail: detail));
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _resolvingItemUrl = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load from ${entry.providerName}')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 12, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Choose Provider', style: AppText.title),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Select a streaming provider for “${widget.catalogItem.title}”',
+                        style: AppText.caption,
+                      ),
+                    ],
+                  ),
+                ),
+                if (_searching)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (_results.isEmpty && !_searching)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    'No matching providers found for “${widget.catalogItem.title}”',
+                    style: AppText.caption.copyWith(color: AppColors.textSecondary),
+                  ),
+                ),
+              )
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.5,
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _results.length,
+                  separatorBuilder: (context, index) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final entry = _results[i];
+                    final isResolving = _resolvingItemUrl == entry.item.url;
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      leading: entry.item.cover != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: Image.network(
+                                entry.item.cover!,
+                                width: 40,
+                                height: 56,
+                                fit: BoxFit.cover,
+                                errorBuilder: (c, e, s) => const Icon(Icons.movie),
+                              ),
+                            )
+                          : const Icon(Icons.movie),
+                      title: Text(
+                        entry.item.title,
+                        style: AppText.body.copyWith(fontWeight: FontWeight.w600),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        'Provider: ${entry.providerName}',
+                        style: AppText.caption.copyWith(color: AppColors.accent),
+                      ),
+                      trailing: isResolving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.chevron_right),
+                      onTap: isResolving ? null : () => _selectItem(entry),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

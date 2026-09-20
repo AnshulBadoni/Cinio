@@ -238,17 +238,20 @@ class ThePornDb {
         (derivedAge == null || derivedAge < 50);
   }
 
-  Future<List<MediaItem>> studios({int page = 1}) async {
+  Future<List<MediaItem>> studios({int page = 1, String? query}) async {
+    final isSearch = query != null && query.trim().isNotEmpty;
     var data = await _get('/sites', queryParameters: {
       'page': page,
       'per_page': 24,
       'orderBy': 'most_relevant',
+      if (isSearch) 'q': query.trim(),
     });
     var rows = data['data'];
     if (rows is! List || rows.isEmpty) {
       data = await _get('/sites', queryParameters: {
         'page': page,
         'per_page': 24,
+        if (isSearch) 'q': query.trim(),
       });
       rows = data['data'];
     }
@@ -316,8 +319,27 @@ class ThePornDb {
         _ => Future.value(const []),
       };
 
-  Future<List<MediaItem>> search(String query, {int page = 1}) =>
-      movies(page: page, query: query, orderBy: 'most_relevant');
+  Future<List<MediaItem>> search(String query, {int page = 1}) async {
+    final clean = query.trim();
+    if (clean.isEmpty) return const [];
+    if (page > 1) {
+      return movies(page: page, query: clean, orderBy: 'most_relevant');
+    }
+    final results = await Future.wait([
+      _safe(() => performers(page: 1, query: clean)),
+      _safe(() => studios(page: 1, query: clean)),
+      _safe(() => movies(page: 1, query: clean, orderBy: 'most_relevant')),
+    ]);
+    final perfList = results[0];
+    final studList = results[1];
+    final movList = results[2];
+
+    return [
+      ...perfList,
+      ...studList,
+      ...movList,
+    ];
+  }
 
   Future<MediaDetail> movieDetail(MediaItem item) async {
     final rawId = item.id.replaceFirst('tpdb:movie:', '');
