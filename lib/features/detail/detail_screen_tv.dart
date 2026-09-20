@@ -417,13 +417,33 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     required Map<int, List<Episode>> episodesBySeason,
     required int initialSeason,
   }) async {
+    final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
+    if (isCatalog) {
+      final resolved = await sl<SourceRepository>().resolveCatalogTitle(
+        widget.item,
+        category: category,
+      );
+      if (!mounted) return;
+      if (resolved == null) {
+        if (mounted) _snack('No downloadable provider result found for ${widget.item.title}');
+        return;
+      }
+      detail = resolved.detail;
+      episodesBySeason = <int, List<Episode>>{};
+      for (final e in detail.episodes) { (episodesBySeason[seasonOf(e) ?? 1] ??= <Episode>[]).add(e); }
+    }
     final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
     if (total == 0) {
       _snack('No episodes to download');
       return;
     }
-    if (total == 1) {
-      await _pickSourceAndDownload(episodesBySeason.values.first.first, detail, category);
+    if (total == 1 || (!detail.isSeries && isCatalog)) {
+      final ep = episodesBySeason.values.isNotEmpty && episodesBySeason.values.first.isNotEmpty
+          ? episodesBySeason.values.first.first
+          : (detail.episodes.isNotEmpty
+              ? detail.episodes.first
+              : Episode(id: widget.item.id, number: 1, title: detail.title, url: widget.item.url));
+      await _pickSourceAndDownload(ep, detail, category);
       return;
     }
     final availableCategories = <String>[if ((detail.subCount ?? 0) > 0) 'sub', if ((detail.dubCount ?? 0) > 0) 'dub'];

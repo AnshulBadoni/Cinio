@@ -53,10 +53,24 @@ void main() {
       expect(TitleMatcher.matchScore('In Loving Memory', 'SpeedPorn - In Loving Memory'), greaterThanOrEqualTo(0.90));
     });
 
+    test('matches ampersand & and word synonyms', () {
+      expect(TitleMatcher.isMatch('Friends & Family', 'Friends and Family'), isTrue);
+      expect(TitleMatcher.isMatch('Friends and Family', 'Friends & Family'), isTrue);
+      expect(TitleMatcher.isMatch('Fast & Furious', 'Fast and Furious'), isTrue);
+      expect(TitleMatcher.matchScore('Friends & Family', 'Friends and Family'), equals(1.0));
+      expect(TitleMatcher.matchScore('Friends & Family', 'Himeros - Friends and Family'), greaterThanOrEqualTo(0.95));
+    });
+
     test('does NOT match different volume numbers', () {
       expect(TitleMatcher.isMatch('Fantasy Vol 10', 'Fantasy Vol 1'), isFalse);
       expect(TitleMatcher.isMatch('Fantasy Vol 10', 'Fantasy 1'), isFalse);
       expect(TitleMatcher.isMatch('Fantasy Vol 2', 'Fantasy Vol 3'), isFalse);
+    });
+
+    test('does NOT match unnumbered title with numbered sequel', () {
+      expect(TitleMatcher.isMatch('Friends & Family', 'Friends and Family 2'), isFalse);
+      expect(TitleMatcher.isMatch('Friends & Family', 'Friends & Family Vol 2'), isFalse);
+      expect(TitleMatcher.isMatch('Friends and Family', 'Friends and Family 3'), isFalse);
     });
 
     test('does NOT match unrelated titles or partial sub-words or distinct sequels', () {

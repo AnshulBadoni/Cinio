@@ -62,6 +62,7 @@ class DetailState extends Equatable {
     int? selectedSeason,
     bool? descExpanded,
     String? error,
+    bool clearError = false,
     List<CastMember>? cast,
     List<MediaRelation>? relations,
     bool? extrasLoading,
@@ -71,7 +72,7 @@ class DetailState extends Equatable {
     category: category ?? this.category,
     selectedSeason: selectedSeason ?? this.selectedSeason,
     descExpanded: descExpanded ?? this.descExpanded,
-    error: error ?? this.error,
+    error: clearError ? null : (error ?? this.error),
     cast: cast ?? this.cast,
     relations: relations ?? this.relations,
     extrasLoading: extrasLoading ?? this.extrasLoading,
@@ -189,20 +190,20 @@ class DetailCubit extends Cubit<DetailState> {
     );
   }
 
-  /// Initial fetch. Catalog detail is always owned by its metadata catalog;
-  /// streaming providers are resolved lazily only by Play/Download.
+  /// Initial fetch with automatic progressive retries. Catalog detail is always
+  /// owned by its metadata catalog; streaming providers are resolved lazily only by Play/Download.
   Future<void> load() async {
     if (state.detail == null) {
-      emit(state.copyWith(status: DetailStatus.loading, error: null));
+      emit(state.copyWith(status: DetailStatus.loading, clearError: true));
     }
     MediaDetail? detail;
-    for (var attempt = 0; attempt < 2; attempt++) {
+    for (var attempt = 0; attempt < 3; attempt++) {
       try {
         detail = await _loadDetailForCurrentSource(state.category);
         break;
       } catch (_) {
-        if (attempt == 0) {
-          await Future.delayed(const Duration(milliseconds: 350));
+        if (attempt < 2) {
+          await Future.delayed(Duration(milliseconds: 400 * (attempt + 1)));
         }
       }
     }
@@ -214,7 +215,7 @@ class DetailCubit extends Cubit<DetailState> {
         cast: detail.castMembers,
         relations: detail.relations,
         extrasLoading: _sourceId == 'tmdb:catalog' || _sourceId == 'tpdb:catalog',
-        error: null,
+        clearError: true,
       ));
       unawaited(_enrich(detail));
     } else {
@@ -226,7 +227,10 @@ class DetailCubit extends Cubit<DetailState> {
     }
   }
 
-  Future<void> retry() => load();
+  Future<void> retry() {
+    emit(state.copyWith(clearError: true));
+    return load();
+  }
 
   Future<MediaDetail> _loadDetailForCurrentSource(String category) async {
     final isCatalog = _sourceId == 'tmdb:catalog' ||

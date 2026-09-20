@@ -1383,20 +1383,6 @@ class _DetailViewState extends State<_DetailView>
     required int initialSeason,
   }) async {
     final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
-    final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
-    if (total <= 1 || (!detail.isSeries && isCatalog)) {
-      final ep = episodesBySeason.values.isNotEmpty && episodesBySeason.values.first.isNotEmpty
-          ? episodesBySeason.values.first.first
-          : (detail.episodes.isNotEmpty
-              ? detail.episodes.first
-              : Episode(id: widget.item.id, number: 1, title: detail.title, url: widget.item.url));
-      await _pickSourceAndDownload(
-        ep,
-        detail,
-        category,
-      );
-      return;
-    }
     if (isCatalog) {
       var resolved = await _resolveCatalogPlayback(category: category);
       if (!mounted) return;
@@ -1410,10 +1396,23 @@ class _DetailViewState extends State<_DetailView>
       detail = resolved.detail;
       episodesBySeason = <int, List<Episode>>{};
       for (final e in detail.episodes) { (episodesBySeason[seasonOf(e) ?? 1] ??= <Episode>[]).add(e); }
-      if (episodesBySeason.isEmpty) { _snack('No downloadable episodes found for ${widget.item.title}'); return; }
     }
+    final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
     if (total == 0) {
       _snack('No episodes to download');
+      return;
+    }
+    if (total == 1 || (!detail.isSeries && isCatalog)) {
+      final ep = episodesBySeason.values.isNotEmpty && episodesBySeason.values.first.isNotEmpty
+          ? episodesBySeason.values.first.first
+          : (detail.episodes.isNotEmpty
+              ? detail.episodes.first
+              : Episode(id: widget.item.id, number: 1, title: detail.title, url: widget.item.url));
+      await _pickSourceAndDownload(
+        ep,
+        detail,
+        category,
+      );
       return;
     }
     // Sub/Dub the title actually offers; the sheet only shows the toggle when

@@ -47,7 +47,8 @@ class TitleMatcher {
     '1080p', '720p', '480p', '2160p', '4k', 'web', 'dl', 'webdl', 'bluray',
     'bdrip', 'dvdrip', 'hdrip', 'x264', 'x265', 'hevc', 'aac', 'mp3',
     'splitscenes', 'xxx', 'full', 'hd', 'uhd', 'rip', 'mkv', 'mp4',
-    'blacked', 'erotica', 'x', 'brazzers', 'vixen', 'tushy', 'bang', 'raw'
+    'blacked', 'erotica', 'x', 'brazzers', 'vixen', 'tushy', 'bang', 'raw',
+    'and', 'the', 'a', 'an', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by'
   };
 
   static bool _isReleaseOrYearToken(String t) {
@@ -68,11 +69,13 @@ class TitleMatcher {
   /// Canonicalize a title:
   /// 1. Lowercase
   /// 2. Convert Roman numerals to digits
-  /// 3. Strip volume/part/episode noise words
-  /// 4. Replace non-alphanumeric chars with spaces and trim
+  /// 3. Normalize '&' to 'and'
+  /// 4. Strip volume/part/episode noise words
+  /// 5. Replace non-alphanumeric chars with spaces and trim
   static String canonicalize(String text) {
     var s = text.toLowerCase();
     s = convertRomanNumerals(s);
+    s = s.replaceAll('&', ' and ');
     s = s.replaceAll(_noiseWords, ' ');
     s = s.replaceAll(_nonAlphaNum, ' ').trim();
     return s.replaceAll(RegExp(r'\s+'), ' ');
@@ -85,7 +88,7 @@ class TitleMatcher {
     return canon.split(' ').where((t) => t.isNotEmpty).toList();
   }
 
-  /// Extract list of numeric sequences from title.
+  /// Extract list of numeric sequences from title (excluding release years).
   static List<String> extractNumbers(String text) {
     final canon = convertRomanNumerals(text.toLowerCase());
     return RegExp(r'\d+').allMatches(canon).map((m) => m.group(0)!).toList();
@@ -161,6 +164,14 @@ class TitleMatcher {
           if (wantedNums[i] != candNums[i]) return 0.0;
         }
       }
+    } else if (candNums.isNotEmpty) {
+      // Wanted has NO numbers (e.g. "Friends & Family").
+      // If candidate has numbers, verify if they are only 4-digit release years (e.g. 2020)
+      // If candidate has volume/sequel numbers (e.g. "2", "3", "01"), reject mismatch.
+      final nonYearCandNums = candNums.where((n) => !RegExp(r'^(?:19|20)\d{2}$').hasMatch(n)).toList();
+      if (nonYearCandNums.isNotEmpty) {
+        return 0.0;
+      }
     }
 
     final wantedTokens = tokenize(wanted);
@@ -170,7 +181,7 @@ class TitleMatcher {
     // Contiguous whole-word phrase match: e.g. "SpeedPorn - In Loving Memory" contains "In Loving Memory"
     // Requires at least 2 tokens (or distinct phrase) with boundary markers to prevent sub-word false positives.
     if (wantedTokens.length >= 2 && canonWanted.length >= 5) {
-      final phrasePattern = RegExp('(^|\\s)' + RegExp.escape(canonWanted) + '(\\s|\$)');
+      final phrasePattern = RegExp('(^|\\s)${RegExp.escape(canonWanted)}(\\s|\$)');
       if (phrasePattern.hasMatch(canonCand)) {
         return 0.95;
       }
@@ -258,10 +269,24 @@ class TitleMatcher {
       list.add(trimmed);
     }
 
+    // Replace '&' with 'and' or vice-versa to maximize provider search hits
+    if (trimmed.contains('&')) {
+      final withAnd = trimmed.replaceAll('&', 'and').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (!list.contains(withAnd)) list.add(withAnd);
+    }
+    if (RegExp(r'\band\b', caseSensitive: false).hasMatch(trimmed)) {
+      final withAmp = trimmed.replaceAll(RegExp(r'\band\b', caseSensitive: false), '&').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (!list.contains(withAmp)) list.add(withAmp);
+    }
+
     // Strip year in parentheses, e.g. "Meant to Fuck (2026)" -> "Meant to Fuck"
     final withoutYear = trimmed.replaceAll(RegExp(r'\s*\(\d{4}\)'), '').trim();
     if (withoutYear.length >= 3 && !list.contains(withoutYear)) {
       list.add(withoutYear);
+      if (withoutYear.contains('&')) {
+        final withAnd = withoutYear.replaceAll('&', 'and').replaceAll(RegExp(r'\s+'), ' ').trim();
+        if (!list.contains(withAnd)) list.add(withAnd);
+      }
     }
 
     // Base title without trailing numbers/volumes (e.g. "Fantasy Vol 10" -> "Fantasy")
