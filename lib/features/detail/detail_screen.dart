@@ -1458,10 +1458,29 @@ class _DetailViewState extends State<_DetailView>
               availableCategories: availableCategories,
               coverUrl: detail.cover ?? widget.item.cover ?? '',
               coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-              resolve: (ep) => sl<SourceRepository>().sources(
-                ep.url,
-                sourceId: detail.sourceId,
-              ),
+              resolve: (ep) async {
+                var sId = detail.sourceId;
+                var epUrl = ep.url;
+                if (isCatalog) {
+                  final resolved = await _resolveCatalogPlayback(category: category);
+                  if (resolved != null) {
+                    sId = resolved.item.sourceId;
+                    if (resolved.detail.episodes.isNotEmpty) {
+                      final match = resolved.detail.episodes.firstWhere(
+                        (e) => e.number == ep.number && (seasonOf(e) == seasonOf(ep) || seasonOf(ep) == null),
+                        orElse: () => resolved.detail.episodes.first,
+                      );
+                      epUrl = match.url;
+                    } else {
+                      epUrl = resolved.item.url;
+                    }
+                  }
+                }
+                return sl<SourceRepository>().sources(
+                  epUrl,
+                  sourceId: sId,
+                );
+              },
               resolveEpisodes: _episodesByCategory,
             ),
           );
@@ -1648,6 +1667,17 @@ class _DetailViewState extends State<_DetailView>
                 resolvedDetail: targetDetail,
                 resolvedEpisode: targetEp,
               );
+            }
+          }
+
+          if (s.isEmpty) {
+            final fallbackSources = await sl<SourceRepository>().sources(
+              targetEp.url,
+              sourceId: targetDetail.sourceId,
+              fast: false,
+            );
+            if (fallbackSources.isNotEmpty) {
+              s = fallbackSources;
             }
           }
 
