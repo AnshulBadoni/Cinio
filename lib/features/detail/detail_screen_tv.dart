@@ -515,13 +515,6 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
 
   Future<void> _pickSourceAndDownload(Episode ep, MediaDetail detail, String category) async {
     final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
-    var targetItem = MediaItem(
-      id: detail.id,
-      title: detail.title,
-      url: detail.url,
-      type: detail.type,
-      sourceId: detail.sourceId,
-    );
     var targetItem = widget.item;
     var targetDetail = detail;
     var targetEp = ep;
