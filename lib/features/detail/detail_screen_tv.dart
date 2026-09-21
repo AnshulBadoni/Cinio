@@ -100,7 +100,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
 
   String? _prefetchedEpUrl;
   bool _prefetchedCatalog = false;
-  bool _resolvingPlay = false;
+  bool _actionInFlight = false;
 
   void _maybePrefetch(String epUrl, String sourceId) {
     if (_prefetchedEpUrl == epUrl) return;
@@ -224,104 +224,109 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
 
   // ── Player launch (mirrors _DetailViewState._openPlayer exactly) ──────────
   Future<void> _openPlayer(List<Episode> episodes, int index, MediaDetail detail, String category) async {
-    if (_resolvingPlay) return;
-    final targetEp = (index >= 0 && index < episodes.length) ? episodes[index] : null;
+    if (_actionInFlight) return;
+    _actionInFlight = true;
+    try {
+      var eps = episodes;
+      if (eps.isEmpty && (!detail.isSeries || widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:'))) {
+        eps = [
+          Episode(
+            id: widget.item.id,
+            number: 1,
+            title: detail.title.trim().isNotEmpty ? detail.title : widget.item.title,
+            url: widget.item.url,
+          ),
+        ];
+      }
+      index = index.clamp(0, eps.isNotEmpty ? eps.length - 1 : 0);
 
-    if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
-      setState(() => _resolvingPlay = true);
-      try {
+      final available = <String>[if ((detail.subCount ?? 0) > 0) 'sub', if ((detail.dubCount ?? 0) > 0) 'dub'];
+      final availableCategories = available.isEmpty ? [category] : available;
+      final preferred =
+          sl<TitlePrefsStore>().category(detail.sourceId, detail.url) ??
+          sl<PlaybackPrefs>().defaultCategory;
+      final launchCategory = availableCategories.contains(preferred)
+          ? preferred
+          : category;
+
+      Future<({String url, String sourceId})> resolvePlaybackTarget(String u) async {
+        if (widget.item.sourceId != 'tmdb:catalog' && !widget.item.sourceId.startsWith('tpdb:')) {
+          return (url: u, sourceId: detail.sourceId);
+        }
         final resolved = await sl<SourceRepository>().resolveCatalogTitle(
           widget.item,
           category: category,
         );
-        if (!mounted) return;
         if (resolved == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('No playable provider result found for ${widget.item.title}')),
-          );
-          return;
+          return (url: u, sourceId: detail.sourceId);
         }
-        detail = resolved.detail;
-        episodes = detail.episodes;
-        if (episodes.isEmpty) {
-          if (!detail.isSeries) {
-            episodes = [
-              Episode(
-                id: resolved.item.id,
-                number: 1,
-                title: detail.title.trim().isNotEmpty ? detail.title : widget.item.title,
-                url: resolved.item.url,
-              ),
-            ];
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('No playable episodes found for ${widget.item.title}')),
-            );
-            return;
+        final targetSourceId = resolved.item.sourceId;
+        if (resolved.detail.episodes.isEmpty) {
+          return (url: resolved.item.url, sourceId: targetSourceId);
+        }
+        for (final e in resolved.detail.episodes) {
+          if (e.url == u || e.id == u) {
+            return (url: e.url, sourceId: targetSourceId);
           }
         }
-
-        if (targetEp != null && episodes.isNotEmpty) {
-          final wantedSeason = seasonOf(targetEp);
-          final wantedNumber = targetEp.number;
-          var foundIndex = -1;
-          for (var i = 0; i < episodes.length; i++) {
-            final cand = episodes[i];
-            if (cand.number == wantedNumber &&
-                (wantedSeason == null || seasonOf(cand) == wantedSeason)) {
-              foundIndex = i;
-              break;
+        Episode? origEp;
+        for (final e in eps) {
+          if (e.url == u || e.id == u) {
+            origEp = e;
+            break;
+          }
+        }
+        if (origEp != null) {
+          final wantedSeason = seasonOf(origEp);
+          final wantedNumber = origEp.number;
+          for (final e in resolved.detail.episodes) {
+            if (e.number == wantedNumber &&
+                (wantedSeason == null || seasonOf(e) == wantedSeason)) {
+              return (url: e.url, sourceId: targetSourceId);
             }
           }
-          if (foundIndex < 0 && wantedNumber != null) {
-            for (var i = 0; i < episodes.length; i++) {
-              if (episodes[i].number == wantedNumber) {
-                foundIndex = i;
-                break;
+          if (wantedNumber != null) {
+            for (final e in resolved.detail.episodes) {
+              if (e.number == wantedNumber) {
+                return (url: e.url, sourceId: targetSourceId);
               }
             }
           }
-          index = foundIndex >= 0 ? foundIndex : index.clamp(0, episodes.length - 1);
-        } else {
-          index = index.clamp(0, episodes.length - 1).toInt();
         }
-      } finally {
-        if (mounted) setState(() => _resolvingPlay = false);
+        return (url: resolved.detail.episodes.first.url, sourceId: targetSourceId);
       }
-    }
 
-    final available = <String>[if ((detail.subCount ?? 0) > 0) 'sub', if ((detail.dubCount ?? 0) > 0) 'dub'];
-    final availableCategories = available.isEmpty ? [category] : available;
-    final preferred =
-        sl<TitlePrefsStore>().category(detail.sourceId, detail.url) ??
-        sl<PlaybackPrefs>().defaultCategory;
-    final launchCategory = availableCategories.contains(preferred)
-        ? preferred
-        : category;
-    resolveSources(String u) => sl<SourceRepository>().sources(
-      u,
-      sourceId: detail.sourceId,
-      fast: true,
-    );
-    await launchTvPlayback(
-      context: context,
-      sourceId: detail.sourceId,
-      episodes: episodes,
-      startIndex: index,
-      resume: sl<ResumeStore>(),
-      resolveSources: resolveSources,
-      showUrl: detail.url,
-      showTitle: detail.title,
-      cover: (detail.cover != null && detail.cover!.isNotEmpty) ? detail.cover : widget.item.cover,
-      coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-      category: launchCategory,
-      availableCategories: availableCategories,
-      malId: detail.malId ?? widget.item.malId,
-      scrobbleTitle: detail.type == ProviderType.anime ? detail.title : null,
-      tmdbId: detail.tmdbId ?? widget.item.tmdbId,
-      tmdbIsTv: detail.tmdbIsTv,
-      imdbId: detail.imdbId ?? widget.item.imdbId,
-    );
+      await launchTvPlayback(
+        context: context,
+        sourceId: detail.sourceId,
+        episodes: eps,
+        startIndex: index,
+        resume: sl<ResumeStore>(),
+        resolveSources: (u) async {
+          final target = await resolvePlaybackTarget(u);
+          return sl<SourceRepository>().sources(
+            target.url,
+            sourceId: target.sourceId,
+            fast: true,
+          );
+        },
+        showUrl: detail.url,
+        showTitle: detail.title,
+        cover: (detail.cover != null && detail.cover!.isNotEmpty) ? detail.cover : widget.item.cover,
+        coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
+        category: launchCategory,
+        availableCategories: availableCategories,
+        malId: detail.malId ?? widget.item.malId,
+        scrobbleTitle: detail.type == ProviderType.anime ? detail.title : null,
+        tmdbId: detail.tmdbId ?? widget.item.tmdbId,
+        tmdbIsTv: detail.tmdbIsTv,
+        imdbId: detail.imdbId ?? widget.item.imdbId,
+      );
+    } finally {
+      Future.delayed(const Duration(milliseconds: 350), () {
+        if (mounted) _actionInFlight = false;
+      });
+    }
   }
 
   Future<void> _openListSheet(MediaDetail detail) async {
@@ -417,55 +422,57 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     required Map<int, List<Episode>> episodesBySeason,
     required int initialSeason,
   }) async {
-    final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
-    if (isCatalog) {
-      final resolved = await sl<SourceRepository>().resolveCatalogTitle(
-        widget.item,
-        category: category,
-      );
-      if (!mounted) return;
-      if (resolved == null) {
-        if (mounted) _snack('No downloadable provider result found for ${widget.item.title}');
+    if (_actionInFlight) return;
+    _actionInFlight = true;
+    try {
+      final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
+      final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
+      if (total == 0) {
+        if (isCatalog || !detail.isSeries) {
+          final ep = Episode(
+            id: widget.item.id,
+            number: 1,
+            title: detail.title.trim().isNotEmpty ? detail.title : widget.item.title,
+            url: widget.item.url,
+          );
+          await _pickSourceAndDownload(ep, detail, category);
+          return;
+        }
+        _snack('No episodes to download');
         return;
       }
-      detail = resolved.detail;
-      episodesBySeason = <int, List<Episode>>{};
-      for (final e in detail.episodes) { (episodesBySeason[seasonOf(e) ?? 1] ??= <Episode>[]).add(e); }
+      if (total == 1 || (!detail.isSeries && isCatalog)) {
+        final ep = episodesBySeason.values.isNotEmpty && episodesBySeason.values.first.isNotEmpty
+            ? episodesBySeason.values.first.first
+            : (detail.episodes.isNotEmpty
+                ? detail.episodes.first
+                : Episode(id: widget.item.id, number: 1, title: detail.title, url: widget.item.url));
+        await _pickSourceAndDownload(ep, detail, category);
+        return;
+      }
+      final availableCategories = <String>[if ((detail.subCount ?? 0) > 0) 'sub', if ((detail.dubCount ?? 0) > 0) 'dub'];
+      final res = await showModalBottomSheet<({String quality, String category, List<Episode> episodes})>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        builder: (_) => _DownloadSheet(
+          title: detail.title,
+          episodesBySeason: episodesBySeason,
+          initialSeason: initialSeason,
+          initialCategory: category,
+          availableCategories: availableCategories,
+          coverUrl: detail.cover ?? widget.item.cover ?? '',
+          coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
+          resolve: (ep) => sl<SourceRepository>().sources(ep.url, sourceId: detail.sourceId),
+          resolveEpisodes: _episodesByCategory,
+        ),
+      );
+      if (res == null || !mounted) return;
+      _startDownload(detail, res.category, res.quality, res.episodes);
+    } finally {
+      if (mounted) _actionInFlight = false;
     }
-    final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
-    if (total == 0) {
-      _snack('No episodes to download');
-      return;
-    }
-    if (total == 1 || (!detail.isSeries && isCatalog)) {
-      final ep = episodesBySeason.values.isNotEmpty && episodesBySeason.values.first.isNotEmpty
-          ? episodesBySeason.values.first.first
-          : (detail.episodes.isNotEmpty
-              ? detail.episodes.first
-              : Episode(id: widget.item.id, number: 1, title: detail.title, url: widget.item.url));
-      await _pickSourceAndDownload(ep, detail, category);
-      return;
-    }
-    final availableCategories = <String>[if ((detail.subCount ?? 0) > 0) 'sub', if ((detail.dubCount ?? 0) > 0) 'dub'];
-    final res = await showModalBottomSheet<({String quality, String category, List<Episode> episodes})>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _DownloadSheet(
-        title: detail.title,
-        episodesBySeason: episodesBySeason,
-        initialSeason: initialSeason,
-        initialCategory: category,
-        availableCategories: availableCategories,
-        coverUrl: detail.cover ?? widget.item.cover ?? '',
-        coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-        resolve: (ep) => sl<SourceRepository>().sources(ep.url, sourceId: detail.sourceId),
-        resolveEpisodes: _episodesByCategory,
-      ),
-    );
-    if (res == null || !mounted) return;
-    _startDownload(detail, res.category, res.quality, res.episodes);
   }
 
   Future<Map<int, List<Episode>>> _episodesByCategory(String category) async {
@@ -850,7 +857,6 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                     child: ExcludeSemantics(
                                       child: _PlayButton(
                                         label: buttonLabel,
-                                        loading: _resolvingPlay,
                                         onPressed: (eps.isNotEmpty ||
                                                 widget.item.sourceId == 'tmdb:catalog' ||
                                                 widget.item.sourceId.startsWith('tpdb:'))

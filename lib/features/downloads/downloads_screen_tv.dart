@@ -12,6 +12,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../../core/ui/native_cover_provider.dart';
 import '../../core/ui/states.dart';
 import '../settings/download_location_screen.dart' show folderLabelFromUri;
 import 'downloads_screen.dart';
@@ -135,12 +136,18 @@ class _TvShowGroup extends StatelessWidget {
                   width: 44,
                   height: 62,
                   child: (head.cover != null && head.cover!.isNotEmpty)
-                      ? CachedNetworkImage(
-                          imageUrl: head.cover!,
-                          httpHeaders: head.coverHeaders,
+                      ? Image(
+                          image: nativeCoverProvider(
+                            head.cover!,
+                            head.coverHeaders,
+                            showUrl: head.showUrl,
+                            sourceId: head.sourceId,
+                          ),
                           fit: BoxFit.cover,
-                          errorWidget: (c, u, e) =>
+                          errorBuilder: (c, u, e) =>
                               ColoredBox(color: AppColors.surface2),
+                          loadingBuilder: (_, child, progress) =>
+                              progress == null ? child : ColoredBox(color: AppColors.surface2),
                         )
                       : ColoredBox(color: AppColors.surface2),
                 ),

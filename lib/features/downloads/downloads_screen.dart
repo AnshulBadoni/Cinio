@@ -21,6 +21,7 @@ import '../../core/ui/states.dart';
 import '../settings/download_location_screen.dart';
 import '../player/player_screen.dart';
 import '../player/tv_playback_launch.dart';
+import '../../core/ui/native_cover_provider.dart';
 import 'chapter_downloads_screen.dart';
 import 'downloads_screen_tv.dart';
 
@@ -677,13 +678,21 @@ class _DownloadShowCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   if (head.cover != null && head.cover!.isNotEmpty)
-                    CachedNetworkImage(
-                      imageUrl: head.cover!,
-                      httpHeaders: head.coverHeaders,
-                      memCacheWidth: memW,
+                    Image(
+                      image: ResizeImage(
+                        nativeCoverProvider(
+                          head.cover!,
+                          head.coverHeaders,
+                          showUrl: head.showUrl,
+                          sourceId: head.sourceId,
+                        ),
+                        width: memW,
+                      ),
                       fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) =>
+                      errorBuilder: (_, __, ___) =>
                           ColoredBox(color: AppColors.surface2),
+                      loadingBuilder: (_, child, progress) =>
+                          progress == null ? child : ColoredBox(color: AppColors.surface2),
                     )
                   else
                     ColoredBox(color: AppColors.surface2),
@@ -788,12 +797,18 @@ class _ShowGroup extends StatelessWidget {
                     width: 44,
                     height: 62,
                     child: (head.cover != null && head.cover!.isNotEmpty)
-                        ? CachedNetworkImage(
-                            imageUrl: head.cover!,
-                            httpHeaders: head.coverHeaders,
+                        ? Image(
+                            image: nativeCoverProvider(
+                              head.cover!,
+                              head.coverHeaders,
+                              showUrl: head.showUrl,
+                              sourceId: head.sourceId,
+                            ),
                             fit: BoxFit.cover,
-                            errorWidget: (c, u, e) =>
+                            errorBuilder: (_, __, ___) =>
                                 ColoredBox(color: AppColors.surface2),
+                            loadingBuilder: (_, child, progress) =>
+                                progress == null ? child : ColoredBox(color: AppColors.surface2),
                           )
                         : ColoredBox(color: AppColors.surface2),
                   ),

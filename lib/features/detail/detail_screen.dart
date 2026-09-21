@@ -245,8 +245,8 @@ class _DetailViewState extends State<_DetailView>
   // don't re-fire it on every rebuild (see _maybePrefetch).
   String? _prefetchedEpUrl;
   bool _prefetchedCatalog = false;
-  bool _resolvingPlay = false;
-  bool _resolvingDownload = false;
+  bool _myListActionInFlight = false;
+  bool _actionInFlight = false;
 
   // Filler episode numbers (from Jikan by MAL id), for the "Filler" badge in the
   // episode list. Fetched once per malId; empty for non-anime / unlisted shows.
@@ -937,19 +937,25 @@ class _DetailViewState extends State<_DetailView>
     MediaDetail detail, {
     String category = 'sub',
   }) async {
-    return showModalBottomSheet<({MediaItem item, MediaDetail detail})>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _ProviderPickerSheet(
-        catalogItem: widget.item,
-        catalogDetail: detail,
-        category: category,
-      ),
-    );
+    if (_actionInFlight) return null;
+    _actionInFlight = true;
+    try {
+      return await showModalBottomSheet<({MediaItem item, MediaDetail detail})>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => _ProviderPickerSheet(
+          catalogItem: widget.item,
+          catalogDetail: detail,
+          category: category,
+        ),
+      );
+    } finally {
+      if (mounted) _actionInFlight = false;
+    }
   }
 
   Future<({MediaItem item, MediaDetail detail})?> _resolveCatalogPlayback({
@@ -978,69 +984,24 @@ class _DetailViewState extends State<_DetailView>
     /// adaptive default. One-shot — the cubit clears it after this episode.
     VideoSource? initialSource,
   }) async {
-    if (_resolvingPlay) return;
-    final targetEp = (index >= 0 && index < episodes.length) ? episodes[index] : null;
-    final inFlightPromotion = context.read<DetailCubit>().animePromotion;
+    if (_actionInFlight) return;
+    _actionInFlight = true;
+    try {
+      final inFlightPromotion = context.read<DetailCubit>().animePromotion;
 
-    if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
-      setState(() => _resolvingPlay = true);
-      try {
-        var resolved = await _resolveCatalogPlayback(category: category);
-        if (!mounted) return;
-        if (resolved == null) {
-          setState(() => _resolvingPlay = false);
-          resolved = await _showProviderPickerSheet(detail, category: category);
-          if (resolved == null) {
-            if (mounted) _snack('No playable provider result found for ${widget.item.title}');
-            return;
-          }
-        }
-        detail = resolved.detail;
-        episodes = detail.episodes;
-        if (episodes.isEmpty) {
-          if (!detail.isSeries) {
-            episodes = [
-              Episode(
-                id: resolved.item.id,
-                number: 1,
-                title: detail.title.trim().isNotEmpty ? detail.title : widget.item.title,
-                url: resolved.item.url,
-              ),
-            ];
-          } else {
-            _snack('No playable episodes found for ${widget.item.title}');
-            return;
-          }
-        }
-
-        if (targetEp != null && episodes.isNotEmpty) {
-          final wantedSeason = seasonOf(targetEp);
-          final wantedNumber = targetEp.number;
-          var foundIndex = -1;
-          for (var i = 0; i < episodes.length; i++) {
-            final cand = episodes[i];
-            if (cand.number == wantedNumber &&
-                (wantedSeason == null || seasonOf(cand) == wantedSeason)) {
-              foundIndex = i;
-              break;
-            }
-          }
-          if (foundIndex < 0 && wantedNumber != null) {
-            for (var i = 0; i < episodes.length; i++) {
-              if (episodes[i].number == wantedNumber) {
-                foundIndex = i;
-                break;
-              }
-            }
-          }
-          index = foundIndex >= 0 ? foundIndex : index.clamp(0, episodes.length - 1);
-        } else {
-          index = index.clamp(0, episodes.length - 1).toInt();
-        }
-      } finally {
-        if (mounted) setState(() => _resolvingPlay = false);
+      var eps = episodes;
+      if (eps.isEmpty && (!detail.isSeries || widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:'))) {
+        eps = [
+          Episode(
+            id: widget.item.id,
+            number: 1,
+            title: detail.title.trim().isNotEmpty ? detail.title : widget.item.title,
+            url: widget.item.url,
+          ),
+        ];
       }
-    }
+      index = index.clamp(0, eps.isNotEmpty ? eps.length - 1 : 0);
+
     // Opening something other than where they left off? Offer to look at it
     // without moving their place. Asked here, before the reading/video split,
     // so all three kinds behave the same. Dismissing means "never mind" —
@@ -1051,8 +1012,8 @@ class _DetailViewState extends State<_DetailView>
         widget.item.type == ProviderType.novel ||
         widget.item.type == ProviderType.manga;
     final resume = reading
-        ? _readResumeIndex(episodes)
-        : (index: _resumeIndex(episodes), hasResume: _hasVideoResume(episodes));
+        ? _readResumeIndex(eps)
+        : (index: _resumeIndex(eps), hasResume: _hasVideoResume(eps));
     var peek = false;
     if (shouldAskBeforeJump(
       resumeIndex: resume.index,
@@ -1086,7 +1047,7 @@ class _DetailViewState extends State<_DetailView>
         _myList.add(widget.item);
         _listStatus.setStatus(widget.item, WatchStatus.watching);
       }
-      _openReader(episodes, index, detail, peek: peek);
+      _openReader(eps, index, detail, peek: peek);
       return;
     }
 
@@ -1139,27 +1100,74 @@ class _DetailViewState extends State<_DetailView>
     }
     if (!mounted) return;
 
+    Future<({String url, String sourceId})> resolvePlaybackTarget(String u) async {
+      if (widget.item.sourceId != 'tmdb:catalog' && !widget.item.sourceId.startsWith('tpdb:')) {
+        return (url: u, sourceId: detail.sourceId);
+      }
+      final resolved = await _resolveCatalogPlayback(category: category);
+      if (resolved == null) {
+        return (url: u, sourceId: detail.sourceId);
+      }
+      final targetSourceId = resolved.item.sourceId;
+      if (resolved.detail.episodes.isEmpty) {
+        return (url: resolved.item.url, sourceId: targetSourceId);
+      }
+      for (final e in resolved.detail.episodes) {
+        if (e.url == u || e.id == u) {
+          return (url: e.url, sourceId: targetSourceId);
+        }
+      }
+      Episode? origEp;
+      for (final e in eps) {
+        if (e.url == u || e.id == u) {
+          origEp = e;
+          break;
+        }
+      }
+      if (origEp != null) {
+        final wantedSeason = seasonOf(origEp);
+        final wantedNumber = origEp.number;
+        for (final e in resolved.detail.episodes) {
+          if (e.number == wantedNumber &&
+              (wantedSeason == null || seasonOf(e) == wantedSeason)) {
+            return (url: e.url, sourceId: targetSourceId);
+          }
+        }
+        if (wantedNumber != null) {
+          for (final e in resolved.detail.episodes) {
+            if (e.number == wantedNumber) {
+              return (url: e.url, sourceId: targetSourceId);
+            }
+          }
+        }
+      }
+      return (url: resolved.detail.episodes.first.url, sourceId: targetSourceId);
+    }
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PlayerScreen(
           playerOverride: playerOverride?.package,
           initialSource: initialSource,
           sourceId: detail.sourceId,
-          episodes: episodes,
+          episodes: eps,
           startIndex: index,
           resume: sl<ResumeStore>(),
-          resolveSources: (u) => sl<SourceRepository>().sources(
-            u,
-            sourceId: detail.sourceId,
-            fast: true,
-          ),
-          // The resolve above returns on the first usable link so playback
-          // starts fast; the remaining mirrors keep resolving natively. This
-          // lets the Sources sheet pick them up once they land.
-          pollSources: (u) => sl<SourceRepository>().polledSources(
-            u,
-            sourceId: detail.sourceId,
-          ),
+          resolveSources: (u) async {
+            final target = await resolvePlaybackTarget(u);
+            return sl<SourceRepository>().sources(
+              target.url,
+              sourceId: target.sourceId,
+              fast: true,
+            );
+          },
+          pollSources: (u) async {
+            final target = await resolvePlaybackTarget(u);
+            return sl<SourceRepository>().polledSources(
+              target.url,
+              sourceId: target.sourceId,
+            );
+          },
           history: sl<WatchHistory>(),
           showTitle: detail.title,
           cover: detail.cover ?? widget.item.cover,
@@ -1176,6 +1184,11 @@ class _DetailViewState extends State<_DetailView>
         ),
       ),
     );
+    } finally {
+      Future.delayed(const Duration(milliseconds: 350), () {
+        if (mounted) _actionInFlight = false;
+      });
+    }
   }
 
   /// Routes a reading-type title (manga/novel) to its reader instead of the
@@ -1383,29 +1396,22 @@ class _DetailViewState extends State<_DetailView>
     required Map<int, List<Episode>> episodesBySeason,
     required int initialSeason,
   }) async {
-    if (_resolvingDownload) return;
-    final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
-    setState(() => _resolvingDownload = true);
+    if (_actionInFlight) return;
+    _actionInFlight = true;
     try {
-      if (isCatalog) {
-        var resolved = await _resolveCatalogPlayback(category: category);
-        if (!mounted) return;
-        if (resolved == null) {
-          setState(() => _resolvingDownload = false);
-          resolved = await _showProviderPickerSheet(detail, category: category);
-          if (resolved == null) {
-            if (mounted) _snack('No downloadable provider result found for ${widget.item.title}');
-            return;
-          }
-          if (!mounted) return;
-          setState(() => _resolvingDownload = true);
-        }
-        detail = resolved.detail;
-        episodesBySeason = <int, List<Episode>>{};
-        for (final e in detail.episodes) { (episodesBySeason[seasonOf(e) ?? 1] ??= <Episode>[]).add(e); }
-      }
+      final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
       final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
       if (total == 0) {
+        if (isCatalog || !detail.isSeries) {
+          final ep = Episode(
+            id: widget.item.id,
+            number: 1,
+            title: detail.title.trim().isNotEmpty ? detail.title : widget.item.title,
+            url: widget.item.url,
+          );
+          await _pickSourceAndDownload(ep, detail, category);
+          return;
+        }
         _snack('No episodes to download');
         return;
       }
@@ -1462,7 +1468,7 @@ class _DetailViewState extends State<_DetailView>
       if (res == null || !mounted) return;
       _startDownload(detail, res.category, res.quality, res.episodes);
     } finally {
-      if (mounted) setState(() => _resolvingDownload = false);
+      if (mounted) _actionInFlight = false;
     }
   }
 
@@ -2042,7 +2048,6 @@ class _DetailViewState extends State<_DetailView>
                     children: [
                       _PlayButton(
                         label: buttonLabel,
-                        loading: _resolvingPlay,
                         icon: isReading
                             ? Icons.menu_book_rounded
                             : Icons.play_arrow_rounded,
@@ -2066,7 +2071,6 @@ class _DetailViewState extends State<_DetailView>
                         const SizedBox(height: 10),
                         _DownloadButton(
                           label: downloadLabel,
-                          loading: _resolvingDownload,
                           onPressed: () => _openDownloadSheet(
                             detail: detail,
                             category: category,
