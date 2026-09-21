@@ -68,6 +68,7 @@ class _PersonPageState extends State<PersonPage> {
         _works.addAll(p.works);
         _hasMore = p.works.length >= 30 &&
             (widget.person.source == PersonSource.thePornDbPerformer ||
+                widget.person.source == PersonSource.thePornDbStudio ||
                 widget.person.source == PersonSource.tmdb);
       }
     });
@@ -119,11 +120,11 @@ class _PersonPageState extends State<PersonPage> {
   Future<void> _openWork(PersonWork w) async {
     _snack('Finding “${w.title}”…');
     try {
-      if (widget.person.source == PersonSource.thePornDbPerformer) {
-        // Performer works are TPDB-owned. Prefer the source-native movie id so
-        // a similarly named movie can never replace the one in the performer
-        // profile. Title search is only the fallback for older API rows without
-        // an id.
+      if (widget.person.source == PersonSource.thePornDbPerformer ||
+          widget.person.source == PersonSource.thePornDbStudio) {
+        // Performer/Studio works are TPDB-owned. Prefer the source-native movie id so
+        // a similarly named movie can never replace the one in the profile.
+        // Title search is only the fallback for older API rows without an id.
         MediaItem? match;
         if (w.catalogId != null && w.catalogId!.isNotEmpty) {
           match = MediaItem(

@@ -28,6 +28,8 @@ class PeopleService {
         return _tmdbPerson(ref.id);
       case PersonSource.thePornDbPerformer:
         return _tpdbPerformer(ref.externalId ?? ref.id.toString(), fallbackName: ref.name);
+      case PersonSource.thePornDbStudio:
+        return _tpdbStudio(ref.externalId ?? ref.id.toString(), fallbackName: ref.name);
     }
   }
 
@@ -38,6 +40,10 @@ class PeopleService {
         final id = ref.externalId ?? (ref.id != 0 ? ref.id.toString() : null);
         if (id == null || id.isEmpty) return const [];
         return _tpdbPerformerWorks(id, page: page);
+      case PersonSource.thePornDbStudio:
+        final id = ref.externalId ?? (ref.id != 0 ? ref.id.toString() : null);
+        if (id == null || id.isEmpty) return const [];
+        return _tpdbStudioWorks(id, studioName: ref.name, page: page);
       case PersonSource.tmdb:
         final all = _tmdbCreditsCache[ref.id];
         if (all == null) return const [];
@@ -128,6 +134,109 @@ class PeopleService {
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<PersonProfile?> _tpdbStudio(String id, {String? fallbackName}) async {
+    try {
+      Map<String, dynamic>? row;
+      try {
+        final res = await _dio.get<dynamic>(
+          '$_tpdbBase/sites/$id',
+          options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
+        );
+        if (res.data is Map && res.data['data'] is Map) {
+          row = Map<String, dynamic>.from(res.data['data'] as Map);
+        }
+      } catch (_) {}
+
+      if (row == null && fallbackName != null && fallbackName.trim().isNotEmpty) {
+        try {
+          final searchRes = await _dio.get<dynamic>(
+            '$_tpdbBase/sites',
+            queryParameters: {
+              'q': fallbackName.trim(),
+              'per_page': 10,
+              'orderBy': 'most_relevant',
+            },
+            options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
+          );
+          final rows = searchRes.data is Map ? searchRes.data['data'] : null;
+          if (rows is List && rows.isNotEmpty && rows.first is Map) {
+            row = Map<String, dynamic>.from(rows.first as Map);
+          }
+        } catch (_) {}
+      }
+
+      final name = (row?['name'] ?? row?['short_name'] ?? fallbackName)?.toString();
+      if (name == null || name.isEmpty) return null;
+      final resolvedId = (row?['id'] ?? row?['uuid'] ?? row?['short_name'] ?? id).toString();
+
+      final works = await _tpdbStudioWorks(resolvedId, studioName: name, page: 1);
+
+      String? photo;
+      for (final key in ['logo', 'poster', 'favicon', 'image', 'thumbnail']) {
+        final v = row?[key]?.toString();
+        if (v != null && v.isNotEmpty) { photo = v; break; }
+      }
+
+      final network = row?['network'];
+      final subtitle = (network is Map ? network['name']?.toString() : null) ?? 'Studio';
+
+      return PersonProfile(
+        name: name,
+        photo: photo,
+        description: (row?['description'] ?? row?['about'])?.toString(),
+        subtitle: subtitle,
+        works: works,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<PersonWork>> _tpdbStudioWorks(String siteId, {String? studioName, required int page}) async {
+    try {
+      Response<dynamic>? res;
+      try {
+        res = await _dio.get<dynamic>(
+          '$_tpdbBase/sites/$siteId/movies',
+          queryParameters: {'page': page, 'per_page': 30},
+          options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
+        );
+      } catch (_) {}
+
+      var rows = res?.data is Map ? res?.data['data'] : null;
+      if (rows is! List || rows.isEmpty) {
+        final queryName = (studioName != null && studioName.isNotEmpty) ? studioName : siteId;
+        res = await _dio.get<dynamic>(
+          '$_tpdbBase/movies',
+          queryParameters: {
+            'q': queryName,
+            'page': page,
+            'per_page': 30,
+            'orderBy': 'recently_released',
+          },
+          options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
+        );
+        rows = res.data is Map ? res.data['data'] : null;
+      }
+
+      if (rows is! List) return const [];
+      final works = <PersonWork>[];
+      for (final m in rows) {
+        if (m is! Map) continue;
+        final title = (m['title'] ?? m['name'])?.toString();
+        if (title == null || title.isEmpty) continue;
+        works.add(PersonWork(
+          title: title,
+          cover: _tpdbImage(m),
+          catalogId: (m['id'] ?? m['_id'] ?? m['uuid'] ?? m['slug'])?.toString(),
+        ));
+      }
+      return works;
+    } catch (_) {
+      return const [];
     }
   }
 

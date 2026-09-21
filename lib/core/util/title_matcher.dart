@@ -268,10 +268,13 @@ class TitleMatcher {
       list.add(canon);
     }
 
-    // 3. Volume variation: "vol.3" / "vol 3" / "volume 3" -> "Vol 3"
+    // 3. Volume variation: "vol.3" / "vol 3" / "volume 3" -> "3", "Vol 3", "Vol. 3"
     final volMatch = RegExp(r'\b(?:vol|volume)\.?\s*(\d+)\b', caseSensitive: false).firstMatch(trimmed);
     if (volMatch != null) {
       final numStr = volMatch.group(1)!;
+      final withJustNum = trimmed.replaceAll(volMatch.group(0)!, numStr).replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (!list.contains(withJustNum)) list.add(withJustNum);
+
       final withVolSpace = trimmed.replaceAll(volMatch.group(0)!, 'Vol $numStr').replaceAll(RegExp(r'\s+'), ' ').trim();
       if (!list.contains(withVolSpace)) list.add(withVolSpace);
 

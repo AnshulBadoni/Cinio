@@ -652,20 +652,22 @@ class SourceRepository {
     String category,
   ) async {
     try {
+      final isTpdb = catalog.sourceId.startsWith('tpdb:');
+      final effectiveCategory = (isTpdb || !catalog.tmdbIsTv) ? '' : category;
       final queries = TitleMatcher.searchQueries(catalog.title);
 
       for (final query in queries) {
         final results = await search(
           query,
-          category: category,
+          category: effectiveCategory,
           sourceId: providerId,
         );
         if (results.isNotEmpty) {
-          final hit = await _findValidCatalogMatch(results, catalog, category);
+          final hit = await _findValidCatalogMatch(results, catalog, effectiveCategory);
           if (hit != null) return hit;
         }
 
-        if (category != 'dub' && catalog.tmdbIsTv) {
+        if (catalog.tmdbIsTv && category != 'dub') {
           final dubResults = await search(
             query,
             category: 'dub',

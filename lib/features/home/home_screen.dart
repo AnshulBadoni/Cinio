@@ -620,6 +620,23 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
+  Future<void> _openStudio(MediaItem studio) async {
+    final raw = studio.id.replaceFirst('tpdb:studio:', '');
+    final numeric = int.tryParse(raw) ?? 0;
+    await Navigator.of(context).push(
+      PersonPage.route(
+        PersonRef(
+          id: numeric,
+          externalId: raw,
+          source: PersonSource.thePornDbStudio,
+          name: studio.title,
+          photo: studio.cover,
+        ),
+        sourceId: studio.sourceId,
+      ),
+    );
+  }
+
   final Map<String, int> _sectionPages = {};
   final Set<String> _sectionLoading = {};
 
@@ -669,7 +686,7 @@ class _HomeViewState extends State<_HomeView>
                 sourceId: item.sourceId,
               ));
             } else if (item.sourceId == 'tpdb:studio') {
-              launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
+              _openStudio(item);
             } else {
               _openDetail(item, trailerContext: DetailTrailerContext.model);
             }
@@ -730,7 +747,7 @@ class _HomeViewState extends State<_HomeView>
             dubBadge: item.dubBadge,
             onTap: () {
               if (item.sourceId == 'tpdb:studio') {
-                launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
+                _openStudio(item);
               } else {
                 _openDetail(item, trailerContext: DetailTrailerContext.studio);
               }
@@ -802,7 +819,7 @@ class _HomeViewState extends State<_HomeView>
             if (item.sourceId == 'tpdb:performer') {
               _openPerformer(item);
             } else if (item.sourceId == 'tpdb:studio') {
-              launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
+              _openStudio(item);
             } else {
               _openDetail(
                 item,

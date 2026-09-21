@@ -280,7 +280,17 @@ class _SearchViewState extends State<_SearchView>
       return;
     }
     if (item.sourceId == 'tpdb:studio') {
-      launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
+      final raw = item.id.replaceFirst('tpdb:studio:', '');
+      Navigator.of(context).push(PersonPage.route(
+        PersonRef(
+          id: 0,
+          externalId: raw,
+          source: PersonSource.thePornDbStudio,
+          name: item.title,
+          photo: item.cover,
+        ),
+        sourceId: item.sourceId,
+      ));
       return;
     }
     MediaDetail? catalogDetail;

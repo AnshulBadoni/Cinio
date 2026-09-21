@@ -522,8 +522,47 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       type: detail.type,
       sourceId: detail.sourceId,
     );
+    var targetItem = widget.item;
     var targetDetail = detail;
     var targetEp = ep;
+
+    if (isCatalog) {
+      if (detail.sourceId != 'tmdb:catalog' && !detail.sourceId.startsWith('tpdb:')) {
+        targetItem = MediaItem(
+          id: detail.id,
+          title: detail.title,
+          url: detail.url,
+          type: detail.type,
+          sourceId: detail.sourceId,
+        );
+        targetDetail = detail;
+        targetEp = ep;
+      } else {
+        final resolved = await sl<SourceRepository>().resolveCatalogTitle(widget.item, category: category);
+        if (resolved == null || !mounted) {
+          _snack('No matching title found on installed providers');
+          return;
+        }
+        targetItem = resolved.item;
+        targetDetail = resolved.detail;
+      }
+      if (targetDetail.episodes.isNotEmpty) {
+        final match = targetDetail.episodes.firstWhere(
+          (e) => e.number == ep.number && (seasonOf(e) == seasonOf(ep) || seasonOf(ep) == null),
+          orElse: () => targetDetail.episodes.first,
+        );
+        targetEp = match;
+      } else {
+        targetEp = Episode(
+          id: targetItem.id,
+          number: 1,
+          title: targetDetail.title.trim().isNotEmpty ? targetDetail.title : targetItem.title,
+          url: targetItem.url,
+        );
+      }
+    }
+
+    if (!mounted) return;
 
     final res = await showModalBottomSheet<SourcePickerResult>(
       context: context,
@@ -531,36 +570,8 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => _SourcePickerSheet(
-        title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
+        title: targetEp.title.trim().isNotEmpty ? targetEp.title : targetDetail.title,
         resolve: ([onProgress]) async {
-          if (isCatalog) {
-            final resolved = await sl<SourceRepository>().resolveCatalogTitle(widget.item, category: category);
-            if (resolved == null) {
-              return (
-                sources: <VideoSource>[],
-                resolvedItem: null,
-                resolvedDetail: null,
-                resolvedEpisode: null,
-                error: 'No download sources found on installed providers',
-              );
-            }
-            targetItem = resolved.item;
-            targetDetail = resolved.detail;
-            if (targetDetail.episodes.isNotEmpty) {
-              final match = targetDetail.episodes.firstWhere(
-                (e) => e.number == ep.number && (seasonOf(e) == seasonOf(ep) || seasonOf(ep) == null),
-                orElse: () => targetDetail.episodes.first,
-              );
-              targetEp = match;
-            } else {
-              targetEp = Episode(
-                id: targetItem.id,
-                number: 1,
-                title: targetDetail.title.trim().isNotEmpty ? targetDetail.title : targetItem.title,
-                url: targetItem.url,
-              );
-            }
-          }
 
           var s = await sl<SourceRepository>().sources(
             targetEp.url,

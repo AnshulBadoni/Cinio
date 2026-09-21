@@ -1551,6 +1551,64 @@ class _DetailViewState extends State<_DetailView>
     String category,
   ) async {
     final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
+    var targetItem = widget.item;
+    var targetDetail = detail;
+    var targetEp = ep;
+
+    if (isCatalog) {
+      if (detail.sourceId != 'tmdb:catalog' && !detail.sourceId.startsWith('tpdb:')) {
+        targetItem = MediaItem(
+          id: detail.id,
+          title: detail.title,
+          url: detail.url,
+          type: detail.type,
+          sourceId: detail.sourceId,
+        );
+        targetDetail = detail;
+        targetEp = ep;
+      } else {
+        var resolved = await _resolveCatalogPlayback(category: category);
+        if (resolved == null && mounted) {
+          resolved = await _showProviderPickerSheet(detail, category: category);
+        }
+        if (resolved == null || !mounted) {
+          _snack('No matching title found on installed providers');
+          return;
+        }
+        targetItem = resolved.item;
+        targetDetail = resolved.detail;
+      }
+      if (targetDetail.episodes.isNotEmpty) {
+        Episode? byId;
+        for (final candidate in targetDetail.episodes) {
+          if (candidate.id == ep.id) { byId = candidate; break; }
+        }
+        if (byId != null) {
+          targetEp = byId;
+        } else {
+          final wantedSeason = seasonOf(ep);
+          final wantedNumber = ep.number;
+          Episode? byNumber;
+          for (final candidate in targetDetail.episodes) {
+            if (candidate.number == wantedNumber &&
+                (wantedSeason == null || seasonOf(candidate) == wantedSeason)) {
+              byNumber = candidate;
+              break;
+            }
+          }
+          targetEp = byNumber ?? targetDetail.episodes.first;
+        }
+      } else {
+        targetEp = Episode(
+          id: targetItem.id,
+          number: 1,
+          title: targetDetail.title.trim().isNotEmpty ? targetDetail.title : targetItem.title,
+          url: targetItem.url,
+        );
+      }
+    }
+
+    if (!mounted) return;
 
     final res = await showModalBottomSheet<SourcePickerResult>(
       context: context,
@@ -1560,73 +1618,11 @@ class _DetailViewState extends State<_DetailView>
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) => _SourcePickerSheet(
-        title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
+        title: targetEp.title.trim().isNotEmpty ? targetEp.title : targetDetail.title,
         loadingMessage: isCatalog
             ? 'Searching providers for download sources…'
             : 'Resolving download options…',
         resolve: ([onProgress]) async {
-          var targetItem = widget.item;
-          var targetDetail = detail;
-          var targetEp = ep;
-
-          if (isCatalog) {
-            if (detail.sourceId != 'tmdb:catalog' && !detail.sourceId.startsWith('tpdb:')) {
-              targetItem = MediaItem(
-                id: detail.id,
-                title: detail.title,
-                url: detail.url,
-                type: detail.type,
-                sourceId: detail.sourceId,
-              );
-              targetDetail = detail;
-              targetEp = ep;
-            } else {
-              var resolved = await _resolveCatalogPlayback(category: category);
-              if (resolved == null) {
-                resolved = await _showProviderPickerSheet(detail, category: category);
-              }
-              if (resolved == null) {
-                return (
-                  sources: <VideoSource>[],
-                  resolvedItem: null,
-                  resolvedDetail: null,
-                  resolvedEpisode: null,
-                  error: 'No download sources found on installed providers',
-                );
-              }
-              targetItem = resolved.item;
-              targetDetail = resolved.detail;
-            }
-            if (targetDetail.episodes.isNotEmpty) {
-              Episode? byId;
-              for (final candidate in targetDetail.episodes) {
-                if (candidate.id == ep.id) { byId = candidate; break; }
-              }
-              if (byId != null) {
-                targetEp = byId;
-              } else {
-                final wantedSeason = seasonOf(ep);
-                final wantedNumber = ep.number;
-                Episode? byNumber;
-                for (final candidate in targetDetail.episodes) {
-                  if (candidate.number == wantedNumber &&
-                      (wantedSeason == null || seasonOf(candidate) == wantedSeason)) {
-                    byNumber = candidate;
-                    break;
-                  }
-                }
-                targetEp = byNumber ?? targetDetail.episodes.first;
-              }
-            } else {
-              targetEp = Episode(
-                id: targetItem.id,
-                number: 1,
-                title: targetDetail.title.trim().isNotEmpty ? targetDetail.title : targetItem.title,
-                url: targetItem.url,
-              );
-            }
-          }
-
           // 1. Initial fast resolve: returns first available mirror(s) within ~1-2s
           var s = await sl<SourceRepository>().sources(
             targetEp.url,

@@ -106,6 +106,13 @@ void main() {
       expect(queries, contains('young housewives'));
     });
 
+    test('generates direct queries for Naughty book worms vol. 51 matching Speedporn', () {
+      final queries = TitleMatcher.searchQueries('Naughty book worms vol. 51');
+      expect(queries, contains('Naughty book worms 51'));
+      expect(queries, contains('Naughty book worms Vol 51'));
+      expect(queries, contains('naughty book worms 51'));
+    });
+
     test('generates stripped studio prefix queries', () {
       final queries = TitleMatcher.searchQueries('Brazzers - Fantasy 10');
       expect(queries, contains('Brazzers - Fantasy 10'));
