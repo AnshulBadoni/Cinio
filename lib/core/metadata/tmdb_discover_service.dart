@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
@@ -329,25 +330,29 @@ class TmdbDiscoverService {
           '${Tmdb.base}/tv/$id/season/$seasonNumber',
           options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
         );
-        final rows = response.data is Map ? response.data['episodes'] : null;
-        if (rows is! List) return const [];
-        return [
-          for (final e in rows)
-            if (e is Map && e['episode_number'] is num)
-              Episode(
-                id: 'tmdb:tv:$id:s$seasonNumber:e${(e['episode_number'] as num).toInt()}:${e['id'] ?? ''}',
-                title: (e['name'] ?? 'Episode ${(e['episode_number'] as num).toInt()}').toString(),
-                number: (e['episode_number'] as num).toDouble(),
-                url: 'tmdb://tv/$id/season/$seasonNumber/episode/${(e['episode_number'] as num).toInt()}',
-                date: e['air_date']?.toString(),
-                thumbnail: e['still_path'] is String && (e['still_path'] as String).isNotEmpty ? '${Tmdb.img}/w342${e['still_path']}' : null,
-                season: seasonNumber,
-                description: e['overview']?.toString(),
-                metaTitle: e['name']?.toString(),
-                rating: double.tryParse('${e['vote_average'] ?? ''}'),
-                runtimeMinutes: (e['runtime'] as num?)?.toInt(),
-              ),
-        ];
+        final rawData = response.data;
+        if (rawData is! Map) return const [];
+        return await Isolate.run(() {
+          final rows = rawData['episodes'];
+          if (rows is! List) return const <Episode>[];
+          return <Episode>[
+            for (final e in rows)
+              if (e is Map && e['episode_number'] is num)
+                Episode(
+                  id: 'tmdb:tv:$id:s$seasonNumber:e${(e['episode_number'] as num).toInt()}:${e['id'] ?? ''}',
+                  title: (e['name'] ?? 'Episode ${(e['episode_number'] as num).toInt()}').toString(),
+                  number: (e['episode_number'] as num).toDouble(),
+                  url: 'tmdb://tv/$id/season/$seasonNumber/episode/${(e['episode_number'] as num).toInt()}',
+                  date: e['air_date']?.toString(),
+                  thumbnail: e['still_path'] is String && (e['still_path'] as String).isNotEmpty ? '${Tmdb.img}/w342${e['still_path']}' : null,
+                  season: seasonNumber,
+                  description: e['overview']?.toString(),
+                  metaTitle: e['name']?.toString(),
+                  rating: double.tryParse('${e['vote_average'] ?? ''}'),
+                  runtimeMinutes: (e['runtime'] as num?)?.toInt(),
+                ),
+          ];
+        });
       } catch (_) {
         if (attempt < 2) {
           await Future.delayed(Duration(milliseconds: 300 * (attempt + 1)));

@@ -394,6 +394,7 @@ class _DetailViewState extends State<_DetailView>
     _prefetchedCatalog = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
       try {
         final resolved = await sl<SourceRepository>().resolveCatalogTitle(
