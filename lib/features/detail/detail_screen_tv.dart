@@ -625,21 +625,24 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       ),
     );
     if (res == null || !mounted) return;
+    final finalItem = res.resolvedItem ?? widget.item;
+    final finalDetail = res.resolvedDetail ?? detail;
+    final finalEp = res.resolvedEpisode ?? ep;
     unawaited(
       sl<DownloadManager>().enqueueSource(
-        sourceId: item.sourceId,
-        showId: item.id,
-        showTitle: detail.title,
-        cover: detail.cover ?? item.cover,
-        coverHeaders: detail.coverHeaders ?? item.coverHeaders,
-        showUrl: item.url,
+        sourceId: finalItem.sourceId,
+        showId: finalItem.id,
+        showTitle: finalDetail.title,
+        cover: finalDetail.cover ?? finalItem.cover,
+        coverHeaders: finalDetail.coverHeaders ?? finalItem.coverHeaders,
+        showUrl: finalItem.url,
         category: category,
-        episode: ep,
+        episode: finalEp,
         source: res.chosen,
         qualityLabel: res.chosen.quality ?? 'auto',
         fallbacks: res.all,
         nowMs: DateTime.now().millisecondsSinceEpoch,
-        malId: detail.malId ?? item.malId,
+        malId: finalDetail.malId ?? finalItem.malId,
       ),
     );
     _snack('Added to downloads');
