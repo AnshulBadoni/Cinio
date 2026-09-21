@@ -147,7 +147,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           _busy = false;
           _error =
               'Couldn\'t open the installer. Enable "Install unknown apps" '
-              'for Zangetsu in system settings, then try again.';
+              'for Cinio in system settings, then try again.';
         });
       }
     } catch (_) {

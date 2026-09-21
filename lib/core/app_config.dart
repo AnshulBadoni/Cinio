@@ -1,7 +1,7 @@
 /// Single source of truth for the product name. Final rename = one
 /// find/replace on the token `WATCH_APP` across the repo, plus a bundle-id
 /// rename (`flutter pub run rename` or manual android/ios edits).
-const String kAppName = 'Zangetsu';
+const String kAppName = 'Cinio';
 
 /// Running app version shown in Settings/About. Populated from the real build
 /// (PackageInfo) at boot so it never goes stale; this literal is just the
@@ -24,7 +24,7 @@ const String kDiscordInviteUrl = 'https://discord.gg/938JJBn44';
 /// The app READS this on launch to show in-app announcements — never writes.
 /// Edit + push that file to broadcast a message to every user.
 const String kAnnouncementsUrl =
-    'https://raw.githubusercontent.com/Spyou/Zangetsu/main/announcements.json';
+    'https://raw.githubusercontent.com/AnshulBadoni/Cinio/main/announcements.json';
 
 /// TMDB API key for movie/TV trailer lookups (TrailerService). Anime trailers
 /// use AniList and need no key. Supply via `--dart-define=TMDB_API_KEY=...`,
