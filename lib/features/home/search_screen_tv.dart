@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/media_item.dart';
+import '../../core/models/person.dart';
 import '../../core/playback/search_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -11,6 +13,7 @@ import '../../core/tv/tv_list_focusable.dart';
 import '../../core/tv/tv_poster_tile.dart';
 import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
+import '../people/person_page.dart';
 import '../search/bloc/search_bloc.dart';
 import '../search/bloc/search_event.dart';
 import '../search/bloc/search_state.dart';
@@ -119,6 +122,24 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
   }
 
   void _openDetail(MediaItem item) {
+    if (item.sourceId == 'tpdb:performer') {
+      final raw = item.id.replaceFirst('tpdb:performer:', '');
+      Navigator.of(context).push(PersonPage.route(
+        PersonRef(
+          id: 0,
+          externalId: raw,
+          source: PersonSource.thePornDbPerformer,
+          name: item.title,
+          photo: item.cover,
+        ),
+        sourceId: item.sourceId,
+      ));
+      return;
+    }
+    if (item.sourceId == 'tpdb:studio') {
+      launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
+      return;
+    }
     Navigator.push(context, DetailScreen.route(item));
   }
 

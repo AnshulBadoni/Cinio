@@ -66,7 +66,9 @@ class _PersonPageState extends State<PersonPage> {
       _loading = false;
       if (p != null) {
         _works.addAll(p.works);
-        _hasMore = p.works.length >= 30 && widget.person.source == PersonSource.thePornDbPerformer;
+        _hasMore = p.works.length >= 30 &&
+            (widget.person.source == PersonSource.thePornDbPerformer ||
+                widget.person.source == PersonSource.tmdb);
       }
     });
   }

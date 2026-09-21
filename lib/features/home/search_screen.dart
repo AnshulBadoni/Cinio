@@ -2,12 +2,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:url_launcher/url_launcher.dart';
+
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
+import '../../core/models/person.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/metadata/tmdb_discover_service.dart';
 import '../../core/metadata/theporndb.dart';
@@ -36,6 +39,7 @@ import '../aniyomi/aniyomi_filter_sheet.dart';
 import '../mihon/mihon_filter_sheet.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
+import '../people/person_page.dart';
 import '../player/player_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import 'search_screen_tv.dart';
@@ -261,6 +265,24 @@ class _SearchViewState extends State<_SearchView>
 
   Future<void> _openDetail(MediaItem item) async {
     if (!mounted) return;
+    if (item.sourceId == 'tpdb:performer') {
+      final raw = item.id.replaceFirst('tpdb:performer:', '');
+      Navigator.of(context).push(PersonPage.route(
+        PersonRef(
+          id: 0,
+          externalId: raw,
+          source: PersonSource.thePornDbPerformer,
+          name: item.title,
+          photo: item.cover,
+        ),
+        sourceId: item.sourceId,
+      ));
+      return;
+    }
+    if (item.sourceId == 'tpdb:studio') {
+      launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
+      return;
+    }
     MediaDetail? catalogDetail;
     if (item.sourceId == 'tmdb:catalog') {
       try { catalogDetail = await sl<TmdbDiscoverService>().movieDetail(item); } catch (_) {}
@@ -362,6 +384,10 @@ class _SearchViewState extends State<_SearchView>
   }
 
   Future<void> _play(MediaItem item) async {
+    if (item.sourceId == 'tpdb:performer' || item.sourceId == 'tpdb:studio') {
+      _openDetail(item);
+      return;
+    }
     final resolved = await _resolveCatalogItem(item);
     if (!mounted) return;
     if (resolved == null) {
@@ -398,6 +424,10 @@ class _SearchViewState extends State<_SearchView>
   }
 
   Future<void> _showInfo(MediaItem item) async {
+    if (item.sourceId == 'tpdb:performer' || item.sourceId == 'tpdb:studio') {
+      _openDetail(item);
+      return;
+    }
     final resolved = await _resolveCatalogItem(item);
     if (!mounted) return;
     final target = resolved ?? item;

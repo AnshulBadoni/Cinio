@@ -16,6 +16,8 @@ class PeopleService {
   static const String _tpdbBase = 'https://api.theporndb.net';
   static const String _tpdbKey = '8ABvbgloweVLDeD3HBq6x9eHpL3lMJE8qEuBtdmb213d0c62';
 
+  final Map<int, List<PersonWork>> _tmdbCreditsCache = {};
+
   Future<PersonProfile?> load(PersonRef ref) {
     switch (ref.source) {
       case PersonSource.anilistCharacter:
@@ -37,6 +39,12 @@ class PeopleService {
         if (id == null || id.isEmpty) return const [];
         return _tpdbPerformerWorks(id, page: page);
       case PersonSource.tmdb:
+        final all = _tmdbCreditsCache[ref.id];
+        if (all == null) return const [];
+        final startIndex = (page - 1) * 30;
+        if (startIndex >= all.length) return const [];
+        final endIndex = (startIndex + 30 < all.length) ? startIndex + 30 : all.length;
+        return all.sublist(startIndex, endIndex);
       case PersonSource.anilistCharacter:
       case PersonSource.anilistStaff:
         return const [];
@@ -332,20 +340,26 @@ class PeopleService {
     final credits = await _get('$_tmdbBase/person/$id/combined_credits');
     final castList = credits?['cast'];
     if (castList is List) {
+      final seenIds = <String>{};
       final sorted = castList.whereType<Map>().toList()
         ..sort((a, b) =>
             ((b['popularity'] as num?) ?? 0).compareTo((a['popularity'] as num?) ?? 0));
-      for (final c in sorted.take(30)) {
+      for (final c in sorted) {
         final title = (c['title'] ?? c['name']) as String?;
         if (title == null || title.isEmpty) continue;
         final poster = c['poster_path'] as String?;
+        final mediaId = c['id']?.toString();
+        final key = mediaId ?? title;
+        if (!seenIds.add(key)) continue;
         works.add(PersonWork(
           title: title,
           cover: (poster != null && poster.isNotEmpty) ? '$_img/w342$poster' : null,
           subtitle: c['character'] as String?,
+          catalogId: mediaId,
         ));
       }
     }
+    _tmdbCreditsCache[id] = works;
     final profile = person['profile_path'] as String?;
     return PersonProfile(
       name: name,
@@ -354,7 +368,7 @@ class PeopleService {
           ? null
           : (person['biography'] as String).trim(),
       subtitle: person['known_for_department'] as String?,
-      works: works,
+      works: works.take(30).toList(),
     );
   }
 
