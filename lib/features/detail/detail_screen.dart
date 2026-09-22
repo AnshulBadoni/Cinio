@@ -800,8 +800,10 @@ class _DetailViewState extends State<_DetailView>
   Future<({MediaItem item, MediaDetail detail})?> _showProviderPickerSheet(
     MediaDetail detail, {
     String category = 'sub',
+    bool ignoreActionInFlight = false,
   }) async {
-    if (_actionInFlight) return null;
+    if (_actionInFlight && !ignoreActionInFlight) return null;
+    final prevInFlight = _actionInFlight;
     _actionInFlight = true;
     try {
       return await showModalBottomSheet<({MediaItem item, MediaDetail detail})>(
@@ -818,7 +820,7 @@ class _DetailViewState extends State<_DetailView>
         ),
       );
     } finally {
-      if (mounted) _actionInFlight = false;
+      if (mounted) _actionInFlight = prevInFlight;
     }
   }
 
@@ -1328,6 +1330,77 @@ class _DetailViewState extends State<_DetailView>
     );
   }
 
+Episode _matchTargetEpisode(MediaDetail targetDetail, MediaItem targetItem, Episode origEp) {
+  if (targetDetail.episodes.isNotEmpty) {
+    for (final candidate in targetDetail.episodes) {
+      if (candidate.id == origEp.id) return candidate;
+    }
+    final wantedSeason = seasonOf(origEp);
+    final wantedNumber = origEp.number;
+    for (final candidate in targetDetail.episodes) {
+      if (candidate.number == wantedNumber &&
+          (wantedSeason == null || seasonOf(candidate) == wantedSeason)) {
+        return candidate;
+      }
+    }
+    if (wantedNumber != null) {
+      for (final candidate in targetDetail.episodes) {
+        if (candidate.number == wantedNumber) return candidate;
+      }
+    }
+    return targetDetail.episodes.first;
+  }
+  return Episode(
+    id: targetItem.id,
+    number: 1,
+    title: targetDetail.title.trim().isNotEmpty ? targetDetail.title : targetItem.title,
+    url: targetItem.url,
+  );
+}
+
+Future<List<VideoSource>> _fetchVideoSources(String url, String sourceId) async {
+  var s = await sl<SourceRepository>().sources(
+    url,
+    sourceId: sourceId,
+    fast: true,
+  );
+  if (s.isNotEmpty) return s;
+
+  var done = false;
+  var pollTries = 0;
+  final knownUrls = s.map((e) => e.url).toSet();
+
+  while (!done && pollTries < 15) {
+    await Future.delayed(const Duration(milliseconds: 750));
+    pollTries++;
+    final polled = await sl<SourceRepository>().polledSources(
+      url,
+      sourceId: sourceId,
+    );
+    done = polled.done;
+    final newSources = polled.sources.where((e) => !knownUrls.contains(e.url)).toList();
+    if (newSources.isNotEmpty) {
+      for (final ns in newSources) {
+        knownUrls.add(ns.url);
+      }
+      s = [...s, ...newSources];
+      return s;
+    }
+  }
+
+  if (s.isEmpty) {
+    final fallbackSources = await sl<SourceRepository>().sources(
+      url,
+      sourceId: sourceId,
+      fast: false,
+    );
+    if (fallbackSources.isNotEmpty) {
+      s = fallbackSources;
+    }
+  }
+  return s;
+}
+
   Future<void> _pickSourceAndDownload(
     Episode ep,
     MediaDetail detail,
@@ -1351,43 +1424,30 @@ class _DetailViewState extends State<_DetailView>
         targetEp = ep;
       } else {
         var resolved = await _resolveCatalogPlayback(category: category);
+        if (resolved != null) {
+          final candidateEp = _matchTargetEpisode(resolved.detail, resolved.item, ep);
+          final sources = await _fetchVideoSources(candidateEp.url, resolved.item.sourceId);
+          if (sources.isEmpty) {
+            resolved = null;
+          } else {
+            targetItem = resolved.item;
+            targetDetail = resolved.detail;
+            targetEp = candidateEp;
+          }
+        }
+
         if (resolved == null && mounted) {
-          resolved = await _showProviderPickerSheet(detail, category: category);
+          resolved = await _showProviderPickerSheet(detail, category: category, ignoreActionInFlight: true);
+          if (resolved != null) {
+            targetItem = resolved.item;
+            targetDetail = resolved.detail;
+            targetEp = _matchTargetEpisode(targetDetail, targetItem, ep);
+          }
         }
         if (resolved == null || !mounted) {
           _snack('No matching title found on installed providers');
           return;
         }
-        targetItem = resolved.item;
-        targetDetail = resolved.detail;
-      }
-      if (targetDetail.episodes.isNotEmpty) {
-        Episode? byId;
-        for (final candidate in targetDetail.episodes) {
-          if (candidate.id == ep.id) { byId = candidate; break; }
-        }
-        if (byId != null) {
-          targetEp = byId;
-        } else {
-          final wantedSeason = seasonOf(ep);
-          final wantedNumber = ep.number;
-          Episode? byNumber;
-          for (final candidate in targetDetail.episodes) {
-            if (candidate.number == wantedNumber &&
-                (wantedSeason == null || seasonOf(candidate) == wantedSeason)) {
-              byNumber = candidate;
-              break;
-            }
-          }
-          targetEp = byNumber ?? targetDetail.episodes.first;
-        }
-      } else {
-        targetEp = Episode(
-          id: targetItem.id,
-          number: 1,
-          title: targetDetail.title.trim().isNotEmpty ? targetDetail.title : targetItem.title,
-          url: targetItem.url,
-        );
       }
     }
 

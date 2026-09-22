@@ -49,6 +49,7 @@ class _FakeDownloadManager extends ChangeNotifier implements DownloadManager {
     required List<Episode> episodes,
     required int nowMs,
     int? malId,
+    SubtitleDownloadMode subtitleMode = SubtitleDownloadMode.defaultOnly,
   }) async {}
 
   @override
@@ -66,6 +67,7 @@ class _FakeDownloadManager extends ChangeNotifier implements DownloadManager {
     required int nowMs,
     int? malId,
     List<VideoSource> fallbacks = const [],
+    SubtitleDownloadMode subtitleMode = SubtitleDownloadMode.defaultOnly,
   }) async {}
 
   @override

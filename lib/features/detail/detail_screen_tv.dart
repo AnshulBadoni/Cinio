@@ -513,6 +513,33 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     return byS;
   }
 
+  Future<({MediaItem item, MediaDetail detail})?> _showProviderPickerSheet(
+    MediaDetail detail, {
+    String category = 'sub',
+    bool ignoreActionInFlight = false,
+  }) async {
+    if (_actionInFlight && !ignoreActionInFlight) return null;
+    final prevInFlight = _actionInFlight;
+    _actionInFlight = true;
+    try {
+      return await showModalBottomSheet<({MediaItem item, MediaDetail detail})>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => _ProviderPickerSheet(
+          catalogItem: widget.item,
+          catalogDetail: detail,
+          category: category,
+        ),
+      );
+    } finally {
+      if (mounted) _actionInFlight = prevInFlight;
+    }
+  }
+
   Future<void> _pickSourceAndDownload(Episode ep, MediaDetail detail, String category) async {
     final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
     var targetItem = widget.item;
@@ -531,27 +558,31 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         targetDetail = detail;
         targetEp = ep;
       } else {
-        final resolved = await sl<SourceRepository>().resolveCatalogTitle(widget.item, category: category);
+        var resolved = await sl<SourceRepository>().resolveCatalogTitle(widget.item, category: category);
+        if (resolved != null) {
+          final candidateEp = _matchTargetEpisode(resolved.detail, resolved.item, ep);
+          final sources = await _fetchVideoSources(candidateEp.url, resolved.item.sourceId);
+          if (sources.isEmpty) {
+            resolved = null;
+          } else {
+            targetItem = resolved.item;
+            targetDetail = resolved.detail;
+            targetEp = candidateEp;
+          }
+        }
+
+        if (resolved == null && mounted) {
+          resolved = await _showProviderPickerSheet(detail, category: category, ignoreActionInFlight: true);
+          if (resolved != null) {
+            targetItem = resolved.item;
+            targetDetail = resolved.detail;
+            targetEp = _matchTargetEpisode(targetDetail, targetItem, ep);
+          }
+        }
         if (resolved == null || !mounted) {
           _snack('No matching title found on installed providers');
           return;
         }
-        targetItem = resolved.item;
-        targetDetail = resolved.detail;
-      }
-      if (targetDetail.episodes.isNotEmpty) {
-        final match = targetDetail.episodes.firstWhere(
-          (e) => e.number == ep.number && (seasonOf(e) == seasonOf(ep) || seasonOf(ep) == null),
-          orElse: () => targetDetail.episodes.first,
-        );
-        targetEp = match;
-      } else {
-        targetEp = Episode(
-          id: targetItem.id,
-          number: 1,
-          title: targetDetail.title.trim().isNotEmpty ? targetDetail.title : targetItem.title,
-          url: targetItem.url,
-        );
       }
     }
 
@@ -1304,6 +1335,7 @@ class _TvEpisodeListState extends State<_TvEpisodeList> {
                   onDownload: () => widget.onDownload(ep),
                   sourceId: widget.sourceId,
                   showId: widget.showId,
+                  isTv: true,
                 ),
               ),
             ),
