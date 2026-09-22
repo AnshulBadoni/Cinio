@@ -1,28 +1,26 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:equatable/equatable.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../core/platform/apple_tv.dart';
 import '../../../core/error/exceptions.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
-import '../../../core/models/home_section.dart';
-import '../../../core/models/media_item.dart';
 import '../../../core/metadata/theporndb.dart';
 import '../../../core/metadata/tmdb_discover_service.dart';
+import '../../../core/models/home_section.dart';
+import '../../../core/models/media_item.dart';
+import '../../../core/platform/apple_tv.dart';
 import '../../../core/prefs/catalog_source_prefs.dart';
 import '../../../core/repository/source_repository.dart';
 
-/// Immutable view-state for the Home screen. Rows are catalog-source-driven:
-/// Provider uses the active provider, while TMDB/ThePornDB/Mixed use their
-/// catalog services and still resolve playback through a provider later.
-///
-/// A null [sections] means "not yet loaded OR failed". The first section also
-/// feeds the hero carousel via [heroItems]; the screen renders the remaining
-/// sections as browse rows.
+/// Immutable view-state for the Home screen.
 class HomeState extends Equatable {
-  const HomeState({this.sections, this.loading = false, this.cloudflareUrl});
+  const HomeState({
+    this.sections, 
+    this.loading = false, 
+    this.cloudflareUrl,
+  });
 
   /// The provider's named home rows, in order. Null until the first load.
   final List<HomeSection>? sections;
@@ -30,33 +28,30 @@ class HomeState extends Equatable {
   /// True while the rows are being (re)fetched.
   final bool loading;
 
-  /// Set when the active (Mihon) source is blocked by a Cloudflare challenge the
-  /// headless solver couldn't pass — the URL to open in the visible WebView
-  /// solve. Null in every other state. Drives the "Solve Cloudflare" empty view.
+  /// Set when the active source is blocked by a Cloudflare challenge.
   final String? cloudflareUrl;
 
-  /// Items that drive the hero carousel — the first section's items. Empty
-  /// until something loads.
+  /// Items that drive the hero carousel — the first section's items.
   List<MediaItem> get heroItems => (sections != null && sections!.isNotEmpty)
       ? sections!.first.items
-      : const [];
+      : const <MediaItem>[];
 
   HomeState copyWith({
     List<HomeSection>? sections,
     bool? loading,
     String? cloudflareUrl,
+    bool clearCloudflareUrl = false,
   }) => HomeState(
     sections: sections ?? this.sections,
     loading: loading ?? this.loading,
-    cloudflareUrl: cloudflareUrl ?? this.cloudflareUrl,
+    cloudflareUrl: clearCloudflareUrl ? null : (cloudflareUrl ?? this.cloudflareUrl),
   );
 
   @override
   List<Object?> get props => [sections, loading, cloudflareUrl];
 }
 
-/// Owns the Home rows and switches between Provider, TMDB, ThePornDB and Mixed
-/// catalog sources without changing the existing provider playback pipeline.
+/// Owns the Home rows and manages Provider, TMDB, ThePornDB and Mixed catalog loads.
 class HomeCubit extends Cubit<HomeState> {
   HomeCubit(
     this._repo, [
@@ -69,9 +64,6 @@ class HomeCubit extends Cubit<HomeState> {
        super(const HomeState());
 
   final SourceRepository _repo;
-
-  // Optional for lightweight provider-only tests; production DI supplies all
-  // catalog services. When omitted, Home defaults to Provider mode.
   final CatalogSourcePrefs? _catalogPrefs;
   final ThePornDb? _tpdb;
   final TmdbDiscoverService? _tmdb;
@@ -80,21 +72,38 @@ class HomeCubit extends Cubit<HomeState> {
       _catalogPrefs?.source ??
       (_tmdb != null ? CatalogSource.tmdb : CatalogSource.provider);
 
-  /// Monotonic load id. Each [load] bumps it; a fetch only emits its result if
-  /// it's still the latest. This makes source switches "latest wins" — a slow
-  /// previous-source fetch can't land after a newer switch and clobber the UI.
+  /// Monotonic generation counter to prevent async race conditions (latest wins).
   int _gen = 0;
 
-  /// In-memory cache for catalog sections (5-minute TTL) to prevent empty rows
-  /// and avoid spamming TMDB/TPDB with concurrent network bursts.
+  /// In-memory cache for catalog sections (5-minute TTL) to prevent empty row flashing.
   static final Map<CatalogSource, (DateTime, List<HomeSection>)> _catalogCache = {};
 
-  /// (Re)load the rows. Emits `loading: true` (keeping any existing sections so
-  /// rows don't flash empty), fetches the provider's home, and emits the fresh
-  /// result. A total failure yields an empty section list rather than throwing.
-  /// [reset] clears the current rows first (used on a source switch) so the UI
-  /// shows loading skeletons for the NEW source instead of lingering on the old
-  /// source's content while the (possibly slow) fetch runs.
+  /// Appends paged items to a specific section's list in a strictly immutable way.
+  /// Prevents any duplicate list items and ensures safe reactive widget updates.
+  void appendItems(String sectionTitle, List<MediaItem> newItems) {
+    final currentSections = state.sections;
+    if (currentSections == null || isClosed) return;
+
+    final updatedSections = currentSections.map((s) {
+      if (s.title == sectionTitle) {
+        final existingIds = s.items.map((it) => it.id).toSet();
+        final uniqueNewItems = newItems.where((it) => !existingIds.contains(it.id)).toList();
+
+        if (uniqueNewItems.isEmpty) return s;
+
+        return HomeSection(
+          title: s.title,
+          items: List<MediaItem>.unmodifiable([...s.items, ...uniqueNewItems]),
+          more: s.more,
+        );
+      }
+      return s;
+    }).toList(growable: false);
+
+    emit(state.copyWith(sections: List<HomeSection>.unmodifiable(updatedSections)));
+  }
+
+  /// (Re)loads the rows.
   Future<void> load({bool reset = false}) async {
     final gen = ++_gen;
     final sourceId = _repo.sourceId;
@@ -104,12 +113,11 @@ class HomeCubit extends Cubit<HomeState> {
       _catalogCache.remove(source);
       emit(const HomeState(loading: true));
     } else {
-      // Check cache first for instant load without network flash
       final cached = _catalogCache[source];
       if (cached != null &&
           DateTime.now().difference(cached.$1).inMinutes < 5 &&
           cached.$2.isNotEmpty) {
-        emit(HomeState(sections: cached.$2, loading: false));
+        emit(HomeState(sections: List<HomeSection>.unmodifiable(cached.$2), loading: false));
         return;
       }
       emit(state.copyWith(loading: true));
@@ -135,32 +143,27 @@ class HomeCubit extends Cubit<HomeState> {
             : await homeFuture;
       }
     } on TimeoutException catch (_) {
-      debugPrint('[home] load timed out · source=$sourceId');
+      _logDiagnostic('Load timed out for source: $sourceId');
       sections = const <HomeSection>[];
     } on CloudflareRequiredException catch (e) {
-      debugPrint('[home] load needs Cloudflare · source=$sourceId');
+      _logDiagnostic('Cloudflare challenge required for source: $sourceId');
       sections = const <HomeSection>[];
       cloudflareUrl = e.url;
     } catch (e, st) {
-      debugPrint('[home] load failed · source=$sourceId · $e\n$st');
+      _logDiagnostic('Load failed for source: $sourceId', error: e, stackTrace: st);
       sections = const <HomeSection>[];
     }
 
-    // A novel plugin catches its own fetch errors and returns nothing, so a
-    // Cloudflare challenge arrives as an empty list rather than an exception.
-    // Pick it up from the latch so the solve prompt still appears. Only when
-    // there is genuinely nothing to show, so a source that partly worked is
-    // never interrupted.
     if (cloudflareUrl == null && sections.isEmpty) {
       cloudflareUrl = NovelCloudflare.pendingUrl;
     }
     if (sections.isNotEmpty) NovelCloudflare.clear();
 
-    // A newer load started while we were fetching — discard this stale result.
     if (isClosed || gen != _gen) return;
+    
     emit(
       HomeState(
-        sections: sections,
+        sections: List<HomeSection>.unmodifiable(sections),
         loading: false,
         cloudflareUrl: cloudflareUrl,
       ),
@@ -171,38 +174,7 @@ class HomeCubit extends Cubit<HomeState> {
     CatalogSource source,
     int gen,
   ) async {
-    final kinds = source == CatalogSource.thePornDb
-        ? const [
-            'tpdb_recent',
-            'tpdb_trending',
-            'tpdb_performers',
-            'tpdb_popular',
-            'tpdb_top_rated',
-          ]
-        : source == CatalogSource.mixed
-            ? const [
-                'mixed_recent',
-                'tmdb_new_releases',
-                'mixed_trending_movies',
-                'tmdb_trending_series',
-                'mixed_popular_movies',
-                'tmdb_popular_series',
-                'tmdb_trending_anime',
-                'mixed_top_rated_movies',
-                'tmdb_top_rated_series',
-                'tpdb_performers',
-              ]
-            : const [
-                'tmdb_recent',
-                'tmdb_new_releases',
-                'tmdb_trending_movies',
-                'tmdb_trending_series',
-                'tmdb_popular_movies',
-                'tmdb_popular_series',
-                'tmdb_trending_anime',
-                'tmdb_top_rated_movies',
-                'tmdb_top_rated_series',
-              ];
+    final kinds = _resolveKindsForSource(source);
     final byKind = <String, HomeSection>{};
 
     Future<HomeSection?> fetch(String kind) async {
@@ -214,13 +186,7 @@ class HomeCubit extends Cubit<HomeState> {
           } else if (source == CatalogSource.mixed) {
             if (kind.startsWith('mixed_')) {
               final tmdbKind = kind.replaceFirst('mixed_', 'tmdb_');
-              final tpdbKind = switch (kind) {
-                'mixed_recent' => 'tpdb_recent',
-                'mixed_trending_movies' => 'tpdb_trending',
-                'mixed_popular_movies' => 'tpdb_popular',
-                'mixed_top_rated_movies' => 'tpdb_top_rated',
-                _ => 'tpdb_recent',
-              };
+              final tpdbKind = _resolveTpdbKind(kind);
               final tpdb = _tpdb;
               final results = await Future.wait([
                 _tmdb!.homeSection(tmdbKind),
@@ -235,7 +201,7 @@ class HomeCubit extends Cubit<HomeState> {
               if (merged.isEmpty) return null;
               return HomeSection(
                 title: tmdbSec?.title ?? tpdbSec?.title ?? 'Recent',
-                items: merged,
+                items: List<MediaItem>.unmodifiable(merged),
                 more: BrowseMore(sourceId: 'mixed:catalog', kind: kind),
               );
             } else if (kind.startsWith('tpdb_')) {
@@ -251,12 +217,12 @@ class HomeCubit extends Cubit<HomeState> {
             final section = await _tmdb!.homeSection(kind);
             if (section != null && section.items.isNotEmpty) return section;
           }
-        } catch (e) {
+        } catch (e, st) {
           if (attempt == 2) {
-            debugPrint('[home] failed to load section $kind after 3 attempts: $e');
+            _logDiagnostic('Failed to load section $kind after 3 attempts', error: e, stackTrace: st);
             return null;
           }
-          await Future.delayed(Duration(milliseconds: 300 * (attempt + 1)));
+          await Future<void>.delayed(Duration(milliseconds: 300 * (attempt + 1)));
         }
       }
       return null;
@@ -267,22 +233,77 @@ class HomeCubit extends Cubit<HomeState> {
       futures.add(fetch(kind).then((section) {
         if (section == null || isClosed || gen != _gen) return;
         byKind[kind] = section;
-        final ordered = [for (final k in kinds) if (byKind.containsKey(k)) byKind[k]!];
-        emit(state.copyWith(sections: ordered, loading: true));
+        final ordered = [
+          for (final k in kinds) 
+            if (byKind.containsKey(k)) byKind[k]!
+        ];
+        emit(state.copyWith(sections: List<HomeSection>.unmodifiable(ordered), loading: true));
       }));
     }
+
     await Future.wait(futures);
-    final finalOrdered = [for (final k in kinds) if (byKind.containsKey(k)) byKind[k]!];
+    final finalOrdered = [
+      for (final k in kinds) 
+        if (byKind.containsKey(k)) byKind[k]!
+    ];
     if (finalOrdered.isNotEmpty) {
       _catalogCache[source] = (DateTime.now(), finalOrdered);
     }
     return finalOrdered;
   }
 
+  // ── Helper Resolvers ──────────────────────────────────────────────────────
+
+  List<String> _resolveKindsForSource(CatalogSource source) {
+    if (source == CatalogSource.thePornDb) {
+      return const [
+        'tpdb_recent',
+        'tpdb_trending',
+        'tpdb_performers',
+        'tpdb_popular',
+        'tpdb_top_rated',
+      ];
+    }
+    if (source == CatalogSource.mixed) {
+      return const [
+        'mixed_recent',
+        'tmdb_new_releases',
+        'mixed_trending_movies',
+        'tmdb_trending_series',
+        'mixed_popular_movies',
+        'tmdb_popular_series',
+        'tmdb_trending_anime',
+        'mixed_top_rated_movies',
+        'tmdb_top_rated_series',
+        'tpdb_performers',
+      ];
+    }
+    return const [
+      'tmdb_recent',
+      'tmdb_new_releases',
+      'tmdb_trending_movies',
+      'tmdb_trending_series',
+      'tmdb_popular_movies',
+      'tmdb_popular_series',
+      'tmdb_trending_anime',
+      'tmdb_top_rated_movies',
+      'tmdb_top_rated_series',
+    ];
+  }
+
+  String _resolveTpdbKind(String kind) => switch (kind) {
+        'mixed_recent' => 'tpdb_recent',
+        'mixed_trending_movies' => 'tpdb_trending',
+        'mixed_popular_movies' => 'tpdb_popular',
+        'mixed_top_rated_movies' => 'tpdb_top_rated',
+        _ => 'tpdb_recent',
+      };
+
   List<MediaItem> _interleave(List<MediaItem> items) {
-    final tmdb = items.where((item) => item.sourceId == 'tmdb:catalog').toList();
-    final tpdb = items.where((item) => item.sourceId.startsWith('tpdb:')).toList();
+    final tmdb = items.where((item) => item.sourceId == 'tmdb:catalog').toList(growable: false);
+    final tpdb = items.where((item) => item.sourceId.startsWith('tpdb:')).toList(growable: false);
     final out = <MediaItem>[];
+    
     var i = 0, j = 0;
     while (i < tmdb.length || j < tpdb.length) {
       if (i < tmdb.length) out.add(tmdb[i++]);
@@ -291,4 +312,12 @@ class HomeCubit extends Cubit<HomeState> {
     return out;
   }
 
+  void _logDiagnostic(String message, {Object? error, StackTrace? stackTrace}) {
+    developer.log(
+      message,
+      name: 'HomeCubit',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
 }

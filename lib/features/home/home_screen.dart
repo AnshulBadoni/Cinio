@@ -1,43 +1,64 @@
+import 'dart:collection';
+import 'dart:developer' as developer;
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/app_mode.dart';
+import '../../core/announce/announcement.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
-import '../../core/platform/apple_tv.dart';
+import '../../core/metadata/title_logo_service.dart';
 import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/mihon/mihon_image_provider.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
-import '../../core/notify/notification_service.dart';
-import '../../core/update/extension_auto_updater.dart';
-import '../../core/provider/cloudstream_provider.dart';
-import '../../core/provider/provider_manager.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
+import '../../core/models/person.dart';
 import '../../core/models/provider_info.dart';
-import '../../core/prefs/catalog_source_prefs.dart';
+import '../../core/notify/notification_service.dart';
+import '../../core/platform/apple_tv.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/prefs/catalog_source_prefs.dart';
+import '../../core/provider/cloudstream_provider.dart';
+import '../../core/provider/provider_manager.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/announce/announcement.dart';
+import '../../core/ui/adaptive_content_row.dart';
+import '../../core/ui/content_row.dart';
+import '../../core/ui/featured_carousel.dart';
+import '../../core/ui/featured_hero.dart';
+import '../../core/ui/list_status_sheet.dart';
+import '../../core/ui/media_info_sheet.dart';
+import '../../core/ui/people_row.dart';
+import '../../core/ui/poster_card.dart';
+import '../../core/ui/row_skeleton.dart';
+import '../../core/ui/source_switcher.dart';
+import '../../core/ui/states.dart';
+import '../../core/update/extension_auto_updater.dart';
 import '../announce/announcement_sheet.dart';
+import '../auth/auth_cubit.dart';
+import '../auth/reconnect.dart';
 import '../community/community_sheet.dart';
+import '../detail/detail_screen.dart';
+import '../history/history_screen.dart';
 import '../notify/subscriptions_screen.dart';
+import '../people/person_page.dart';
+import '../player/player_screen.dart';
 import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
 import '../sources/aniyomi_repo_tab.dart' show kAniyomiReposBoxName;
@@ -45,39 +66,61 @@ import '../sources/providers_hub_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import '../update/update_dialog.dart';
 import 'continue_section.dart';
-import '../../core/ui/content_row.dart';
-import '../../core/ui/adaptive_content_row.dart';
-import '../../core/ui/people_row.dart';
-import '../../core/ui/featured_carousel.dart';
-import '../../core/ui/featured_hero.dart';
-import '../../core/metadata/title_logo_service.dart';
-import '../../core/ui/list_status_sheet.dart';
-import '../../core/ui/media_info_sheet.dart';
-import '../../core/ui/poster_card.dart';
-import '../../core/ui/row_skeleton.dart';
-import '../../core/ui/source_switcher.dart';
-import '../../core/ui/states.dart';
-import '../auth/auth_cubit.dart';
-import '../auth/reconnect.dart';
-import '../detail/detail_screen.dart';
-import '../people/person_page.dart';
-import '../../core/models/person.dart';
-import '../history/history_screen.dart';
-import '../player/player_screen.dart';
 import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
 import 'see_all_screen.dart';
 
-/// Provides the [HomeCubit] (which owns the three browse rows + the carousel's
-/// trending source) and kicks off the first load. The view itself stays
-/// Stateful for the per-item lazy hero-description cache and the navigation
-/// helpers.
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Max entries in the hero metadata LRU. Above this the oldest evicts, so
+/// long browsing sessions don't leak `Future<HeroMeta?>` refs indefinitely.
+const int _kMetaCacheMax = 50;
+
+/// Sections whose titles match a "people-style" row (case-insensitive).
+const Set<String> _kPeopleSectionKeys = {
+  'actor',
+  'actors',
+  'actress',
+  'actresses',
+  'model',
+  'models',
+  'cast',
+  'casts',
+  'performer',
+  'performers',
+  'voice actor',
+  'voice actors',
+  'voice cast',
+  'staff',
+};
+
+/// Sections whose titles indicate studio/channel/logo rows.
+const Set<String> _kStudioSectionKeys = {
+  'studio',
+  'studios',
+  'channel',
+  'channels',
+};
+
+/// Slash-transition animation timing constants.
+const double _kSlashPeak = 0.5;
+const double _kSlashInEnd = 0.45;
+const double _kSlashOutStart = 0.75;
+const double _kSlashGlintStart = 0.38;
+const double _kSlashGlintEnd = 0.62;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HomeScreen
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Provides the [HomeCubit] and hosts the reactive Home view.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Use the shared singleton so the splash can warm it before this mounts.
     return BlocProvider.value(value: sl<HomeCubit>(), child: const _HomeView());
   }
 }
@@ -91,74 +134,57 @@ class _HomeView extends StatefulWidget {
 
 class _HomeViewState extends State<_HomeView>
     with SingleTickerProviderStateMixin {
-  final _repo = sl<SourceRepository>();
-  final _myList = sl<MyListStore>();
+  // Cached services (avoid repeated SL lookups on hot paths).
+  final SourceRepository _repo = sl<SourceRepository>();
+  final MyListStore _myList = sl<MyListStore>();
+  final ContentModeCubit _modeCubit = sl<ContentModeCubit>();
+  final PlaybackPrefs _prefs = sl<PlaybackPrefs>();
 
-  /// Hero metadata cache: key = "sourceId:id". Futures are stored so they're
-  /// never re-fetched on carousel rotation; pre-warmed when hero items load.
-  final Map<String, Future<HeroMeta?>> _metaCache = {};
+  /// Hero metadata LRU cache: key = "sourceId:id".
+  final LinkedHashMap<String, Future<HeroMeta?>> _metaCache =
+      LinkedHashMap<String, Future<HeroMeta?>>();
   bool _heroPrewarmed = false;
 
-  // ── Logo-strike mode transition ──────────────────────────────────────────
-  // Tapping a mode card runs a full-screen overlay: the Zangetsu mark springs
-  // in at centre behind a scrim, a red glow pulses and a steel glint sweeps the
-  // blade, the mode swaps hidden at that peak, then it reveals. Self-contained —
-  // see [_enterMode] / [_slashOverlay].
+  /// Pagination state — cleared when source switches.
+  final Map<String, int> _sectionPages = {};
+  final Set<String> _sectionLoading = {};
+
+  /// Cached mode-art lookup. Rebuilt only when history boxes change or
+  /// source/mode switches — not per widget rebuild.
+  final Map<ContentMode, ({String? cover, Map<String, String>? headers})>
+  _modeArtCache = {};
+
+  // Slash transition state.
   late final AnimationController _slashCtrl;
   bool _slashing = false;
   bool _slashSwapped = false;
   ContentMode? _slashTarget;
 
-  // Auto update-check runs at most once per app process (not on every rebuild
-  // or tab revisit). Static so it survives this widget being recreated.
   static bool _updateChecked = false;
 
   @override
   void initState() {
     super.initState();
-    // Swap the content mode at the slash's peak (hidden behind the scrim), then
-    // tear the overlay down once it finishes.
     _slashCtrl =
         AnimationController(
             vsync: this,
             duration: const Duration(milliseconds: 600),
           )
-          ..addListener(() {
-            if (!_slashSwapped &&
-                _slashTarget != null &&
-                _slashCtrl.value >= 0.5) {
-              _slashSwapped = true;
-              sl<ContentModeCubit>().setMode(_slashTarget!);
-            }
-          })
-          ..addStatusListener((status) {
-            if (status == AnimationStatus.completed && mounted) {
-              setState(() {
-                _slashing = false;
-                _slashTarget = null;
-              });
-            }
-          });
-    // The splash usually pre-warms the rows; only fetch here if it didn't
-    // (e.g. first run right after onboarding, or a source with no warm yet).
-    // tvOS: provider JS loads AFTER the splash (runDeferredAppleTvBootTasks).
-    // load() here races that step and wedges QuickJS on the first RootShell
-    // frame — looks stuck on the splash after a cloud restore (onboarded=true
-    // pushes Home immediately; fresh installs see Onboarding first and miss it).
+          ..addListener(_handleSlashTick)
+          ..addStatusListener(_handleSlashStatus);
+
     if (!isAppleTv) {
       final cubit = context.read<HomeCubit>();
-      if (cubit.state.sections == null && !cubit.state.loading) cubit.load();
+      if (cubit.state.sections == null && !cubit.state.loading) {
+        cubit.load();
+      }
     }
-    // Silently check GitHub Releases once on launch; the dialog only appears if
-    // a newer, non-skipped version exists. Best-effort — never blocks startup.
+
     if (!_updateChecked && !isAppleTv) {
       _updateChecked = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         await maybeShowUpdateDialog(context);
-        // One-time community welcome (its own flag, independent of the per-id
-        // announcement feed), then any new developer announcement — all awaited
-        // in sequence so the modals never fight over the stack.
         if (mounted) await maybeShowCommunitySheet(context);
         if (mounted) await maybeShowAnnouncement(context);
       });
@@ -172,35 +198,50 @@ class _HomeViewState extends State<_HomeView>
     super.dispose();
   }
 
-  /// Best-effort, non-blocking check for CloudStream source updates on launch.
-  /// READ-ONLY (re-fetches catalogs, downloads nothing); posts a notification
-  /// when updates exist and the user left that toggle on. Deferred a few seconds
-  /// so it never competes with first content load, and fully guarded so it can
-  /// NEVER affect startup or playback.
+  void _handleSlashTick() {
+    if (!_slashSwapped &&
+        _slashTarget != null &&
+        _slashCtrl.value >= _kSlashPeak) {
+      _slashSwapped = true;
+      _modeCubit.setMode(_slashTarget!);
+      _modeArtCache.clear(); // mode changed → art may differ
+    }
+  }
+
+  void _handleSlashStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && mounted) {
+      setState(() {
+        _slashing = false;
+        _slashTarget = null;
+      });
+    }
+  }
+
+  // ── Update checks ─────────────────────────────────────────────────────────
+
   Future<void> _checkSourceUpdates() async {
-    final prefs = sl<PlaybackPrefs>();
-    final autoUpdate = prefs.autoUpdateExtensions;
-    // The read-only notify path below is Android-only; keep that gate unless
-    // we're auto-updating (JS providers auto-update on any platform).
+    final autoUpdate = _prefs.autoUpdateExtensions;
     if (!autoUpdate && !Platform.isAndroid) return;
     await Future<void>.delayed(const Duration(seconds: 4));
     if (!mounted) return;
 
-    // Auto-update path: apply updates across all ecosystems, throttled to
-    // ~once a day across launches. Best-effort — never touches startup.
     if (autoUpdate) {
       final now = DateTime.now().millisecondsSinceEpoch;
       const dayMs = 24 * 60 * 60 * 1000;
-      if (now - prefs.lastExtensionUpdateMs < dayMs) return;
-      await prefs.setLastExtensionUpdateMs(now);
-      final updated = await ExtensionAutoUpdater.run();
-      if (updated > 0) {
-        await NotificationService.instance.showMessage(
-          id: 779100,
-          title: 'Extensions updated',
-          body:
-              '$updated extension${updated == 1 ? '' : 's'} updated to the latest version.',
-        );
+      if (now - _prefs.lastExtensionUpdateMs < dayMs) return;
+      await _prefs.setLastExtensionUpdateMs(now);
+      try {
+        final updated = await ExtensionAutoUpdater.run();
+        if (updated > 0) {
+          await NotificationService.instance.showMessage(
+            id: 779100,
+            title: 'Extensions updated',
+            body:
+                '$updated extension${updated == 1 ? '' : 's'} updated to the latest version.',
+          );
+        }
+      } catch (e, s) {
+        _logError('auto-update', e, s);
       }
       return;
     }
@@ -217,67 +258,63 @@ class _HomeViewState extends State<_HomeView>
         if (repoUrls.isNotEmpty) {
           aniCount = await sl<AniyomiManager>().checkAllUpdates(repoUrls);
         }
-      } catch (_) {
-        /* aniyomi check must never break the CS check or startup */
+      } catch (e, s) {
+        _logError('aniyomi-update-check', e, s);
       }
 
       final total = csCount + aniCount;
       if (total > 0 && csManager.notifyUpdates) {
         await NotificationService.instance.showSourceUpdates(count: total);
       }
-    } catch (_) {
-      /* never affects startup */
+    } catch (e, s) {
+      _logError('cs-update-check', e, s);
     }
   }
 
-  /// Genres + episode count for the hero banner (lazily fetched, cached).
-  Future<HeroMeta?> _heroMeta(MediaItem m) =>
-      _metaCache.putIfAbsent('${m.sourceId}:${m.id}', () async {
-        final d = await _detailOf(m.url, m.sourceId);
-        if (d == null) return null;
-        return HeroMeta(
-          genres: d.genres,
-          episodeCount: d.episodes.length,
-          year: d.year,
-        );
-      });
+  void _logError(String tag, Object e, StackTrace s) {
+    developer.log(
+      'Home[$tag] error',
+      error: e,
+      stackTrace: s,
+      name: 'HomeScreen',
+    );
+  }
 
-  /// Warm ONLY the first hero's metadata (the slide shown first). The rest load
-  /// lazily, one at a time, as the carousel rotates — each via the hero's own
-  /// `FutureBuilder` on [_heroMeta] (cached). Firing ALL of them up front fired
-  /// one `detail()` per hero AT ONCE; for a heavy CloudStream source (e.g.
-  /// MovieBox) those N concurrent `load()`s saturated the read pool and froze
-  /// the UI thread → ANR. One-at-a-time on rotation is fine even for MovieBox.
+  // ── Hero metadata (LRU-cached) ────────────────────────────────────────────
+
+  Future<HeroMeta?> _heroMeta(MediaItem m) {
+    final key = '${m.sourceId}:${m.id}';
+    final existing = _metaCache.remove(key);
+    if (existing != null) {
+      _metaCache[key] = existing; // move to MRU
+      return existing;
+    }
+    final future = _loadHeroMeta(m);
+    _metaCache[key] = future;
+    if (_metaCache.length > _kMetaCacheMax) {
+      _metaCache.remove(_metaCache.keys.first);
+    }
+    return future;
+  }
+
+  Future<HeroMeta?> _loadHeroMeta(MediaItem m) async {
+    final d = await _detailOf(m.url, m.sourceId);
+    if (d == null) return null;
+    return HeroMeta(
+      genres: d.genres,
+      episodeCount: d.episodes.length,
+      year: d.year,
+    );
+  }
+
   void _prewarmHeroMeta(List<MediaItem> items) {
     if (_heroPrewarmed || items.isEmpty) return;
     _heroPrewarmed = true;
     _heroMeta(items.first);
-    // Warm the TMDB title logos for the whole carousel up front. The service
-    // resolves them SEQUENTIALLY (so no request burst at TMDB) and caches both
-    // in memory and on disk — so each logo is ready before its banner rotates
-    // in (no pop-in), and it barely touches TMDB on later launches.
     sl<TitleLogoService>().prefetch(items);
   }
 
-  Future<MediaItem?> _resolveCatalogItem(MediaItem item) async {
-    if (item.sourceId != 'tmdb:catalog' && !item.sourceId.startsWith('tpdb:')) return item;
-    return item;
-  }
-
-  Future<void> _openDetail(
-    MediaItem item, {
-    DetailTrailerContext? trailerContext,
-  }) async {
-    if (!mounted) return;
-    // Open immediately. Catalog metadata is loaded progressively by DetailCubit;
-    // the detail page owns its catalog and must never block navigation on a
-    // full TPDB/TMDB response.
-    await Navigator.push(context, DetailScreen.route(item, trailerContext: trailerContext));
-    if (mounted) setState(() {});
-  }
-
-  String _typeLabel(ProviderType t) =>
-      t == ProviderType.movie ? 'Movie' : 'Anime';
+  // ── Detail / navigation helpers ───────────────────────────────────────────
 
   Future<MediaDetail?> _detailOf(String url, String sourceId) async {
     try {
@@ -285,12 +322,33 @@ class _HomeViewState extends State<_HomeView>
         return null;
       }
       return await _repo.detail(url, sourceId: sourceId);
-    } catch (_) {
+    } catch (e, s) {
+      _logError('detailOf', e, s);
       return null;
     }
   }
 
-  /// Netflix-style long-press info card for a browse-row item.
+  Future<void> _openDetail(
+    MediaItem item, {
+    DetailTrailerContext? trailerContext,
+  }) async {
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      DetailScreen.route(item, trailerContext: trailerContext),
+    );
+    if (mounted) setState(() {});
+  }
+
+  String _typeLabel(ProviderType t) => switch (t) {
+    ProviderType.movie => 'Movie',
+    ProviderType.anime => 'Anime',
+    ProviderType.manga => 'Manga',
+    ProviderType.novel => 'Novel',
+  };
+
+  // ── Info sheets ───────────────────────────────────────────────────────────
+
   void _showInfo(MediaItem item) {
     showMediaInfoSheet(
       context,
@@ -318,7 +376,6 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  /// Long-press info card for a Continue Watching item — adds Resume + Remove.
   void _showContinueInfo(HistoryEntry e) {
     final stub = MediaItem(
       id: e.showId,
@@ -361,8 +418,6 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  /// Long-press info card for a Continue Reading item — the manga/novel twin of
-  /// [_showContinueInfo]: Read + Remove + My List, backed by [ReadHistory].
   void _showContinueReadingInfo(ReadEntry e) {
     final stub = MediaItem(
       id: e.showId,
@@ -404,33 +459,17 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
+  // ── Playback / resume ─────────────────────────────────────────────────────
+
   Future<void> _playFeatured(MediaItem item) async {
-    final resolved = await _resolveCatalogItem(item);
-    if (resolved == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No streaming provider found for this title.')),
-        );
-      }
-      return;
-    }
-    item = resolved;
     if (!mounted) return;
-    // Manga/novel: the hero's primary action says "Read", so it must not drop
-    // into the video player. Route to the title instead — Detail owns the real
-    // Read button, which resolves the chapter list, picks up the saved reading
-    // position and routes manga vs novel to the right reader. Duplicating that
-    // here would mean re-implementing chapter resolution on Home.
-    if (sl<ContentModeCubit>().state.isReading) {
+    if (_modeCubit.state.isReading) {
       _openDetail(item);
       return;
     }
-    // Fresh play: prefer a saved per-title sub/dub choice, else the global
-    // default category, else 'sub'.
     final category =
         sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
-        sl<PlaybackPrefs>().defaultCategory;
-    // Instant nav — the player resolves the episode list behind its loader.
+        _prefs.defaultCategory;
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -457,9 +496,6 @@ class _HomeViewState extends State<_HomeView>
     if (mounted) setState(() {});
   }
 
-  /// Resume from Continue Watching. Navigates to the player INSTANTLY; the
-  /// player resolves the episode list behind its own branded loader (no blocking
-  /// pre-navigation spinner).
   Future<void> _resume(HistoryEntry e) async {
     await Navigator.push(
       context,
@@ -491,20 +527,6 @@ class _HomeViewState extends State<_HomeView>
     if (mounted) setState(() {});
   }
 
-  /// Resume from Continue Reading. [ReadEntry] only carries the last-read
-  /// CHAPTER's own url (not the show's page url — unlike [HistoryEntry],
-  /// which has both), so this can't re-resolve the show's full chapter list
-  /// up front the way [_resume] does for video. It reopens exactly that one
-  /// chapter at its saved scroll position (restored by the reader itself via
-  /// ReadStore) and passes `resolveChapters: true` — the reader fetches the
-  /// full list itself in the background and lights up prev/next once it
-  /// lands, without touching the chapter already on screen.
-  ///
-  /// Routes to [MangaReaderScreen] or [NovelReaderScreen] by [ReadEntry.type]
-  /// — see [readerFor]. [ReadEntry] has no malId of its own (it's populated
-  /// from the tapped MediaItem/detail at read-start, same as WatchHistory's
-  /// scrobbleTitle path), so a resumed session still can't scrobble; that's
-  /// an existing gap, not something this resume path can close on its own.
   Future<void> _resumeReading(ReadEntry e) async {
     final chapter = Episode(
       id: e.chapterId,
@@ -521,88 +543,8 @@ class _HomeViewState extends State<_HomeView>
     if (mounted) setState(() {});
   }
 
-  /// Row entrance is now handled per-item by [RevealItem] (the cascade
-  /// cascade). This wrapper used to fade the whole row in, which MASKED that
-  /// cascade — so it's now a passthrough, kept only so its call sites are
-  /// untouched. Returns [child] unchanged.
-  Widget _animated(Widget child) => child;
+  // ── People / studio navigation ────────────────────────────────────────────
 
-
-  /// Flat bell → Notifications screen. The accent dot shows while any
-  /// announcement is unseen and clears itself reactively (the screen calls
-  /// markAllSeen, the Hive box updates, the listenable rebuilds).
-  ///
-  /// Currently unwired — the header bell is parked until a design is chosen
-  /// (mockups in docs/mockups/bell-options.html).
-  // ignore: unused_element
-  Widget _notificationBell(BuildContext context) {
-    // Built fresh inside the listenable's builder — a captured widget
-    // instance would be canonical and the rebuild would be skipped.
-    Widget bell() => GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const SubscriptionsScreen()),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            const Icon(
-              Icons.notifications_none_rounded,
-              size: 24,
-              color: Colors.white,
-            ),
-            if (Hive.isBoxOpen(AnnouncementStore.boxName) &&
-                AnnouncementStore().unseenCount() > 0)
-              Positioned(
-                top: 1,
-                right: 2,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.accent,
-                    border: Border.all(color: AppColors.bg, width: 1.5),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-    // Rebuild the dot when the announcements box changes (e.g. markAllSeen).
-    if (!Hive.isBoxOpen(AnnouncementStore.boxName)) return bell();
-    return ValueListenableBuilder(
-      valueListenable: Hive.box(AnnouncementStore.boxName).listenable(),
-      builder: (context, _, child) => bell(),
-    );
-  }
-
-  bool _isPeopleSection(String title) {
-    final t = title.trim().toLowerCase();
-    const peopleTitles = {
-      'actor', 'actors', 'actress', 'actresses',
-      'model', 'models',
-      'cast', 'casts', 'performer', 'performers',
-      'voice actor', 'voice actors', 'voice cast', 'staff',
-    };
-    if (peopleTitles.contains(t)) return true;
-    return peopleTitles.any((label) =>
-        t.startsWith('$label ') || t.startsWith('$label:') || t.startsWith('$label -'));
-  }
-
-  bool _isStudioOrChannelSection(String title) {
-    final t = title.trim().toLowerCase();
-    const labels = {'studio', 'studios', 'channel', 'channels'};
-    if (labels.contains(t)) return true;
-    return labels.any((label) =>
-        t.startsWith('$label ') || t.startsWith('$label:') || t.startsWith('$label -'));
-  }
-
-  /// Builds one provider-defined Home row. People/cast rows use PeopleCard;
-  /// normal rows honor the user's Poster/Landscape/Adaptive card style.
   Future<void> _openPerformer(MediaItem performer) async {
     final raw = performer.id.replaceFirst('tpdb:performer:', '');
     final numeric = int.tryParse(raw) ?? 0;
@@ -637,8 +579,35 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  final Map<String, int> _sectionPages = {};
-  final Set<String> _sectionLoading = {};
+  // ── Section classifiers (pure — inlined string-set lookups) ───────────────
+
+  static bool _isPeopleSection(String title) {
+    final t = title.trim().toLowerCase();
+    if (_kPeopleSectionKeys.contains(t)) return true;
+    for (final label in _kPeopleSectionKeys) {
+      if (t.startsWith('$label ') ||
+          t.startsWith('$label:') ||
+          t.startsWith('$label -')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static bool _isStudioSection(String title) {
+    final t = title.trim().toLowerCase();
+    if (_kStudioSectionKeys.contains(t)) return true;
+    for (final label in _kStudioSectionKeys) {
+      if (t.startsWith('$label ') ||
+          t.startsWith('$label:') ||
+          t.startsWith('$label -')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ── Pagination ────────────────────────────────────────────────────────────
 
   Future<void> _loadMoreForSection(HomeSection section) async {
     if (section.more == null) return;
@@ -650,84 +619,60 @@ class _HomeViewState extends State<_HomeView>
       final newItems = await _repo.browseMore(section.more!, nextPage);
       if (newItems.isNotEmpty && mounted) {
         _sectionPages[key] = nextPage;
-        final existingIds = {for (final it in section.items) it.id};
-        final added = newItems.where((it) => existingIds.add(it.id)).toList();
-        if (added.isNotEmpty) {
-          setState(() {
-            section.items.addAll(added);
-          });
-        }
+        // Delegate to cubit so state stays immutable and reactive.
+        context.read<HomeCubit>().appendItems(section.title, newItems);
       }
-    } catch (_) {} finally {
+    } catch (e, s) {
+      _logError('loadMoreForSection', e, s);
+    } finally {
       _sectionLoading.remove(key);
     }
   }
 
-  Widget _sectionRow(HomeSection section) {
+  // ── Section rows ──────────────────────────────────────────────────────────
+
+  Widget _sectionRow(HomeSection section, String cardStyle) {
     if (_isPeopleSection(section.title)) {
-      return _animated(
-        PeopleRow(
-          title: section.title,
-          items: section.items,
-          onSeeAll: () => _openSeeAll(section),
-          onLoadMore: section.more != null ? () => _loadMoreForSection(section) : null,
-          onTap: (item) {
-            if (item.sourceId == 'tpdb:performer') {
-              final raw = item.id.replaceFirst('tpdb:performer:', '');
-              final numeric = int.tryParse(raw) ?? 0;
-              Navigator.of(context).push(PersonPage.route(
-                PersonRef(
-                  id: numeric,
-                  externalId: raw,
-                  source: PersonSource.thePornDbPerformer,
-                  name: item.title,
-                  photo: item.cover,
-                ),
-                sourceId: item.sourceId,
-              ));
-            } else if (item.sourceId == 'tpdb:studio') {
-              _openStudio(item);
-            } else {
-              _openDetail(item, trailerContext: DetailTrailerContext.model);
-            }
-          },
-          onLongPress: _showInfo,
-        ),
+      return PeopleRow(
+        title: section.title,
+        items: section.items,
+        onSeeAll: () => _openSeeAll(section),
+        onLoadMore: section.more != null
+            ? () => _loadMoreForSection(section)
+            : null,
+        onTap: (item) {
+          if (item.sourceId == 'tpdb:performer') {
+            _openPerformer(item);
+          } else if (item.sourceId == 'tpdb:studio') {
+            _openStudio(item);
+          } else {
+            _openDetail(item, trailerContext: DetailTrailerContext.model);
+          }
+        },
+        onLongPress: _showInfo,
       );
     }
+    if (_isStudioSection(section.title)) return _studioRow(section);
 
-    return _buildSizeAwareSectionRow(section);
-  }
-
-  Widget _buildSizeAwareSectionRow(HomeSection section) {
-    final items = section.items;
-    if (_isStudioOrChannelSection(section.title)) {
-      return _animated(_studioRow(section));
+    if (cardStyle == 'poster') {
+      return _fixedContentRow(section, landscape: false);
+    }
+    if (cardStyle == 'landscape') {
+      return _fixedContentRow(section, landscape: true);
     }
 
-    final style = sl<PlaybackPrefs>().homeCardStyle;
-    if (style == 'poster') {
-      return _animated(_fixedContentRow(section, landscape: false));
-    }
-    if (style == 'landscape') {
-      return _animated(_fixedContentRow(section, landscape: true));
-    }
-    return _animated(
-      AdaptiveContentRow(
-        title: section.title,
-        items: items,
-        onSeeAll: () => _openSeeAll(section),
-        onTap: _openDetail,
-        onLongPress: _showInfo,
-      ),
+    return AdaptiveContentRow(
+      title: section.title,
+      items: section.items,
+      onSeeAll: () => _openSeeAll(section),
+      onTap: _openDetail,
+      onLongPress: _showInfo,
     );
   }
 
   Widget _studioRow(HomeSection section) {
-    // Studio/channel artwork is commonly square. Keep the image area square
-    // so logos and complete branding are not cropped into poster cards.
     const width = 160.0;
-    const rowHeight = 188.0; // square art + title + spacing
+    const rowHeight = 188.0;
     return ContentRow(
       title: section.title,
       itemWidth: width,
@@ -784,15 +729,13 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  /// Open the full history screen ("See all"). Lands on the tab matching the
-  /// current content mode — the [ContentMode] enum is ordered anime/manga/novel,
-  /// the same order as the History tabs — so reading modes open on Manga/Novel.
+  // ── History / SeeAll ──────────────────────────────────────────────────────
+
   void _openHistory() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            HistoryScreen(initialIndex: sl<ContentModeCubit>().state.index),
+        builder: (_) => HistoryScreen(initialIndex: _modeCubit.state.index),
       ),
     ).then((_) {
       if (mounted) setState(() {});
@@ -801,13 +744,10 @@ class _HomeViewState extends State<_HomeView>
 
   DetailTrailerContext? _trailerContextForSection(HomeSection section) {
     if (_isPeopleSection(section.title)) return DetailTrailerContext.model;
-    if (_isStudioOrChannelSection(section.title)) {
-      return DetailTrailerContext.studio;
-    }
+    if (_isStudioSection(section.title)) return DetailTrailerContext.studio;
     return null;
   }
 
-  /// Open the full-grid "See All" view of a browse row.
   void _openSeeAll(HomeSection section) {
     Navigator.push(
       context,
@@ -828,8 +768,6 @@ class _HomeViewState extends State<_HomeView>
             }
           },
           onLongPress: _showInfo,
-          // Only paginable rows (Aniyomi popular/latest, CloudStream mainPage)
-          // carry a `more` descriptor; everything else stays a fixed list.
           onLoadMore: section.more == null
               ? null
               : (page) => _repo.browseMore(section.more!, page),
@@ -840,9 +778,8 @@ class _HomeViewState extends State<_HomeView>
     });
   }
 
-  /// Shown at the top of Home when the session lapsed — cloud sync is silently
-  /// off until the user reconnects. Tapping re-authenticates in place (no logout
-  /// / no wipe) and then refreshes Home to surface the freshly-synced rows.
+  // ── Reconnect banner ──────────────────────────────────────────────────────
+
   Widget _reconnectBanner() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -859,7 +796,7 @@ class _HomeViewState extends State<_HomeView>
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
-                Icon(
+                 Icon(
                   Icons.sync_problem_rounded,
                   color: AppColors.accent,
                   size: 20,
@@ -877,7 +814,7 @@ class _HomeViewState extends State<_HomeView>
                     ],
                   ),
                 ),
-                Icon(
+                const Icon(
                   Icons.chevron_right_rounded,
                   color: AppColors.textSecondary,
                 ),
@@ -889,14 +826,15 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  /// A row of two cards under the banner, showing the two modes
-  /// you're NOT in. Reactive to [ContentModeCubit] so they re-label the instant
-  /// a switch lands. Tapping runs the sword-slash into that mode.
+  // ── Mode cards ────────────────────────────────────────────────────────────
+
   Widget _modeCards() {
     return BlocBuilder<ContentModeCubit, ContentMode>(
-      bloc: sl<ContentModeCubit>(),
+      bloc: _modeCubit,
       builder: (context, current) {
-        final others = ContentMode.values.where((m) => m != current).toList();
+        final others = ContentMode.values
+            .where((m) => m != current)
+            .toList(growable: false);
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
           child: Row(
@@ -923,10 +861,7 @@ class _HomeViewState extends State<_HomeView>
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Background: a cover from the user's recent content for this
-              // mode, else a themed gradient when they've nothing there yet.
               _modeArtBg(cover),
-              // Scrim so the white icon + label stay legible over any art.
               const DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -963,19 +898,37 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  /// A representative cover for [m] from the user's own history — last watched
-  /// show (streaming) or last read manga/novel. Null when there's nothing yet.
+  /// Cached mode-art lookup. Only re-scans history when the cache is invalidated
+  /// (source switch, mode swap, or history box change via ValueListenable).
   ({String? cover, Map<String, String>? headers}) _modeArt(ContentMode m) {
+    final cached = _modeArtCache[m];
+    if (cached != null) return cached;
+    final result = _computeModeArt(m);
+    _modeArtCache[m] = result;
+    return result;
+  }
+
+  ({String? cover, Map<String, String>? headers}) _computeModeArt(
+    ContentMode m,
+  ) {
     if (m == ContentMode.anime) {
-      if (!Hive.isBoxOpen(WatchHistory.boxName)) return (cover: null, headers: null);
+      if (!Hive.isBoxOpen(WatchHistory.boxName)) {
+        return (cover: null, headers: null);
+      }
       for (final e in sl<WatchHistory>().all()) {
         final c = e.thumbnail ?? e.cover;
-        if (c != null && c.isNotEmpty) return (cover: c, headers: e.coverHeaders);
+        if (c != null && c.isNotEmpty) {
+          return (cover: c, headers: e.coverHeaders);
+        }
       }
       return (cover: null, headers: null);
     }
-    if (!Hive.isBoxOpen(ReadHistory.boxName)) return (cover: null, headers: null);
-    final type = m == ContentMode.manga ? ProviderType.manga : ProviderType.novel;
+    if (!Hive.isBoxOpen(ReadHistory.boxName)) {
+      return (cover: null, headers: null);
+    }
+    final type = m == ContentMode.manga
+        ? ProviderType.manga
+        : ProviderType.novel;
     for (final e in sl<ReadHistory>().all()) {
       if (e.type == type && (e.cover?.isNotEmpty ?? false)) {
         return (cover: e.cover, headers: e.coverHeaders);
@@ -1008,7 +961,7 @@ class _HomeViewState extends State<_HomeView>
         ),
         fit: BoxFit.cover,
         alignment: const Alignment(0, -0.2),
-        errorBuilder: (_, _, _) => ColoredBox(color: AppColors.surface2),
+        errorBuilder: (_, __, ___) => ColoredBox(color: AppColors.surface2),
       );
     }
     return CachedNetworkImage(
@@ -1017,13 +970,11 @@ class _HomeViewState extends State<_HomeView>
       memCacheWidth: 420,
       fit: BoxFit.cover,
       alignment: const Alignment(0, -0.2),
-      placeholder: (_, _) => ColoredBox(color: AppColors.surface2),
-      errorWidget: (_, _, _) => ColoredBox(color: AppColors.surface2),
+      placeholder: (_, __) => ColoredBox(color: AppColors.surface2),
+      errorWidget: (_, __, ___) => ColoredBox(color: AppColors.surface2),
     );
   }
 
-  /// Kicks off the slash transition into [m]. The actual mode swap happens
-  /// mid-animation via the controller listener wired in [initState].
   void _enterMode(ContentMode m) {
     if (_slashing) return;
     setState(() {
@@ -1034,24 +985,312 @@ class _HomeViewState extends State<_HomeView>
     _slashCtrl.forward(from: 0);
   }
 
-  /// Full-screen logo-strike overlay: the mark springs in at centre behind a
-  /// scrim (peaking at the midpoint to hide the content swap), a red glow pulses
-  /// and a steel glint sweeps the blade at the strike. Absorbs taps for its
-  /// ~600ms so the switch can't be double-fired.
-  Widget _slashOverlay() {
-    const logoSize = 152.0;
+  // ── Build ─────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return const HomeScreenTv();
+
+    return BlocListener<ActiveSourceCubit, String>(
+      listenWhen: (prev, curr) => prev != curr,
+      listener: (context, _) {
+        if (!mounted) return;
+        _metaCache.clear();
+        _sectionPages.clear();
+        _sectionLoading.clear();
+        _modeArtCache.clear();
+        _heroPrewarmed = false;
+        context.read<HomeCubit>().load(reset: true);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        body: Stack(
+          children: [
+            RefreshIndicator(
+              color: AppColors.accent,
+              onRefresh: () => context.read<HomeCubit>().load(),
+              child: const _HomeScrollView(),
+            ),
+            if (_slashing) _SlashOverlay(controller: _slashCtrl),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scroll view — extracted so BlocBuilder scope stays tight
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HomeScrollView extends StatelessWidget {
+  const _HomeScrollView();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context
+        .select<AuthCubit, ({bool loggedIn, bool needsReconnect})>(
+          (c) => (
+            loggedIn: c.state.isLoggedIn,
+            needsReconnect: c.state.needsReconnect,
+          ),
+        );
+    return BlocBuilder<HomeCubit, HomeState>(
+      buildWhen: (prev, curr) =>
+          prev.loading != curr.loading ||
+          prev.sections != curr.sections ||
+          prev.heroItems != curr.heroItems ||
+          prev.cloudflareUrl != curr.cloudflareUrl,
+      builder: (context, homeState) {
+        final view = context.findAncestorStateOfType<_HomeViewState>()!;
+        final sections = homeState.sections ?? const <HomeSection>[];
+        final firstId = sections.isNotEmpty
+            ? (sections.first.more?.sourceId ?? '')
+            : '';
+        final firstIsNativeCatalog =
+            firstId.startsWith('ani:') || firstId.startsWith('mihon:');
+        final rowSections = (sections.length > 1 && !firstIsNativeCatalog)
+            ? sections.sublist(1)
+            : sections;
+        final showSkeletons = homeState.loading && sections.isEmpty;
+        final loadedEmpty =
+            !homeState.loading &&
+            homeState.sections != null &&
+            homeState.sections!.isEmpty;
+        final activeId = context.read<ActiveSourceCubit>().state;
+        final mode = sl<ContentModeCubit>().state;
+        final noSourceForMode = !hasSourcesFor(mode);
+        final activeSourceValid =
+            activeId.isNotEmpty && view._repo.hasSource(activeId);
+        final showSourceSwitcher = !noSourceForMode;
+        final cardStyle = view._prefs.homeCardStyle;
+
+        return CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: _HeaderSection(
+                heroItems: homeState.heroItems,
+                noSourceForMode: noSourceForMode,
+                activeSourceValid: activeSourceValid,
+                showSourceSwitcher: showSourceSwitcher,
+              ),
+            ),
+            if (noSourceForMode)
+              SliverToBoxAdapter(
+                child: HomeLoadedEmptyView(
+                  mode: mode,
+                  sourceName: 'No provider selected',
+                  onRetry: () => context.read<HomeCubit>().load(reset: true),
+                  onInstallSources: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ProvidersHubScreen(),
+                    ),
+                  ),
+                ),
+              ),
+            SliverToBoxAdapter(child: view._modeCards()),
+            if (state.needsReconnect)
+              SliverToBoxAdapter(child: view._reconnectBanner()),
+            ContinueSection(
+              loggedIn: state.loggedIn,
+              onResume: view._resume,
+              onLongPress: view._showContinueInfo,
+              onSeeAll: view._openHistory,
+              onResumeReading: view._resumeReading,
+              onLongPressReading: view._showContinueReadingInfo,
+            ),
+            if (showSkeletons && !noSourceForMode)
+              const SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: RowSkeleton(),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: RowSkeleton(),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: RowSkeleton(),
+                    ),
+                  ],
+                ),
+              )
+            else if (loadedEmpty && !noSourceForMode)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: HomeLoadedEmptyView(
+                  mode: mode,
+                  sourceName: switch (sl<CatalogSourcePrefs>().source) {
+                    CatalogSource.provider =>
+                      sl<SourceRepository>().displayName(activeId),
+                    CatalogSource.tmdb => 'TMDB',
+                    CatalogSource.thePornDb => 'ThePornDB',
+                    CatalogSource.mixed => 'Catalogs',
+                  },
+                  onRetry: () => context.read<HomeCubit>().load(reset: true),
+                  onInstallSources: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ProvidersHubScreen(),
+                    ),
+                  ),
+                  cloudflareUrl: homeState.cloudflareUrl,
+                  onSolveCloudflare: homeState.cloudflareUrl == null
+                      ? null
+                      : () async {
+                          await MihonExtensionService.solveCloudflare(
+                            homeState.cloudflareUrl!,
+                          );
+                          if (context.mounted) {
+                            context.read<HomeCubit>().load(reset: true);
+                          }
+                        },
+                ),
+              )
+            else
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (c, i) => Padding(
+                    key: ValueKey('row-${rowSections[i].title}'),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: view._sectionRow(rowSections[i], cardStyle),
+                  ),
+                  childCount: rowSections.length,
+                ),
+              ),
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 24 + MediaQuery.paddingOf(context).bottom,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hero / header section — isolated so hero-only state changes don't rebuild rows
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HeaderSection extends StatelessWidget {
+  const _HeaderSection({
+    required this.heroItems,
+    required this.noSourceForMode,
+    required this.activeSourceValid,
+    required this.showSourceSwitcher,
+  });
+
+  final List<MediaItem> heroItems;
+  final bool noSourceForMode;
+  final bool activeSourceValid;
+  final bool showSourceSwitcher;
+
+  @override
+  Widget build(BuildContext context) {
+    final view = context.findAncestorStateOfType<_HomeViewState>()!;
+    final hasHero = heroItems.isNotEmpty;
+    if (hasHero) view._prewarmHeroMeta(heroItems);
+
+    if (hasHero && !noSourceForMode && activeSourceValid) {
+      return Stack(
+        children: [
+          FeaturedCarousel(
+            items: heroItems,
+            reading: sl<ContentModeCubit>().state.isReading,
+            inList: (m) => view._myList.contains(m),
+            onPlay: view._playFeatured,
+            onInfo: view._openDetail,
+            onToggleList: (m) => showListStatusSheet(
+              context,
+              item: m,
+              onChanged: () {
+                // Trigger rebuild via state
+                (view as dynamic).setState(() {});
+              },
+            ),
+            meta: view._heroMeta,
+            style: HeroTransition.cinematic,
+            fullBleed: true,
+          ),
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 10,
+            right: 16,
+            child: BlocBuilder<ActiveSourceCubit, String>(
+              builder: (context, id) => SourceSwitcher(
+                currentId: id,
+                compact: true,
+                onChanged: (newId) =>
+                    context.read<ActiveSourceCubit>().setSource(newId),
+                onInstallSources: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        const ZangetsuSourcesScreen(openToRepos: true),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (showSourceSwitcher) {
+      return Padding(
+        padding: EdgeInsets.only(
+          top: MediaQuery.paddingOf(context).top + 8,
+          right: 16,
+          bottom: 8,
+        ),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: BlocBuilder<ActiveSourceCubit, String>(
+            builder: (context, id) => SourceSwitcher(
+              currentId: id,
+              compact: false,
+              onChanged: (newId) =>
+                  context.read<ActiveSourceCubit>().setSource(newId),
+              onInstallSources: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      const ZangetsuSourcesScreen(openToRepos: true),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Slash overlay — extracted into its own widget for testability
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SlashOverlay extends StatelessWidget {
+  const _SlashOverlay({required this.controller});
+
+  final AnimationController controller;
+
+  static const double _logoSize = 152.0;
+
+  @override
+  Widget build(BuildContext context) {
     return Positioned.fill(
       child: AbsorbPointer(
         child: AnimatedBuilder(
-          animation: _slashCtrl,
+          animation: controller,
           builder: (context, _) {
-            final t = _slashCtrl.value;
-            // Triangular pulse: 0 at the ends, 1 at the midpoint.
+            final t = controller.value;
             final scrim = (1 - (t * 2 - 1).abs()).clamp(0.0, 1.0);
-            // Spring in (easeOutBack overshoots ~1), then a slight scale-up on
-            // the way out as it fades.
-            final inP = (t / 0.45).clamp(0.0, 1.0);
-            final outP = ((t - 0.75) / 0.25).clamp(0.0, 1.0);
+            final inP = (t / _kSlashInEnd).clamp(0.0, 1.0);
+            final outP = ((t - _kSlashOutStart) / (1.0 - _kSlashOutStart))
+                .clamp(0.0, 1.0);
             final scale =
                 0.62 + 0.38 * Curves.easeOutBack.transform(inP) + outP * 0.12;
             final logoOpacity =
@@ -1061,10 +1300,11 @@ class _HomeViewState extends State<_HomeView>
                         ? (1 - t) / 0.2
                         : 1.0)
                     .clamp(0.0, 1.0);
-            // Steel glint: a white streak that sweeps across the mark around the
-            // strike (t≈0.38–0.62, peaking with the swap).
-            final glintOn = t > 0.38 && t < 0.62;
-            final glintP = ((t - 0.38) / 0.24).clamp(0.0, 1.0);
+            final glintOn = t > _kSlashGlintStart && t < _kSlashGlintEnd;
+            final glintP =
+                ((t - _kSlashGlintStart) /
+                        (_kSlashGlintEnd - _kSlashGlintStart))
+                    .clamp(0.0, 1.0);
             final glintPulse = (1 - (glintP * 2 - 1).abs()).clamp(0.0, 1.0);
 
             return Stack(
@@ -1080,15 +1320,14 @@ class _HomeViewState extends State<_HomeView>
                     child: Transform.scale(
                       scale: scale,
                       child: SizedBox(
-                        width: logoSize,
-                        height: logoSize,
+                        width: _logoSize,
+                        height: _logoSize,
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Red energy glow behind the mark.
                             SizedBox(
-                              width: logoSize * 0.8,
-                              height: logoSize * 0.8,
+                              width: _logoSize * 0.8,
+                              height: _logoSize * 0.8,
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
@@ -1106,25 +1345,25 @@ class _HomeViewState extends State<_HomeView>
                             ),
                             Image.asset(
                               'assets/icon/logo_mark.png',
-                              width: logoSize,
-                              height: logoSize,
+                              width: _logoSize,
+                              height: _logoSize,
                             ),
                             if (glintOn)
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(26),
                                 child: SizedBox(
-                                  width: logoSize,
-                                  height: logoSize,
+                                  width: _logoSize,
+                                  height: _logoSize,
                                   child: Transform.translate(
                                     offset: Offset(
-                                      (glintP * 2 - 1) * logoSize * 0.9,
+                                      (glintP * 2 - 1) * _logoSize * 0.9,
                                       0,
                                     ),
                                     child: Transform.rotate(
                                       angle: -0.5,
                                       child: Container(
                                         width: 34,
-                                        height: logoSize * 2,
+                                        height: _logoSize * 2,
                                         decoration: BoxDecoration(
                                           gradient: LinearGradient(
                                             colors: [
@@ -1154,310 +1393,12 @@ class _HomeViewState extends State<_HomeView>
       ),
     );
   }
-
-  @override
-  Widget build(BuildContext context) {
-    if (sl<AppMode>().isTv) return const HomeScreenTv();
-    // Continue Watching is a logged-in feature; hide the row when signed out.
-    final authState = context.watch<AuthCubit>().state;
-    final loggedIn = authState.isLoggedIn;
-    // Session lapsed (logged-in from cache only) → cloud sync is silently off.
-    final needsReconnect = loggedIn && authState.needsReconnect;
-
-    return BlocListener<ActiveSourceCubit, String>(
-      listenWhen: (prev, curr) => prev != curr,
-      listener: (context, _) {
-        if (!mounted) return;
-        _metaCache.clear();
-        _heroPrewarmed = false;
-        // reset:true clears the old source's rows so the switch is visible
-        // immediately (skeletons), even if the new source's home is slow.
-        context.read<HomeCubit>().load(reset: true);
-      },
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
-        // Extend content behind the status bar; the floating header handles
-        // its own SafeArea(bottom: false).
-        body: Stack(
-          children: [
-            RefreshIndicator(
-              color: AppColors.accent,
-              onRefresh: () => context.read<HomeCubit>().load(),
-              child: BlocBuilder<HomeCubit, HomeState>(
-                builder: (context, state) {
-                  final sections = state.sections ?? const <HomeSection>[];
-                  // The first section feeds the hero carousel; the rest render as
-                  // browse rows (so the spotlight isn't duplicated right below it).
-                  // A source with only ONE section (e.g. SubsPlease's single "Latest"
-                  // feed) would otherwise show a hero and NO rows — keep that one
-                  // section as a row too so there's something to browse.
-                  //
-                  // Aniyomi AND Mihon sources expose exactly two sections
-                  // (Popular + Latest); dropping the first would hide Popular
-                  // entirely, so keep the full list as rows for them — the banner
-                  // still spotlights Popular, and the row repeats it (like the
-                  // Aniyomi/Mihon apps' Popular grid).
-                  final firstId = sections.isNotEmpty
-                      ? (sections.first.more?.sourceId ?? '')
-                      : '';
-                  final firstIsNativeCatalog =
-                      firstId.startsWith('ani:') || firstId.startsWith('mihon:');
-                  final rowSections =
-                      (sections.length > 1 && !firstIsNativeCatalog)
-                      ? sections.sublist(1)
-                      : sections;
-                  final showSkeletons = state.loading && sections.isEmpty;
-                  // The load finished but the source returned no rows — almost
-                  // always a dead/blocked site (or a search-only source). Show a
-                  // clear message instead of a blank screen.
-                  final loadedEmpty =
-                      !state.loading &&
-                      state.sections != null &&
-                      state.sections!.isEmpty;
-                  // A mode with no installed source gets a dedicated setup state.
-                  // Do not infer this from the active id: an empty/stale active id
-                  // is possible on first run or after uninstalling a provider.
-                  // `hasSourcesFor` is the single mode-aware source availability
-                  // check used by the Home empty state and source picker.
-                  final activeId = context.read<ActiveSourceCubit>().state;
-                  final mode = sl<ContentModeCubit>().state;
-                  final noSourceForMode = !hasSourcesFor(mode);
-                  final activeSourceValid =
-                      activeId.isNotEmpty && _repo.hasSource(activeId);
-                  final showSourceSwitcher = !noSourceForMode;
-                  return CustomScrollView(
-                    slivers: [
-                      // ── Hero + floating header (first sliver) ─────────────────
-                      SliverToBoxAdapter(
-                        child: Builder(
-                          builder: (context) {
-                            final heroItems = state.heroItems;
-                            final hasHero = heroItems.isNotEmpty;
-                            if (hasHero) _prewarmHeroMeta(heroItems);
-
-                            if (hasHero && !noSourceForMode && activeSourceValid) {
-                              return Stack(
-                                children: [
-                                  // Full-bleed hero: the artwork starts at the
-                                  // absolute top of the screen.
-                                  FeaturedCarousel(
-                                    items: heroItems,
-                                    reading:
-                                        sl<ContentModeCubit>().state.isReading,
-                                    inList: (m) => _myList.contains(m),
-                                    onPlay: _playFeatured,
-                                    onInfo: _openDetail,
-                                    onToggleList: (m) => showListStatusSheet(
-                                      context,
-                                      item: m,
-                                      onChanged: () {
-                                        if (mounted) setState(() {});
-                                      },
-                                    ),
-                                    meta: _heroMeta,
-                                    style: HeroTransition.cinematic,
-                                    fullBleed: true,
-                                  ),
-                                  Positioned(
-                                    top: MediaQuery.paddingOf(context).top + 10,
-                                    right: 16,
-                                    child: BlocBuilder<ActiveSourceCubit, String>(
-                                      builder: (context, id) => SourceSwitcher(
-                                        currentId: id,
-                                        compact: true,
-                                        onChanged: (newId) => context
-                                            .read<ActiveSourceCubit>()
-                                            .setSource(newId),
-                                        onInstallSources: () => Navigator.of(context).push(
-                                          MaterialPageRoute<void>(
-                                            builder: (_) =>
-                                                const ZangetsuSourcesScreen(openToRepos: true),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }
-
-                            // Never reserve the hero's 540px frame when there is
-                            // no hero. On a fresh install this keeps the provider
-                            // setup CTA near the top instead of pushing it below a
-                            // blank carousel. If a source exists but has no hero,
-                            // keep the provider picker visible in a small header.
-                            if (showSourceSwitcher) {
-                              return Padding(
-                                padding: EdgeInsets.only(
-                                  top: MediaQuery.paddingOf(context).top + 8,
-                                  right: 16,
-                                  bottom: 8,
-                                ),
-                                child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: BlocBuilder<ActiveSourceCubit, String>(
-                                    builder: (context, id) => SourceSwitcher(
-                                      currentId: id,
-                                      compact: false,
-                                      onChanged: (newId) => context
-                                          .read<ActiveSourceCubit>()
-                                          .setSource(newId),
-                                      onInstallSources: () => Navigator.of(context)
-                                          .push(
-                                        MaterialPageRoute<void>(
-                                          builder: (_) =>
-                                              const ZangetsuSourcesScreen(
-                                                openToRepos: true,
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          },
-                        ),
-                      ),
-
-                      // A fresh install has no provider and therefore no hero.
-                      // Put the setup guide immediately after the header instead
-                      // of making the user scroll through mode/history sections.
-                      if (noSourceForMode)
-                        SliverToBoxAdapter(
-                          child: HomeLoadedEmptyView(
-                            mode: mode,
-                            sourceName: 'No provider selected',
-                            onRetry: () =>
-                                context.read<HomeCubit>().load(reset: true),
-                            onInstallSources: () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const ProvidersHubScreen(),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                      // ── Mode cards (switch Anime / Manga / Novel) ─────────────
-                      SliverToBoxAdapter(child: _modeCards()),
-
-                      // ── Reconnect banner (session lapsed → sync is off) ───────
-                      if (needsReconnect)
-                        SliverToBoxAdapter(child: _reconnectBanner()),
-
-                      // ── Continue Watching / Continue Reading ──────────────────
-                      // Driven by the watch/read history box's listenable, NOT a
-                      // one-shot read: the cloud pull writes history AFTER this
-                      // build runs (the login / boot-migration race), so reading
-                      // recent() once here would render blank until the next
-                      // navigation. Reacting to the box makes the row appear the
-                      // instant the pull lands. Swapped by ContentMode — see
-                      // ContinueSection.
-                      ContinueSection(
-                        loggedIn: loggedIn,
-                        onResume: _resume,
-                        onLongPress: _showContinueInfo,
-                        onSeeAll: _openHistory,
-                        onResumeReading: _resumeReading,
-                        onLongPressReading: _showContinueReadingInfo,
-                      ),
-
-                      // ── Provider-defined browse rows (CloudStream-style) ──────
-                      // The active provider decides the rows + their names; empty
-                      // ones are already dropped by SourceRepository.home.
-                      if (showSkeletons && !noSourceForMode)
-                        ...List.generate(
-                          3,
-                          (_) => const SliverToBoxAdapter(
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 10),
-                              child: RowSkeleton(),
-                            ),
-                          ),
-                        )
-                      else if (loadedEmpty && !noSourceForMode)
-                        SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: HomeLoadedEmptyView(
-                            mode: sl<ContentModeCubit>().state,
-                            sourceName: switch (sl<CatalogSourcePrefs>().source) {
-                              CatalogSource.provider => sl<SourceRepository>().displayName(
-                                context.read<ActiveSourceCubit>().state,
-                              ),
-                              CatalogSource.tmdb => 'TMDB',
-                              CatalogSource.thePornDb => 'ThePornDB',
-                              CatalogSource.mixed => 'Catalogs',
-                            },
-                            onRetry: () =>
-                                context.read<HomeCubit>().load(reset: true),
-                            // No-source guide points at the Providers hub (all
-                            // ecosystems); the source-returned-nothing case
-                            // (_SourceUnavailable) keeps its retry.
-                            onInstallSources: () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const ProvidersHubScreen(),
-                              ),
-                            ),
-                            // Cloudflare-blocked (Mihon) source: offer the visible
-                            // solve, then reload once the user closes the WebView.
-                            cloudflareUrl: state.cloudflareUrl,
-                            onSolveCloudflare: state.cloudflareUrl == null
-                                ? null
-                                : () async {
-                                    await MihonExtensionService.solveCloudflare(
-                                      state.cloudflareUrl!,
-                                    );
-                                    if (context.mounted) {
-                                      context
-                                          .read<HomeCubit>()
-                                          .load(reset: true);
-                                    }
-                                  },
-                          ),
-                        )
-                      else
-                        ...rowSections.map(
-                          (s) => SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              child: _sectionRow(s),
-                            ),
-                          ),
-                        ),
-
-                      // ── Bottom padding ────────────────────────────────────────
-                      // Clear the floating dock: its height arrives as MediaQuery
-                      // bottom padding (the shell's extendBody). A fixed gap hid the
-                      // last row's titles behind the capsule.
-                      SliverToBoxAdapter(
-                        child: SizedBox(
-                          height: 24 + MediaQuery.paddingOf(context).bottom,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-            if (_slashing) _slashOverlay(),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
-/// Home's "provider returned no sections" branch. A reading mode with
-/// literally nothing installed for it gets a message that says so, with an
-/// action into the install flow — today's [_SourceUnavailable] ("couldn't
-/// load, try again") is flat wrong there, since nothing failed, there's just
-/// nothing set up. Anime mode (and a reading mode whose installed source
-/// failed to load) keeps [_SourceUnavailable] exactly as before.
-///
-/// Extracted as its own widget — rather than inlined in [_HomeViewState]'s
-/// build — so this decision is testable without pumping the real
-/// [HomeScreen], whose `initState` fires a real network call.
+// ─────────────────────────────────────────────────────────────────────────────
+// Empty-state widgets (unchanged UI, extracted for clarity)
+// ─────────────────────────────────────────────────────────────────────────────
+
 class HomeLoadedEmptyView extends StatelessWidget {
   const HomeLoadedEmptyView({
     super.key,
@@ -1473,16 +1414,11 @@ class HomeLoadedEmptyView extends StatelessWidget {
   final String sourceName;
   final VoidCallback onRetry;
   final VoidCallback onInstallSources;
-
-  /// Non-null when the active source is blocked by a Cloudflare challenge;
-  /// [onSolveCloudflare] opens the visible solve WebView and reloads after.
   final String? cloudflareUrl;
   final Future<void> Function()? onSolveCloudflare;
 
   @override
   Widget build(BuildContext context) {
-    // A Cloudflare block takes priority over the no-sources guide: the source
-    // IS installed, it's just gated behind a challenge the user can solve.
     if (cloudflareUrl != null && onSolveCloudflare != null) {
       return _SourceUnavailable(
         sourceName: sourceName,
@@ -1497,10 +1433,6 @@ class HomeLoadedEmptyView extends StatelessWidget {
   }
 }
 
-/// Friendly "nothing installed for this mode yet" state — a mode-aware icon in
-/// a soft accent circle, a warm one-liner, and a single rounded button into
-/// Providers. Replaces the bare [EmptyState] so an empty manga/novel/streaming
-/// home reads as "let's set this up" rather than an error.
 class _NoSourcesGuide extends StatelessWidget {
   const _NoSourcesGuide({required this.mode, required this.onBrowse});
 
@@ -1509,7 +1441,7 @@ class _NoSourcesGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = mode.label; // Streaming / Manga / Novel
+    final label = mode.label;
     final (icon, noun) = switch (mode) {
       ContentMode.anime => (Icons.live_tv_rounded, 'shows'),
       ContentMode.manga => (Icons.auto_stories_rounded, 'manga'),
@@ -1553,8 +1485,10 @@ class _NoSourcesGuide extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.accent,
                 foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 26, vertical: 13),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 26,
+                  vertical: 13,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(28),
                 ),
@@ -1568,9 +1502,6 @@ class _NoSourcesGuide extends StatelessWidget {
   }
 }
 
-/// Shown on Home when the active source finished loading but returned no rows —
-/// typically a dead/blocked site. Offers a retry and points to the source
-/// switcher. Continue Watching (app-side) still renders above this.
 class _SourceUnavailable extends StatelessWidget {
   const _SourceUnavailable({
     required this.sourceName,
@@ -1580,9 +1511,6 @@ class _SourceUnavailable extends StatelessWidget {
 
   final String sourceName;
   final VoidCallback onRetry;
-
-  /// When set, this is a Cloudflare block (not a generic outage): show a shield
-  /// + a primary "Solve Cloudflare" action that opens the visible solve WebView.
   final Future<void> Function()? onSolveCloudflare;
 
   static const Color _cloudflareOrange = Color(0xFFF48120);
@@ -1647,8 +1575,10 @@ class _SourceUnavailable extends StatelessWidget {
                 backgroundColor: _cloudflareOrange,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 30, vertical: 13),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 13,
+                ),
                 textStyle: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
@@ -1676,8 +1606,10 @@ class _SourceUnavailable extends StatelessWidget {
                 backgroundColor: AppColors.accent,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 30, vertical: 13),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 13,
+                ),
                 textStyle: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
@@ -1693,13 +1625,6 @@ class _SourceUnavailable extends StatelessWidget {
   }
 }
 
-/// The reader `_resumeReading` pushes for a resumed
-/// [ReadEntry]: [MangaReaderScreen] for [ProviderType.manga], otherwise
-/// [NovelReaderScreen] (novel, and [ReadEntry.type]'s legacy-row default).
-/// Pulled out as a plain top-level function so the routing decision is
-/// testable without pumping the whole [HomeScreen] (whose initState makes a
-/// real update-check network call and opens community/announcement Hive
-/// boxes).
 Widget readerFor(ReadEntry e, Episode chapter) {
   if (e.type == ProviderType.manga) {
     return MangaReaderScreen(

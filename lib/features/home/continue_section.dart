@@ -8,8 +8,10 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/reading/read_history.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
+import '../../core/ui/poster_card.dart';
 
 /// Home's "Continue Watching" / "Continue Reading" sliver. Anime mode renders
 /// the original [WatchHistory]-backed row exactly as before; reading modes
@@ -55,11 +57,9 @@ class ContinueSection extends StatelessWidget {
     );
   }
 
-  // ── Continue Watching (anime) — PRESERVED EXACTLY ─────────────────────────
+  // ── Continue Watching (anime / movie / series) ─────────────────────────────
 
   Widget _watchingRow() {
-    // Login-gated, and guarded so a signed-out render (or the test env) never
-    // touches the box — production opens it at boot.
     if (!(loggedIn && Hive.isBoxOpen(WatchHistory.boxName))) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
@@ -80,9 +80,9 @@ class ContinueSection extends StatelessWidget {
     if (!(loggedIn && Hive.isBoxOpen(ReadHistory.boxName))) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
-    // Only this mode's kind — the ReadHistory box mixes manga and novel.
-    final type =
-        mode == ContentMode.manga ? ProviderType.manga : ProviderType.novel;
+    final type = mode == ContentMode.manga
+        ? ProviderType.manga
+        : ProviderType.novel;
     return ValueListenableBuilder(
       valueListenable: Hive.box<Map>(ReadHistory.boxName).listenable(),
       builder: (context, _, _) => ContinueReadingRow(
@@ -95,8 +95,8 @@ class ContinueSection extends StatelessWidget {
   }
 }
 
-/// Continue Watching row content, given an already-resolved [history] list —
-/// no Hive access of its own. Identical chrome to the original inline row.
+/// Continue Watching row using standard portrait poster cards identical in size
+/// and styling to Trending / Popular / New Releases rows.
 class ContinueWatchingRow extends StatelessWidget {
   const ContinueWatchingRow({
     super.key,
@@ -121,29 +121,119 @@ class ContinueWatchingRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: ContentRow(
           title: 'Continue Watching',
-          // Compact 16:9 landscape card — same design, just smaller/tighter.
-          itemWidth: 190,
-          itemHeight: 107,
+          itemWidth: 140,
+          itemHeight: 236,
           onSeeAll: onSeeAll,
           itemCount: history.length,
           itemBuilder: (c, i) {
             final e = history[i];
-            return ContinueCard(
-              title: e.showTitle,
-              // Prefer the landscape episode thumbnail; fall back to the
-              // portrait cover (older entries / sources without them).
-              imageUrl: e.thumbnail ?? e.cover,
-              headers: e.coverHeaders,
-              progress: e.progress,
-              cellWidth: 190,
-              subtitle: e.episodeNumber != null
-                  ? 'Episode ${e.episodeNumber!.toInt()}'
-                  : null,
+            return _ContinueWatchingPosterCard(
+              entry: e,
               onTap: () => onResume(e),
               onLongPress: () => onLongPress(e),
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+/// Portrait PosterCard wrapper with a centered circular progress & resume overlay.
+class _ContinueWatchingPosterCard extends StatelessWidget {
+  const _ContinueWatchingPosterCard({
+    required this.entry,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  final HistoryEntry entry;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  /// Episode badge for episodic series. Movies (no episodeNumber) return null.
+  String? _episodeBadge(HistoryEntry entry) {
+    final epNum = entry.episodeNumber;
+    if (epNum != null && epNum > 0) {
+      return 'EP ${epNum.toInt()}';
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        PosterCard(
+          title: entry.showTitle,
+          imageUrl: entry.cover,
+          headers: entry.coverHeaders,
+          cellWidth: 140,
+          qualityBadge: _episodeBadge(entry),
+          onTap: onTap,
+          onLongPress: onLongPress,
+        ),
+        // Playback progress ring centered over the poster image area (~190px height)
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 190,
+          child: IgnorePointer(
+            child: Center(
+              child: _ResumePlayIndicator(progress: entry.progress),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Circular playback progress ring with a centered play triangle and translucent backplate.
+class _ResumePlayIndicator extends StatelessWidget {
+  const _ResumePlayIndicator({required this.progress});
+
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    const double size = 44.0;
+    const double strokeWidth = 3.0;
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Translucent dark disc for contrast over any poster art
+          Container(
+            width: size - strokeWidth * 2,
+            height: size - strokeWidth * 2,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.55),
+            ),
+          ),
+          // Circular progress ring representing entry.progress
+          CircularProgressIndicator(
+            value: progress.clamp(0.0, 1.0).toDouble(),
+            strokeWidth: strokeWidth,
+            strokeCap: StrokeCap.round,
+            backgroundColor: Colors.white.withValues(alpha: 0.25),
+            color: AppColors.accent,
+          ),
+          // Centered play triangle (offset slightly right for optical balance)
+          const Padding(
+            padding: EdgeInsets.only(left: 2.0),
+            child: Icon(
+              Icons.play_arrow_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -175,17 +265,15 @@ class ContinueReadingRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: ContentRow(
           title: 'Continue Reading',
-          // Compact horizontal "keep reading" chip (cover + title + chapter +
-          // slim progress), NOT the landscape Continue Watching card nor a full
-          // portrait poster — smaller and its own shape for reading.
           itemWidth: 236,
           itemHeight: 76,
           onSeeAll: onSeeAll,
           itemCount: history.length,
           itemBuilder: (c, i) {
             final e = history[i];
-            final progress =
-                e.total > 0 ? (e.pos / e.total).clamp(0.0, 1.0) : 0.0;
+            final progress = e.total > 0
+                ? (e.pos / e.total).clamp(0.0, 1.0)
+                : 0.0;
             return ContinueReadingCard(
               title: e.title,
               imageUrl: e.cover,

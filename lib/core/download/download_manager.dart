@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:watch_app/core/hive/safe_box.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -21,6 +20,10 @@ import '../torrent/torrent_prefs.dart';
 import 'download_prefs.dart';
 import 'download_record.dart';
 import 'download_service.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
+
+/// Controls which subtitle tracks are fetched alongside a download.
+enum SubtitleDownloadMode { none, defaultOnly, all }
 
 /// Owns offline downloads. Direct-file (MP4/MKV) sources go through
 /// background_downloader (true background); HLS (m3u8) sources go through the
@@ -29,21 +32,26 @@ import 'download_service.dart';
 /// `downloads` box so the library survives restarts. A [ChangeNotifier] so the
 /// UI can rebuild live. See docs/downloads-feature.md.
 class DownloadManager extends ChangeNotifier {
-  DownloadManager(this._repo,
-      [DownloadPrefs? downloadPrefs, TorrentDownloadService? torrentSvc])
-      : _downloadPrefs = downloadPrefs ?? DownloadPrefs(),
-        _torrentSvc = torrentSvc ?? TorrentDownloadService();
+  DownloadManager(
+    this._repo, [
+    DownloadPrefs? downloadPrefs,
+    TorrentDownloadService? torrentSvc,
+  ]) : _downloadPrefs = downloadPrefs ?? DownloadPrefs(),
+       _torrentSvc = torrentSvc ?? TorrentDownloadService();
 
   final SourceRepository _repo;
   final DownloadPrefs _downloadPrefs;
   final TorrentDownloadService _torrentSvc;
 
-  /// Latest torrent-download progress per id (peers/speed for the UI), kept
-  /// out of [DownloadRecord] so it isn't persisted every tick.
   final Map<String, TorrentDownloadProgress> torrentProgress = {};
 
   static const String boxName = 'downloads';
   static const String _sharedDir = 'Zangetsu';
+  static const int _resolveConcurrency = 3;
+
+  /// Minimum interval between [notifyListeners] calls for progress updates.
+  /// Status changes (done/failed/paused) bypass this and notify immediately.
+  static const int _notifyThrottleMs = 120;
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
@@ -54,12 +62,9 @@ class DownloadManager extends ChangeNotifier {
   Box<Map> get _box => Hive.box<Map>(boxName);
   FileDownloader? _dl;
   FileDownloader get _fileDownloader => _dl ??= FileDownloader();
-  // Throttles direct-file (MP4) downloads to the "Parallel downloads" setting.
-  // background_downloader runs enqueued tasks concurrently, so without this the
-  // limit was silently HLS-only. The queue holds extras until a slot frees.
+
   final MemoryTaskQueue _mp4Queue = MemoryTaskQueue();
-  // Small HTTP client for fetching subtitle sidecar files (they're tiny, so a
-  // direct GET in the UI isolate beats threading them through the downloaders).
+
   final Dio _dio = Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 20),
@@ -67,27 +72,62 @@ class DownloadManager extends ChangeNotifier {
     ),
   );
 
-  /// In-memory cache of records, keyed by id (mirrors the Hive box).
   final Map<String, DownloadRecord> _records = {};
-  // Live DownloadTask objects for in-session control (pause/resume/move).
-  final Map<String, DownloadTask> _tasks = {};
-  // Remaining fallback mirrors per record (CloudStream-style try-next): when a
-  // download fails or saves a web page, we advance to the next candidate.
-  final Map<String, List<VideoSource>> _candidates = {};
-  StreamSubscription<TaskUpdate>? _sub;
 
-  /// Wire notifications + the update streams. Call once at app start.
+  // ── In-memory-only maps (not persisted — lost on restart) ─────────────────
+
+  /// Live DownloadTask objects for in-session control.
+  ///
+  /// **Restart behaviour:** After an app kill, these are gone. The [resume]
+  /// path handles this by re-resolving the source (extractor URLs expire
+  /// within minutes, so the old URL is almost certainly dead) and enqueuing a
+  /// fresh task. background_downloader's `allowPause: true` + `retries: 5`
+  /// means the *file* on disk is reused via HTTP Range if the server supports
+  /// it — so progress is NOT lost even though the task object is new.
+  ///
+  /// **Must-test scenarios before shipping:**
+  ///  1. Download 40% → kill → reopen → Resume → verify file continues, not restarts
+  ///  2. Download 40% → kill → reopen → verify background_downloader auto-resumes
+  ///  3. Download 40% → kill → reopen → source URL expired → verify re-resolve works
+  final Map<String, DownloadTask> _tasks = {};
+  final Map<String, List<VideoSource>> _candidates = {};
+
+  /// Per-download subtitle mode so fallback mirrors preserve the user's choice.
+  final Map<String, SubtitleDownloadMode> _subtitleModes = {};
+
+  /// Per-download Dio [CancelToken] so cancelling a video also aborts its
+  /// in-flight subtitle HTTP requests instead of letting them silently finish.
+  final Map<String, CancelToken> _subtitleCancels = {};
+
+  /// Per-download timestamp of the last [notifyListeners] for progress events.
+  /// Status transitions (done/failed/paused/queued) bypass the throttle.
+  final Map<String, int> _lastNotifyMs = {};
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+  bool _initialized = false;
+  StreamSubscription<TaskUpdate>? _bgSub;
+  StreamSubscription<Task>? _enqueueErrorSub;
+  StreamSubscription<dynamic>? _hlsProgressSub;
+  StreamSubscription<dynamic>? _hlsDoneSub;
+  StreamSubscription<dynamic>? _hlsFailedSub;
+  StreamSubscription<TorrentDownloadProgress>? _torrentSub;
+
+  /// Wire notifications + update streams. Idempotent — safe to call more than once.
   void setup() {
+    if (_initialized) return;
+    _initialized = true;
+
     for (final raw in _box.values) {
       final r = DownloadRecord.fromMap(raw);
       _records[r.id] = r;
     }
-    // background_downloader persists to Application Support, which tvOS cannot
-    // create — constructing FileDownloader there logs errors and can stall boot.
+
     if (isAppleTv) {
       _listenTorrentDownloads();
       return;
     }
+
     final dl = _fileDownloader;
     dl.configureNotification(
       running: const TaskNotification('Downloading', '{filename}'),
@@ -95,13 +135,12 @@ class DownloadManager extends ChangeNotifier {
       error: const TaskNotification('Download failed', '{filename}'),
       progressBar: true,
     );
-    _sub = dl.updates.listen(_onUpdate);
-    // Route MP4 downloads through the concurrency-limited queue.
+
+    _bgSub = dl.updates.listen(_onUpdate);
     _mp4Queue.maxConcurrent = _downloadPrefs.parallelDownloads;
     dl.addTaskQueue(_mp4Queue);
-    // A task the queue couldn't enqueue at all (rare) → same fallback as a
-    // failed start: try the next mirror, else mark failed.
-    _mp4Queue.enqueueErrors.listen((task) async {
+
+    _enqueueErrorSub = _mp4Queue.enqueueErrors.listen((task) async {
       final rec = _records[task.taskId];
       if (rec == null || rec.status == DownloadStatus.canceled) return;
       AppLogger.instance.log(
@@ -110,27 +149,23 @@ class DownloadManager extends ChangeNotifier {
         level: 'E',
       );
       if (await _tryNext(rec)) return;
-      _put(rec.copyWith(
-        status: DownloadStatus.failed,
-        error: () => "Couldn't start download",
-      ));
-      notifyListeners();
+      _put(
+        rec.copyWith(
+          status: DownloadStatus.failed,
+          error: () => "Couldn't start download",
+        ),
+      );
+      _notifyImmediate(rec.id);
     });
+
     _listenBackgroundService();
     _listenTorrentDownloads();
-    _reconcileServiceResults(); // apply HLS downloads finished while killed
+    _reconcileServiceResults();
   }
 
-  /// Apply a new "Parallel downloads" limit live to BOTH paths — the MP4 queue
-  /// here and the HLS service — so a change takes effect on the current batch.
-  /// Raising it starts queued episodes right away; lowering it only stops new
-  /// ones spawning (running downloads are never interrupted).
   void setParallel(int n) {
     final v = n.clamp(DownloadPrefs.parallelMin, DownloadPrefs.parallelMax);
     _mp4Queue.maxConcurrent = v;
-    // The queue only re-checks on add/finish, not when maxConcurrent changes —
-    // so nudge it, otherwise raising the limit wouldn't start queued downloads
-    // until the current one ended.
     _mp4Queue.advanceQueue();
     if (!isAppleTv) {
       try {
@@ -139,32 +174,26 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  /// Apply progress/done/failed events the foreground-service isolate sends for
-  /// HLS downloads (live, while the UI is alive).
   void _listenBackgroundService() {
-    // tvOS (and any host without the plugin) — touching FlutterBackgroundService
-    // throws as soon as the platform instance is read.
     if (isAppleTv) return;
     try {
       final svc = DownloadService.instance;
-      svc.on('progress').listen((d) {
+      _hlsProgressSub = svc.on('progress').listen((d) {
         final id = d?['id'] as String?;
         if (id == null) return;
         final rec = _records[id];
         if (rec == null || rec.status == DownloadStatus.canceled) return;
         final p = (d?['progress'] as num?)?.toDouble() ?? rec.progress;
         _put(rec.copyWith(status: DownloadStatus.downloading, progress: p));
-        notifyListeners();
+        _notifyThrottled(id);
       });
-      svc.on('done').listen((d) async {
+      _hlsDoneSub = svc.on('done').listen((d) async {
         final id = d?['id'] as String?;
         if (id == null) return;
         final rec = _records[id];
         if (rec == null) return;
         _candidates.remove(id);
         var path = d?['filePath'] as String?;
-        // The isolate handed back the local .ts temp; remux it to a real .mp4
-        // (Android) and move it into shared storage / the user's SAF folder here.
         if (path != null && d?['needsFinalize'] == true) {
           final finalized = await _finalizeHls(
             path,
@@ -174,9 +203,9 @@ class DownloadManager extends ChangeNotifier {
           if (finalized != null) path = finalized;
         }
         await _markDone(rec, path);
-        notifyListeners();
+        _notifyImmediate(id);
       });
-      svc.on('failed').listen((d) async {
+      _hlsFailedSub = svc.on('failed').listen((d) async {
         final id = d?['id'] as String?;
         if (id == null) return;
         final rec = _records[id];
@@ -187,50 +216,49 @@ class DownloadManager extends ChangeNotifier {
           '[${rec.quality}]: $err',
           level: 'E',
         );
-        if (await _tryNext(rec)) return; // fell back to another mirror
-        _put(rec.copyWith(
-          status: DownloadStatus.failed,
-          error: () => err,
-        ));
-        notifyListeners();
+        if (await _tryNext(rec)) return;
+        _put(rec.copyWith(status: DownloadStatus.failed, error: () => err));
+        _notifyImmediate(id);
       });
-    } catch (_) {
-      // Plugin absent — HLS background path unavailable on this platform.
-    }
+    } catch (_) {}
   }
 
-  /// Apply progress events from the native torrent download engine onto records
-  /// (peers/speed are cached in [torrentProgress] for the UI).
   void _listenTorrentDownloads() {
-    // Android-only Method/EventChannel — tvOS has no torrent engine.
     if (isAppleTv) return;
-    _torrentSvc.events().listen((p) async {
+    _torrentSub = _torrentSvc.events().listen((p) async {
       final rec = _records[p.id];
       if (rec == null || rec.status == DownloadStatus.canceled) return;
       torrentProgress[p.id] = p;
+      final isTerminal = p.status == 'done' || p.status == 'failed';
       switch (p.status) {
         case 'done':
           _candidates.remove(p.id);
           await _markDone(rec, p.filePath);
         case 'failed':
-          _put(rec.copyWith(
-            status: DownloadStatus.failed,
-            error: () => p.error ?? 'Torrent download failed',
-          ));
+          _put(
+            rec.copyWith(
+              status: DownloadStatus.failed,
+              error: () => p.error ?? 'Torrent download failed',
+            ),
+          );
         case 'paused':
           _put(rec.copyWith(status: DownloadStatus.paused));
-        default: // queued | downloading | copying — keep it "downloading"
-          _put(rec.copyWith(
-            status: DownloadStatus.downloading,
-            progress: p.progress,
-          ));
+        default:
+          _put(
+            rec.copyWith(
+              status: DownloadStatus.downloading,
+              progress: p.progress,
+            ),
+          );
       }
-      notifyListeners();
+      if (isTerminal) {
+        _notifyImmediate(p.id);
+      } else {
+        _notifyThrottled(p.id);
+      }
     });
   }
 
-  /// Read completion markers written by the service while the app was killed,
-  /// apply them to records, then delete them.
   Future<void> _reconcileServiceResults() async {
     try {
       final dir = await DownloadService.resultsDir();
@@ -246,7 +274,6 @@ class DownloadManager extends ChangeNotifier {
             if (status == 'done') {
               _candidates.remove(id);
               var path = m['filePath'] as String?;
-              // App was killed before the live finalize ran — remux + move now.
               if (path != null && m['needsFinalize'] == true) {
                 final finalized = await _finalizeHls(
                   path,
@@ -263,33 +290,68 @@ class DownloadManager extends ChangeNotifier {
                 '${rec.showTitle} · ${rec.episodeTitle}: $err',
                 level: 'E',
               );
-              _put(rec.copyWith(
-                status: DownloadStatus.failed,
-                error: () => err,
-              ));
+              _put(
+                rec.copyWith(status: DownloadStatus.failed, error: () => err),
+              );
             }
           }
-        } catch (_) {}
+        } catch (e) {
+          AppLogger.instance.log(
+            '[download] reconcile parse error: $e',
+            level: 'W',
+          );
+        }
         try {
           await entity.delete();
         } catch (_) {}
       }
       notifyListeners();
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.instance.log('[download] reconcile failed: $e', level: 'E');
+    }
   }
 
   @override
   void dispose() {
-    _sub?.cancel();
+    _bgSub?.cancel();
+    _enqueueErrorSub?.cancel();
+    _hlsProgressSub?.cancel();
+    _hlsDoneSub?.cancel();
+    _hlsFailedSub?.cancel();
+    _torrentSub?.cancel();
+    // Abort any in-flight subtitle fetches.
+    for (final token in _subtitleCancels.values) {
+      token.cancel('manager disposed');
+    }
+    _subtitleCancels.clear();
+    _initialized = false;
     super.dispose();
   }
 
-  // ── Reads ────────────────────────────────────────────────────────────────
+  // ── Notify helpers ────────────────────────────────────────────────────────
+
+  /// Notify immediately — used for status transitions (done/failed/paused).
+  void _notifyImmediate(String id) {
+    _lastNotifyMs[id] = DateTime.now().millisecondsSinceEpoch;
+    notifyListeners();
+  }
+
+  /// Notify at most once per [_notifyThrottleMs] — used for progress ticks.
+  /// Prevents 20 downloads × 60fps progress events from saturating the UI.
+  void _notifyThrottled(String id) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = _lastNotifyMs[id] ?? 0;
+    if (now - last < _notifyThrottleMs) return;
+    _lastNotifyMs[id] = now;
+    notifyListeners();
+  }
+
+  // ── Reads ─────────────────────────────────────────────────────────────────
 
   List<DownloadRecord> get all =>
-      _records.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      _records.values.toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-  /// Records grouped by show, newest show first.
   Map<String, List<DownloadRecord>> get byShow {
     final out = <String, List<DownloadRecord>>{};
     for (final r in all) {
@@ -303,8 +365,6 @@ class DownloadManager extends ChangeNotifier {
 
   // ── Enqueue ───────────────────────────────────────────────────────────────
 
-  /// Persist a [DownloadStatus.queued] record for each episode, then resolve +
-  /// enqueue them in the background. Safe to not await.
   Future<void> enqueueEpisodes({
     required String sourceId,
     required String showId,
@@ -317,8 +377,8 @@ class DownloadManager extends ChangeNotifier {
     required List<Episode> episodes,
     required int nowMs,
     int? malId,
+    SubtitleDownloadMode subtitleMode = SubtitleDownloadMode.defaultOnly,
   }) async {
-    // Best-effort notification permission so the progress notification shows.
     try {
       await Permission.notification.request();
     } catch (_) {}
@@ -327,7 +387,6 @@ class DownloadManager extends ChangeNotifier {
     for (final ep in episodes) {
       final id = _idFor(sourceId, showId, ep.id);
       final existing = _records[id];
-      // Skip ones already done or in flight.
       if (existing != null &&
           (existing.status == DownloadStatus.done || existing.isActive)) {
         continue;
@@ -350,18 +409,20 @@ class DownloadManager extends ChangeNotifier {
         createdAt: nowMs,
       );
       _put(rec);
+      _subtitleModes[id] = subtitleMode;
       pending.add(rec);
     }
     notifyListeners();
 
-    for (final rec in pending) {
-      await _resolveAndEnqueue(rec);
+    for (var i = 0; i < pending.length; i += _resolveConcurrency) {
+      final batch = pending.sublist(
+        i,
+        (i + _resolveConcurrency).clamp(0, pending.length),
+      );
+      await Future.wait(batch.map((rec) => _resolveAndEnqueue(rec)));
     }
   }
 
-  /// Enqueue a single episode against an ALREADY-CHOSEN source (the CloudStream
-  /// "pick a server" flow) — no re-resolution, so the exact url + headers the
-  /// player would stream are what we download.
   Future<void> enqueueSource({
     required String sourceId,
     required String showId,
@@ -376,14 +437,12 @@ class DownloadManager extends ChangeNotifier {
     required int nowMs,
     int? malId,
     List<VideoSource> fallbacks = const [],
+    SubtitleDownloadMode subtitleMode = SubtitleDownloadMode.defaultOnly,
   }) async {
     try {
       await Permission.notification.request();
     } catch (_) {}
-    // Carry the outgoing file on the new record so it survives a restart —
-    // in memory it was lost if the app died mid re-download, stranding the old
-    // file for good. A previous supersededPath wins if this record never got a
-    // file of its own (a re-download that failed, then was retried).
+
     final replacing = _records[_idFor(sourceId, showId, episode.id)];
     final outgoing = (replacing?.filePath?.isNotEmpty ?? false)
         ? replacing!.filePath
@@ -407,9 +466,9 @@ class DownloadManager extends ChangeNotifier {
       createdAt: nowMs,
     );
     _put(rec);
+    _subtitleModes[rec.id] = subtitleMode;
     notifyListeners();
-    // The user's chosen source first, then the other mirrors as fallback (so a
-    // dead mirror auto-advances instead of just failing).
+
     _candidates[rec.id] = [
       source,
       ...fallbacks.where((s) => s.url != source.url),
@@ -417,19 +476,20 @@ class DownloadManager extends ChangeNotifier {
     await _enqueueTaskFor(rec, source);
   }
 
-  /// Resolve a source for [rec] (batch path) then enqueue it, keeping the rest
-  /// as fallback mirrors.
   Future<void> _resolveAndEnqueue(DownloadRecord rec) async {
     _put(rec.copyWith(status: DownloadStatus.resolving));
     notifyListeners();
     try {
-      final sources = await _repo.sources(rec.episodeUrl, sourceId: rec.sourceId);
-      if (_isCanceled(rec.id)) return; // canceled while resolving
+      final sources = await _repo.sources(
+        rec.episodeUrl,
+        sourceId: rec.sourceId,
+      );
+      if (_isCanceled(rec.id)) return;
       final ranked = _ranked(sources, rec.quality);
       if (ranked.isEmpty) {
         AppLogger.instance.log(
           '[download] no downloadable source — ${rec.showTitle} · '
-          '${rec.episodeTitle} (${sources.length} source(s), all HLS/unusable)',
+          '${rec.episodeTitle} (${sources.length} source(s))',
           level: 'E',
         );
         _put(
@@ -444,21 +504,25 @@ class DownloadManager extends ChangeNotifier {
       _candidates[rec.id] = ranked;
       await _enqueueTaskFor(rec, ranked.first);
     } catch (e) {
-      AppLogger.instance
-          .log('download resolve failed (${rec.showTitle}): $e', level: 'E');
+      AppLogger.instance.log(
+        'download resolve failed (${rec.showTitle}): $e',
+        level: 'E',
+      );
       _put(
-        rec.copyWith(status: DownloadStatus.failed, error: () => 'Resolve failed'),
+        rec.copyWith(
+          status: DownloadStatus.failed,
+          error: () => 'Resolve failed',
+        ),
       );
       notifyListeners();
     }
   }
 
-  /// Advance [rec] to its next fallback mirror. Returns true if one was
-  /// enqueued, false when mirrors are exhausted.
+  /// Advance to the next fallback mirror, preserving the original subtitle mode.
   Future<bool> _tryNext(DownloadRecord rec) async {
     final cands = _candidates[rec.id];
     if (cands == null || cands.length <= 1) return false;
-    cands.removeAt(0); // drop the one that just failed
+    cands.removeAt(0);
     if (cands.isEmpty) return false;
     _put(rec.copyWith(status: DownloadStatus.resolving, progress: 0));
     notifyListeners();
@@ -466,13 +530,13 @@ class DownloadManager extends ChangeNotifier {
     return true;
   }
 
-  /// Start [rec] from a concrete [source] — HLS via the in-app segment
-  /// downloader, everything else via background_downloader.
   Future<void> _enqueueTaskFor(DownloadRecord rec, VideoSource source) async {
-    if (_isCanceled(rec.id)) return; // don't (re)start a canceled download
-    // Save any soft subtitles this source advertises, in parallel with the
-    // video (they're tiny and best-effort — never block or fail the download).
-    unawaited(_fetchSubtitles(rec, source));
+    if (_isCanceled(rec.id)) return;
+
+    // Subtitle mode travels with the download — fallback mirrors inherit it.
+    final subMode = _subtitleModes[rec.id] ?? SubtitleDownloadMode.defaultOnly;
+    unawaited(_fetchSubtitles(rec, source, mode: subMode));
+
     if (_isHls(source)) {
       await _startHlsDownload(rec, source);
       return;
@@ -481,25 +545,17 @@ class DownloadManager extends ChangeNotifier {
       await _startTorrentDownload(rec, source);
       return;
     }
+
     final filename =
         '${_safe(rec.showTitle)}_E${rec.episodeNumber?.toInt() ?? ''}'
         '_${_safe(rec.quality)}${_ext(source.url)}';
     final displayName =
         '${rec.showTitle} · E${rec.episodeNumber?.toInt() ?? ''}';
     final headers = source.headers ?? const <String, String>{};
-    // Flaky file hosts (4khdhub's HubCloud/gamerxyt CDN) drop the connection
-    // mid-transfer. retries + allowPause let background_downloader RESUME from
-    // the partial (the host supports range — mpv can seek it) on each drop
-    // instead of restarting from 0. waitingToRetry / negative retry-progress
-    // are already handled in _onUpdate, so this only adds resilience.
-    // A picked SAF folder (content://) streams straight into that tree. A
-    // detected drive (a plain volume path) or the default both download to
-    // app-docs first — _finish then moves a drive download onto the volume.
+
     final loc = _downloadPrefs.locationUri;
     final safUri = loc != null && loc.isNotEmpty && isUriPath(loc) ? loc : null;
     final DownloadTask task = safUri != null
-        // Custom SAF folder: stream straight into the user's picked directory
-        // (the file ends up as a content:// URI — see _finish). No post-move.
         ? UriDownloadTask(
             taskId: rec.id,
             url: source.url,
@@ -524,36 +580,27 @@ class DownloadManager extends ChangeNotifier {
             displayName: displayName,
           );
     _tasks[rec.id] = task;
-    // Mark it waiting ("Queued"); the queue enqueues it when a parallel slot is
-    // free (→ enqueued/running in _onUpdate). Start failures come back via
-    // _mp4Queue.enqueueErrors + _onUpdate's failed case.
     _put(rec.copyWith(status: DownloadStatus.queued, progress: 0));
-    notifyListeners();
+    _notifyImmediate(rec.id);
     _mp4Queue.add(task);
   }
 
-  /// Hand an HLS source to the foreground-service isolate so it downloads in
-  /// true background. We resolve the path here (UI isolate owns path_provider),
-  /// start the service, and dispatch the job; progress/done/failed come back via
-  /// [_listenBackgroundService].
   Future<void> _startHlsDownload(DownloadRecord rec, VideoSource source) async {
     _put(rec.copyWith(status: DownloadStatus.downloading, progress: 0));
-    notifyListeners();
+    _notifyImmediate(rec.id);
     try {
       final docs = await getApplicationDocumentsDirectory();
       final safeShow = _safe(rec.showTitle);
       final dir = Directory('${docs.path}/$_sharedDir/$safeShow');
       await dir.create(recursive: true);
-      // Download the concatenated TS to a local temp with an honest .ts name;
-      // the main isolate finalizes it (remux → real .mp4 on Android, else keep
-      // the .ts) once the service reports done — see _finalizeHls.
       final outputPath =
           '${dir.path}/${safeShow}_E${rec.episodeNumber?.toInt() ?? ''}'
           '_${_safe(rec.quality)}.ts';
 
-      // Background HLS isolate needs flutter_background_service (Android/iOS only).
       if (isAppleTv) {
-        throw UnsupportedError('Background HLS downloads are not available on Apple TV');
+        throw UnsupportedError(
+          'Background HLS downloads are not available on Apple TV',
+        );
       }
 
       if (!await DownloadService.instance.isRunning()) {
@@ -568,10 +615,7 @@ class DownloadManager extends ChangeNotifier {
         'label': 'E${rec.episodeNumber?.toInt() ?? ''}',
         'showTitle': rec.showTitle,
         'sharedSubDir': '$_sharedDir/$safeShow',
-        // Custom SAF folder (if any): the isolate can't SAF-write, so it hands
-        // the local temp back and the main isolate moves it into this tree.
         'customUri': _downloadPrefs.locationUri,
-        // How many episodes run at once + segment connections per download.
         'parallel': _downloadPrefs.parallelDownloads,
         'connections': _downloadPrefs.connectionsPerDownload,
       });
@@ -584,40 +628,36 @@ class DownloadManager extends ChangeNotifier {
           error: () => "Couldn't start download",
         ),
       );
-      notifyListeners();
+      _notifyImmediate(rec.id);
     }
   }
 
-  /// Native TS→MP4 remux channel (Android only). See MainActivity + TsRemuxer.
-  static const MethodChannel _downloadChannel =
-      MethodChannel('zangetsu/download');
+  // ── Native channels ───────────────────────────────────────────────────────
 
-  /// Remux the concatenated-TS file at [input] into a real MP4 at [output] via
-  /// the native MediaMuxer (stream-copy). Returns true on success; false on
-  /// non-Android and on any native failure, so callers fall back to a `.ts`.
+  static const MethodChannel _downloadChannel = MethodChannel(
+    'zangetsu/download',
+  );
+
   Future<bool> _remuxToMp4(String input, String output) async {
     if (!Platform.isAndroid) return false;
     try {
-      final ok = await _downloadChannel.invokeMethod<bool>(
-        'remuxTsToMp4',
-        {'input': input, 'output': output},
-      );
+      final ok = await _downloadChannel.invokeMethod<bool>('remuxTsToMp4', {
+        'input': input,
+        'output': output,
+      });
       return ok ?? false;
     } catch (_) {
       return false;
     }
   }
 
-  /// Storage volumes downloads can target WITHOUT the SAF picker (internal +
-  /// any USB/SSD/SD drive), for the TV location picker. Each is a plain
-  /// app-specific external path stored as the download location. Android only;
-  /// empty elsewhere.
   Future<List<({String path, String label, bool removable})>>
-      listDownloadVolumes() async {
+  listDownloadVolumes() async {
     if (!Platform.isAndroid) return const [];
     try {
-      final raw = await _downloadChannel
-          .invokeMethod<List<dynamic>>('listDownloadVolumes');
+      final raw = await _downloadChannel.invokeMethod<List<dynamic>>(
+        'listDownloadVolumes',
+      );
       if (raw == null) return const [];
       return raw.map((e) {
         final m = (e as Map).cast<String, dynamic>();
@@ -632,62 +672,58 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  /// Finalizes an HLS download the isolate left as a local `.ts` temp: on Android
-  /// remux it into a real, seekable `.mp4` (falling back to the `.ts` if the
-  /// remux can't handle the stream); iOS keeps the `.ts` (no MediaMuxer, and mpv
-  /// plays a correctly-named `.ts` fine — the frame-skipping was purely the old
-  /// `.mp4` mislabel). Then move the result into the custom SAF folder or public
-  /// Downloads. Returns the final stored path (or the local one on move failure).
+  // ── Finalize / move ───────────────────────────────────────────────────────
+
   Future<String?> _finalizeHls(
     String tsPath, {
     String? customUri,
     String? subDir,
   }) async {
     final dir = subDir ?? _sharedDir;
-    // A detected drive is a plain volume path (not a content:// SAF tree) — an
-    // app-specific external dir we can write to with plain File I/O. Remux the
-    // .ts into a real .mp4 STRAIGHT onto the volume, avoiding a big post-move.
     final isVolume =
         customUri != null && customUri.isNotEmpty && !isUriPath(customUri);
+
     if (isVolume && Platform.isAndroid) {
       try {
         final destDir = Directory('$customUri/$dir');
         await destDir.create(recursive: true);
-        final mp4 = '${destDir.path}/${_withExt(tsPath.split('/').last, 'mp4')}';
+        final mp4 =
+            '${destDir.path}/${_withExt(tsPath.split('/').last, 'mp4')}';
         if (await _remuxToMp4(tsPath, mp4)) {
           try {
             await File(tsPath).delete();
           } catch (_) {}
           return mp4;
         }
-        // Remux couldn't handle the stream → keep the .ts, on the volume.
         return await _moveToVolume(tsPath, customUri, dir) ?? tsPath;
       } catch (_) {
-        return tsPath; // volume write failed → keep the local temp
+        return tsPath;
       }
     }
     if (isVolume) {
-      // iOS (no MediaMuxer): just move the .ts onto the chosen location.
       return await _moveToVolume(tsPath, customUri, dir) ?? tsPath;
     }
 
-    // ── Picked SAF folder / default public Downloads (unchanged) ──
-    var publish = tsPath; // already an honest .ts
+    var publish = tsPath;
     if (Platform.isAndroid) {
       final mp4 = _withExt(tsPath, 'mp4');
       final remuxed = mp4 != tsPath && await _remuxToMp4(tsPath, mp4);
-      debugPrint('[dl] HLS finalize: ${remuxed ? 'remuxed to mp4' : 'kept .ts'}');
+      debugPrint(
+        '[dl] HLS finalize: ${remuxed ? 'remuxed to mp4' : 'kept .ts'}',
+      );
       if (remuxed) {
         publish = mp4;
         try {
           await File(tsPath).delete();
         } catch (_) {}
       }
-      // Remux failed on an odd stream → keep the honestly-labelled .ts.
     }
     if (customUri != null && customUri.isNotEmpty) {
-      final moved =
-          await _moveIntoTree(publish, customUri, publish.split('/').last);
+      final moved = await _moveIntoTree(
+        publish,
+        customUri,
+        publish.split('/').last,
+      );
       return moved ?? publish;
     }
     try {
@@ -702,10 +738,6 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  /// Move a finished local file onto a detected drive (a plain app-specific
-  /// external volume path — USB/SSD/SD). Cross-filesystem, so copy+delete
-  /// (rename fails across mounts). Returns the new path, or null on failure so
-  /// the caller keeps the local copy.
   Future<String?> _moveToVolume(
     String localPath,
     String volumeBase,
@@ -725,7 +757,6 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  /// [path] with its extension swapped to [ext] (e.g. `foo.ts` → `foo.mp4`).
   String _withExt(String path, String ext) {
     final slash = path.lastIndexOf('/');
     final dot = path.lastIndexOf('.');
@@ -733,15 +764,31 @@ class DownloadManager extends ChangeNotifier {
     return '$base.$ext';
   }
 
-  /// Download the soft-subtitle sidecar files a [source] advertises and record
-  /// their local paths on [rec], so soft-subbed sources keep subtitles offline.
-  /// Best-effort: stored in private app storage, idempotent (skips if already
-  /// saved), and any failure just leaves the download without sidecar subs.
-  Future<void> _fetchSubtitles(DownloadRecord rec, VideoSource source) async {
+  // ── Subtitle fetching ─────────────────────────────────────────────────────
+
+  /// Download subtitle sidecar files. Uses a [CancelToken] so the HTTP request
+  /// is aborted if the parent download is cancelled mid-fetch. Streams to disk
+  /// in chunks to avoid buffering unexpectedly large responses in memory.
+  Future<void> _fetchSubtitles(
+    DownloadRecord rec,
+    VideoSource source, {
+    SubtitleDownloadMode mode = SubtitleDownloadMode.defaultOnly,
+  }) async {
+    if (mode == SubtitleDownloadMode.none) return;
     if (source.subtitles.isEmpty) return;
     final live = _records[rec.id];
     if (live == null || live.status == DownloadStatus.canceled) return;
-    if (live.subtitles.isNotEmpty) return; // already saved (e.g. a retry mirror)
+    if (live.subtitles.isNotEmpty) return;
+
+    final tracks = mode == SubtitleDownloadMode.all
+        ? source.subtitles
+        : _defaultSubtitleOnly(source.subtitles);
+    if (tracks.isEmpty) return;
+
+    // Create a cancel token tied to this download's lifecycle.
+    final cancelToken = CancelToken();
+    _subtitleCancels[rec.id] = cancelToken;
+
     try {
       final docs = await getApplicationDocumentsDirectory();
       final safeShow = _safe(rec.showTitle);
@@ -750,22 +797,41 @@ class DownloadManager extends ChangeNotifier {
       final epTag = 'E${rec.episodeNumber?.toInt() ?? ''}';
       final saved = <OfflineSubtitle>[];
       var idx = 0;
-      for (final sub in source.subtitles) {
+
+      for (final sub in tracks) {
+        if (cancelToken.isCancelled) break;
         idx++;
         try {
           final path =
               '${dir.path}/${safeShow}_${epTag}_${_safe(sub.lang)}_$idx'
               '${_subExt(sub.url, sub.format)}';
-          final resp = await _dio.get<List<int>>(
+
+          // Stream to disk instead of buffering the entire response.
+          final resp = await _dio.get<ResponseBody>(
             sub.url,
             options: Options(
-              responseType: ResponseType.bytes,
+              responseType: ResponseType.stream,
               headers: source.headers,
             ),
+            cancelToken: cancelToken,
           );
-          final bytes = resp.data;
-          if (bytes == null || bytes.isEmpty) continue;
-          await File(path).writeAsBytes(bytes, flush: true);
+
+          final file = File(path);
+          final sink = file.openWrite();
+
+          try {
+            await sink.addStream(resp.data!.stream.map((chunk) => chunk));
+            await sink.flush();
+          } finally {
+            await sink.close();
+          }
+
+          final len = await file.length();
+          if (len == 0) {
+            await file.delete();
+            continue;
+          }
+
           saved.add(
             OfflineSubtitle(
               lang: sub.lang,
@@ -774,10 +840,13 @@ class DownloadManager extends ChangeNotifier {
               isDefault: sub.isDefault,
             ),
           );
-        } catch (_) {/* skip this track */}
+        } catch (e) {
+          if (e is DioException && e.type == DioExceptionType.cancel) break;
+          // Skip this track on any other error.
+        }
       }
+
       if (saved.isEmpty) return;
-      // Re-read: the download may have been canceled/deleted while we fetched.
       final cur = _records[rec.id];
       if (cur == null || cur.status == DownloadStatus.canceled) {
         for (final s in saved) {
@@ -789,10 +858,21 @@ class DownloadManager extends ChangeNotifier {
       }
       _put(cur.copyWith(subtitles: saved));
       notifyListeners();
-    } catch (_) {/* no subtitles offline — non-fatal */}
+    } catch (e) {
+      if (e is DioException && e.type == DioExceptionType.cancel) return;
+    } finally {
+      _subtitleCancels.remove(rec.id);
+    }
   }
 
-  // ── Controls ───────────────────────────────────────────────────────────────
+  static List<Subtitle> _defaultSubtitleOnly(List<Subtitle> subs) {
+    final def = subs.where((s) => s.isDefault).toList();
+    if (def.isNotEmpty) return [def.first];
+    if (subs.isNotEmpty) return [subs.first];
+    return const [];
+  }
+
+  // ── Controls ──────────────────────────────────────────────────────────────
 
   Future<void> pause(DownloadRecord rec) async {
     if (rec.isTorrent) {
@@ -800,51 +880,66 @@ class DownloadManager extends ChangeNotifier {
         await _torrentSvc.pause(rec.id);
       } catch (_) {}
       _put(rec.copyWith(status: DownloadStatus.paused));
-      notifyListeners();
+      _notifyImmediate(rec.id);
       return;
     }
     final t = _tasks[rec.id];
     if (t != null) await _fileDownloader.pause(t);
   }
 
+  /// Resume a download. After an app restart the in-memory [DownloadTask] is
+  /// gone, so we re-resolve the source URL (extractor URLs expire within
+  /// minutes) and enqueue a fresh task. The partial file on disk is reused via
+  /// HTTP Range — background_downloader's `allowPause: true` enables this — so
+  /// progress is NOT lost even though the task object is new.
   Future<void> resume(DownloadRecord rec) async {
     if (rec.isTorrent) {
       try {
         await _torrentSvc.resume(rec.id);
       } catch (_) {}
       _put(rec.copyWith(status: DownloadStatus.downloading));
-      notifyListeners();
+      _notifyImmediate(rec.id);
       return;
     }
     final t = _tasks[rec.id];
     if (t != null) {
       await _fileDownloader.resume(t);
     } else {
-      // Task object lost (e.g. after restart) — re-resolve and enqueue.
+      // Task object lost (restart). Re-resolve gets a fresh URL; the partial
+      // file on disk is picked up by background_downloader via Range headers.
       await _resolveAndEnqueue(rec.copyWith(status: DownloadStatus.queued));
     }
   }
 
-  /// Re-download a failed record from scratch: forget any stale mirror list,
-  /// clear the error, and resolve a fresh source. No-op for done/active
-  /// downloads and for torrents (those are re-added from the detail screen).
   Future<void> retry(DownloadRecord rec) async {
-    if (rec.isTorrent || rec.status == DownloadStatus.done || rec.isActive) {
+    if (rec.isTorrent || rec.status == DownloadStatus.done || rec.isActive)
       return;
-    }
-    _candidates.remove(rec.id); // resolve fresh mirrors
+    _candidates.remove(rec.id);
     await _resolveAndEnqueue(
       rec.copyWith(status: DownloadStatus.queued, error: () => null),
     );
   }
 
+  /// Retry all failed downloads in one batch.
+  Future<void> retryAllFailed() async {
+    final failed = _records.values
+        .where((r) => r.status == DownloadStatus.failed)
+        .toList();
+    for (final rec in failed) {
+      await retry(rec);
+    }
+  }
+
   Future<void> cancel(DownloadRecord rec) async {
-    _candidates.remove(rec.id); // user stopped it — don't auto-advance mirrors
-    // Mark canceled FIRST so any in-flight resolve/update sees it and bails
-    // (otherwise a resolve finishing after cancel would re-enqueue, leaving the
-    // tile stuck "loading" despite saying canceled).
+    _candidates.remove(rec.id);
+
+    // Abort in-flight subtitle fetches so they don't silently finish after
+    // the user explicitly stopped the download.
+    _subtitleCancels.remove(rec.id)?.cancel('user canceled');
+
     _put(rec.copyWith(status: DownloadStatus.canceled, progress: 0));
-    notifyListeners();
+    _notifyImmediate(rec.id);
+
     if (rec.isTorrent) {
       try {
         await _torrentSvc.cancel(rec.id);
@@ -853,13 +948,13 @@ class DownloadManager extends ChangeNotifier {
       _tasks.remove(rec.id);
       return;
     }
-    _mp4Queue.removeTasksWithIds([rec.id]); // drop it if still waiting in line
+    _mp4Queue.removeTasksWithIds([rec.id]);
     try {
-      await _fileDownloader.cancelTaskWithId(rec.id); // direct-file task (if enqueued/running)
+      await _fileDownloader.cancelTaskWithId(rec.id);
     } catch (_) {}
     if (!isAppleTv) {
       try {
-        DownloadService.instance.invoke('cancel', {'id': rec.id}); // HLS job (if any)
+        DownloadService.instance.invoke('cancel', {'id': rec.id});
       } catch (_) {}
     }
     _tasks.remove(rec.id);
@@ -867,11 +962,14 @@ class DownloadManager extends ChangeNotifier {
 
   bool _isCanceled(String id) =>
       _records[id]?.status == DownloadStatus.canceled ||
-      !_records.containsKey(id); // deleted
+      !_records.containsKey(id);
 
-  /// Cancel (if active) and forget the record + delete the saved file.
   Future<void> delete(DownloadRecord rec) async {
     _candidates.remove(rec.id);
+    _subtitleModes.remove(rec.id);
+    _subtitleCancels.remove(rec.id)?.cancel('deleted');
+    _lastNotifyMs.remove(rec.id);
+
     if (rec.isTorrent) {
       try {
         await _torrentSvc.cancel(rec.id);
@@ -883,27 +981,17 @@ class DownloadManager extends ChangeNotifier {
     } catch (_) {}
     if (!isAppleTv) {
       try {
-        DownloadService.instance.invoke('cancel', {'id': rec.id}); // stop HLS job
+        DownloadService.instance.invoke('cancel', {'id': rec.id});
       } catch (_) {}
     }
     _tasks.remove(rec.id);
-    // Remove any saved subtitle sidecar files too.
     for (final s in rec.subtitles) {
       try {
         final f = File(s.path);
         if (await f.exists()) await f.delete();
       } catch (_) {}
     }
-    // Delete the actual media file on disk. Two cases:
-    //  • SAF custom folder → a content:// URI, removed via UriUtils.
-    //  • Default download (public Download/Zangetsu) → a plain file path the
-    //    app owns. Previously ONLY the content:// case was handled, so default
-    //    downloads left the file on disk (the "still in the folder" bug). Delete
-    //    it directly; if scoped storage blocks the raw delete, fall back to the
-    //    plugin's native (MediaStore-aware) delete. Then drop the empty show dir.
     await _deleteMediaFile(rec.filePath);
-    // A re-download that never finished leaves the file it was going to
-    // replace pointed at here; it has no other owner, so it goes too.
     if (rec.supersededPath != rec.filePath) {
       await _deleteMediaFile(rec.supersededPath);
     }
@@ -912,10 +1000,6 @@ class DownloadManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Delete every download in [recs] — a whole show group in one go. Cancels
-  /// active ones, removes the records + files. Best-effort per item (one
-  /// failure never blocks the rest); snapshots first since [delete] mutates the
-  /// record map as it goes.
   Future<void> deleteAll(Iterable<DownloadRecord> recs) async {
     for (final r in recs.toList()) {
       try {
@@ -925,13 +1009,12 @@ class DownloadManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── SAF helpers ───────────────────────────────────────────────────────────
+
   static const MethodChannel _deviceChannel = MethodChannel(
     'com.spyou.watch_app/device',
   );
 
-  /// Does a SAF `content://` download still exist? Checked natively via
-  /// DocumentFile (Dart can't stat a content:// URI). Returns true on any
-  /// uncertainty so a valid download is never wrongly pruned.
   Future<bool> _documentExists(String uri) async {
     try {
       final r = await _deviceChannel.invokeMethod<bool>('documentExists', {
@@ -943,8 +1026,6 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  /// Byte size of a SAF content:// document (-1 if unknown), via native
-  /// DocumentFile — Dart can't stat a content:// URI.
   Future<int> _documentSize(String uri) async {
     try {
       final r = await _deviceChannel.invokeMethod<int>('documentSize', {
@@ -956,9 +1037,6 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  /// Move a finished local file into a user-picked SAF tree (via native
-  /// DocumentFile — works without a foreground activity). Returns the new
-  /// content:// URI, or null on failure so the caller keeps the local path.
   Future<String?> _moveIntoTree(
     String localPath,
     String treeUri,
@@ -975,18 +1053,10 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  /// Reconcile the list with disk: drop `done` records whose file was removed
-  /// OUTSIDE the app (a file manager), so the UI can't show phantom downloads.
-  /// Handles BOTH default downloads (plain file path — a cheap `exists` syscall)
-  /// and custom-folder SAF downloads (content:// — via native DocumentFile).
-  /// Skips in-flight records; emits a single [notifyListeners] if anything went.
+  // ── Prune ─────────────────────────────────────────────────────────────────
+
   Future<void> pruneMissing() async {
     final gone = <String>[];
-    // Downloads that finished before the size was recorded on completion. They
-    // sat at "0 B" forever and dragged the storage total down with them, so
-    // measure them here — this already stats every file, so it costs nothing
-    // extra. Collected and applied after the loop rather than written inline,
-    // to avoid mutating the map being iterated.
     final measured = <DownloadRecord>[];
     for (final rec in _records.values) {
       if (rec.status != DownloadStatus.done) continue;
@@ -1003,10 +1073,8 @@ class DownloadManager extends ChangeNotifier {
             final len = await sizeOf(fp);
             if (len != null) measured.add(rec.copyWith(bytesTotal: len));
           }
-          continue; // file present → keep
+          continue;
         }
-        // Storage is "available" if ANY ancestor dir still exists (walk up), so
-        // a missing file means it was deleted — not that the volume is unmounted.
         var storageOk = false;
         var d = f.parent;
         for (var i = 0; i < 8; i++) {
@@ -1022,9 +1090,7 @@ class DownloadManager extends ChangeNotifier {
       } catch (_) {}
     }
     if (measured.isNotEmpty) {
-      for (final rec in measured) {
-        _put(rec);
-      }
+      for (final rec in measured) _put(rec);
       notifyListeners();
     }
     if (gone.isEmpty) return;
@@ -1032,20 +1098,19 @@ class DownloadManager extends ChangeNotifier {
       _records.remove(id);
       _candidates.remove(id);
       _tasks.remove(id);
+      _subtitleModes.remove(id);
+      _lastNotifyMs.remove(id);
       await _box.delete(id);
     }
     notifyListeners();
   }
 
-  // ── Update stream ──────────────────────────────────────────────────────────
+  // ── Update stream ─────────────────────────────────────────────────────────
 
   Future<void> _onUpdate(TaskUpdate update) async {
     final id = update.task.taskId;
     final rec = _records[id];
-    if (rec == null) return;
-    // Ignore late updates for a download the user canceled/deleted, so a
-    // trailing progress/running event can't flip it back to "downloading".
-    if (rec.status == DownloadStatus.canceled) return;
+    if (rec == null || rec.status == DownloadStatus.canceled) return;
 
     if (update is TaskProgressUpdate) {
       if (update.progress >= 0) {
@@ -1058,7 +1123,7 @@ class DownloadManager extends ChangeNotifier {
                 : null,
           ),
         );
-        notifyListeners();
+        _notifyThrottled(id);
       }
       return;
     }
@@ -1083,7 +1148,7 @@ class DownloadManager extends ChangeNotifier {
             '${update.exception?.description ?? 'no detail'}',
             level: 'E',
           );
-          if (await _tryNext(rec)) return; // fall through to the next mirror
+          if (await _tryNext(rec)) return;
           _put(
             rec.copyWith(
               status: DownloadStatus.failed,
@@ -1093,7 +1158,7 @@ class DownloadManager extends ChangeNotifier {
         case TaskStatus.waitingToRetry:
           _put(rec.copyWith(status: DownloadStatus.downloading));
       }
-      notifyListeners();
+      _notifyImmediate(id);
     }
   }
 
@@ -1105,8 +1170,6 @@ class DownloadManager extends ChangeNotifier {
     String? path;
 
     if (task is UriDownloadTask) {
-      // Custom-folder download: the file streamed straight into the user's
-      // picked SAF folder, so it's already published as a content:// URI.
       path = task.fileUri?.toString();
       if (path == null) {
         if (await _tryNext(rec)) return;
@@ -1116,14 +1179,9 @@ class DownloadManager extends ChangeNotifier {
             error: () => "Couldn't save to the chosen folder",
           ),
         );
-        notifyListeners();
+        _notifyImmediate(rec.id);
         return;
       }
-      // Same content-guard as the default path, but via a native size check
-      // (Dart can't stat content://). A tiny file is a stub, NOT a video — e.g.
-      // MovieBox streams DASH and hands back a ~95 KB `.mpd` manifest. Bin it and
-      // try the next mirror; only reject on a CONFIDENT small size (>0), so an
-      // unknown size (-1) never discards a real download.
       final size = await _documentSize(path);
       if (size > 0 && size < 524288) {
         try {
@@ -1133,16 +1191,13 @@ class DownloadManager extends ChangeNotifier {
         _put(
           rec.copyWith(
             status: DownloadStatus.failed,
-            error: () => "This source can't be downloaded (stream-only / DASH) — "
-                'try a different server',
+            error: () => "This source can't be downloaded (stream-only / DASH)",
           ),
         );
-        notifyListeners();
+        _notifyImmediate(rec.id);
         return;
       }
     } else {
-      // Content guard: if the server handed back a web/landing page instead of
-      // a video (the 4khdhub HubCloud/gamerxyt case), don't keep it.
       final mt = (mimeType ?? '').toLowerCase();
       final looksHtml = mt.contains('html') || mt.startsWith('text/');
       int size = 0;
@@ -1150,15 +1205,12 @@ class DownloadManager extends ChangeNotifier {
         final f = File(await task.filePath());
         if (await f.exists()) size = await f.length();
         if (looksHtml || (size > 0 && size < 524288)) {
-          // <512KB or HTML → not a real video file; bin it and try the next
-          // mirror before giving up.
           if (await f.exists()) await f.delete();
           if (await _tryNext(rec)) return;
           _put(
             rec.copyWith(
               status: DownloadStatus.failed,
-              error: () => 'That server returned a web page, not a video — '
-                  'try a different server',
+              error: () => 'That server returned a web page, not a video',
             ),
           );
           return;
@@ -1168,7 +1220,6 @@ class DownloadManager extends ChangeNotifier {
       final subDir = '$_sharedDir/${_safe(rec.showTitle)}';
       final loc = _downloadPrefs.locationUri;
       if (loc != null && loc.isNotEmpty && !isUriPath(loc)) {
-        // Detected drive (USB/SSD/SD): move the file onto that volume.
         path = await _moveToVolume(await task.filePath(), loc, subDir);
       } else {
         try {
@@ -1179,23 +1230,15 @@ class DownloadManager extends ChangeNotifier {
           );
         } catch (_) {}
       }
-      // Fall back to the app-documents path if the move failed.
       path ??= await task.filePath();
     }
 
-    _candidates.remove(rec.id); // success — no more fallbacks needed
+    _candidates.remove(rec.id);
     await _markDone(rec, path);
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
-  /// Delete a downloaded media file. Two cases:
-  ///  • SAF custom folder → a content:// URI, removed via UriUtils.
-  ///  • Default download (public Download/Zangetsu) → a plain file path the
-  ///    app owns. Previously ONLY the content:// case was handled, so default
-  ///    downloads left the file on disk (the "still in the folder" bug). Delete
-  ///    it directly; if scoped storage blocks the raw delete, fall back to the
-  ///    plugin's native (MediaStore-aware) delete. Then drop the empty show dir.
   Future<void> _deleteMediaFile(String? fp) async {
     if (fp == null || fp.isEmpty) return;
     try {
@@ -1213,20 +1256,13 @@ class DownloadManager extends ChangeNotifier {
         }
         try {
           final dir = f.parent;
-          if (await dir.exists() && await dir.list().isEmpty) {
+          if (await dir.exists() && await dir.list().isEmpty)
             await dir.delete();
-          }
         } catch (_) {}
       }
     } catch (_) {}
   }
 
-  /// Size of a finished download, or null to leave what's already recorded.
-  ///
-  /// Only the background_downloader path reports a size (via
-  /// `expectedFileSize`), so HLS — which is fetched in-app and remuxed — always
-  /// finished at 0 and the storage total under-counted every anime source.
-  /// A content:// URI can't be stat'd, so those keep whatever they had.
   @visibleForTesting
   static Future<int?> sizeOf(String? path) async {
     if (path == null || path.isEmpty || isUriPath(path)) return null;
@@ -1240,15 +1276,9 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  /// Finish a download: record its real size, then clear out the file a
-  /// previous download of the same episode left behind.
-  ///
-  /// The record id is source+show+episode with no quality or mirror in it, so
-  /// re-downloading an episode at another quality overwrites the record and
-  /// used to strand the old file — invisible to the app and a few hundred MB
-  /// each. Deleted only once the replacement is safely on disk, so a failed
-  /// re-download doesn't cost the copy that already worked.
   Future<void> _markDone(DownloadRecord rec, String? path) async {
+    _subtitleModes.remove(rec.id);
+    _lastNotifyMs.remove(rec.id);
     _put(
       rec.copyWith(
         status: DownloadStatus.done,
@@ -1269,17 +1299,12 @@ class DownloadManager extends ChangeNotifier {
     _box.put(rec.id, rec.toMap());
   }
 
-  /// Deterministic record id. Includes the SHOW id because providers like
-  /// AllAnime reuse episode ids ('sub:1', 'sub:2', …) across every show — so
-  /// without the show id, episode 1 of one anime collides with episode 1 of
-  /// another and the second download gets skipped.
   String _idFor(String sourceId, String showId, String episodeId) =>
       _safe('${sourceId}_${showId}_$episodeId');
 
   static String _safe(String s) =>
       s.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
 
-  /// File extension (incl. dot) from a url path, defaulting to .mp4.
   static String _ext(String url) {
     final path = (Uri.tryParse(url)?.path ?? url).toLowerCase();
     for (final e in const ['.mp4', '.mkv', '.webm', '.mov', '.m4v']) {
@@ -1288,8 +1313,6 @@ class DownloadManager extends ChangeNotifier {
     return '.mp4';
   }
 
-  /// Subtitle file extension (incl. dot) from the url, then the declared
-  /// [format], defaulting to .vtt.
   static String _subExt(String url, String? format) {
     final path = (Uri.tryParse(url)?.path ?? url).toLowerCase();
     for (final e in const ['.vtt', '.srt', '.ass', '.ssa', '.sub']) {
@@ -1302,26 +1325,22 @@ class DownloadManager extends ChangeNotifier {
     return '.vtt';
   }
 
-  /// HLS sources route through the in-app segment downloader; everything else
-  /// through background_downloader.
   static bool _isHls(VideoSource s) {
     if (s.container == SourceContainer.hls) return true;
     return (Uri.tryParse(s.url)?.path ?? s.url).toLowerCase().endsWith('.m3u8');
   }
 
-  /// Torrent (magnet/.torrent) sources route through the native torrent
-  /// download engine — a distinct branch that never touches the HTTP/HLS paths.
   @visibleForTesting
   static bool isTorrentSource(VideoSource s) =>
       s.container == SourceContainer.torrent;
 
   Future<void> _startTorrentDownload(
-      DownloadRecord rec, VideoSource source) async {
+    DownloadRecord rec,
+    VideoSource source,
+  ) async {
     _put(rec.copyWith(isTorrent: true, status: DownloadStatus.downloading));
-    notifyListeners();
+    _notifyImmediate(rec.id);
     try {
-      // Torrent save-to-folder is SAF-only; a detected-drive (plain path) choice
-      // isn't wired through the native torrent side yet, so fall back to default.
       final loc = _downloadPrefs.locationUri;
       await _torrentSvc.enqueue(
         rec.id,
@@ -1331,15 +1350,19 @@ class DownloadManager extends ChangeNotifier {
       );
     } catch (e) {
       final wifi = e is PlatformException && e.code == 'wifi_only';
-      AppLogger.instance
-          .log('torrent download start failed (${rec.showTitle}): $e', level: 'E');
-      _put(rec.copyWith(
-        status: DownloadStatus.failed,
-        error: () => wifi
-            ? 'Torrents are set to Wi-Fi only (Settings › Torrents).'
-            : 'Torrent download failed to start.',
-      ));
-      notifyListeners();
+      AppLogger.instance.log(
+        'torrent start failed (${rec.showTitle}): $e',
+        level: 'E',
+      );
+      _put(
+        rec.copyWith(
+          status: DownloadStatus.failed,
+          error: () => wifi
+              ? 'Torrents are set to Wi-Fi only (Settings › Torrents).'
+              : 'Torrent download failed to start.',
+        ),
+      );
+      _notifyImmediate(rec.id);
     }
   }
 
@@ -1348,10 +1371,6 @@ class DownloadManager extends ChangeNotifier {
     return m == null ? 0 : int.parse(m.group(1)!);
   }
 
-  /// All sources (HLS + direct, both downloadable now) ordered for the requested
-  /// quality. 'best' = highest first; otherwise by CLOSENESS to the requested
-  /// height (so 360p gets the smallest file) — ties go to the higher quality.
-  /// The full ordered list doubles as the try-next fallback.
   static List<VideoSource> _ranked(List<VideoSource> sources, String quality) {
     final list = List<VideoSource>.from(sources);
     if (list.isEmpty) return const [];
@@ -1359,8 +1378,9 @@ class DownloadManager extends ChangeNotifier {
       list.sort((a, b) => _height(b).compareTo(_height(a)));
       return list;
     }
-    final want =
-        int.tryParse(RegExp(r'(\d{3,4})').firstMatch(quality)?.group(1) ?? '');
+    final want = int.tryParse(
+      RegExp(r'(\d{3,4})').firstMatch(quality)?.group(1) ?? '',
+    );
     if (want == null) {
       list.sort((a, b) => _height(b).compareTo(_height(a)));
       return list;
@@ -1368,8 +1388,8 @@ class DownloadManager extends ChangeNotifier {
     list.sort((a, b) {
       final da = (_height(a) - want).abs();
       final db = (_height(b) - want).abs();
-      if (da != db) return da.compareTo(db); // closest to requested first
-      return _height(b).compareTo(_height(a)); // tie → higher quality
+      if (da != db) return da.compareTo(db);
+      return _height(b).compareTo(_height(a));
     });
     return list;
   }

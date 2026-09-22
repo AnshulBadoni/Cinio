@@ -1,7 +1,6 @@
 // Episodes tab: list and grid rows, season sheet, range chips, jump dialog.
 part of 'detail_screen.dart';
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Episodes tab — season selector (multi-season) + rich episode rows. PRESERVES
 // season filtering and _openPlayer. Sub/Dub selection now lives in the player.
@@ -104,9 +103,13 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   @override
   void didUpdateWidget(covariant _EpisodesTab old) {
     super.didUpdateWidget(old);
-    // Season switched (or the episode set changed) → reset to the resume chunk.
+    // Season switched, list updated, or episode instances replaced
     if (old.currentSeason != widget.currentSeason ||
-        old.seasonEps.length != widget.seasonEps.length) {
+        old.seasonEps.length != widget.seasonEps.length ||
+        !identical(old.seasonEps, widget.seasonEps)) {
+      if (_scanlator != null && !_scanlators.contains(_scanlator)) {
+        _scanlator = null;
+      }
       _rangeIndex = _initialRange();
       _highlightEpId = null;
     }
@@ -115,25 +118,28 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   /// The chunk holding the resume episode, so the tab opens where the user left
   /// off instead of always at episode 1.
   int _initialRange() {
-    if (!widget.hasAnyMark || widget.seasonEps.isEmpty) return 0;
-    final resumeEp = widget.eps[widget.resumeIndex(widget.eps)];
+    if (!widget.hasAnyMark || widget.seasonEps.isEmpty || widget.eps.isEmpty) {
+      return 0;
+    }
+    final index = widget.resumeIndex(widget.eps);
+    if (index < 0 || index >= widget.eps.length) return 0;
+
+    final resumeEp = widget.eps[index];
     // Against the FILTERED list — the range index addresses what's on screen,
     // and a scanlator filter makes that a different list to seasonEps.
     final local = _filteredEps.indexOf(resumeEp);
+    if (local < 0) return 0;
     return episodeRangeIndex(local);
   }
 
-  int get _rangeCount => episodeRangeCount(_filteredEps.length);
-
-  /// Scanlation groups on offer, first-seen order (which is the source's own
-  /// ordering, so the group a reader is following tends to come first).
+  /// Scanlation groups on offer, first-seen order (O(N) with Set lookups).
   List<String> get _scanlators {
-    final seen = <String>[];
+    final seen = <String>{};
     for (final e in widget.seasonEps) {
       final s = e.scanlator?.trim();
-      if (s != null && s.isNotEmpty && !seen.contains(s)) seen.add(s);
+      if (s != null && s.isNotEmpty) seen.add(s);
     }
-    return seen;
+    return seen.toList();
   }
 
   /// The chapters actually shown. Identical to the source list when no group
@@ -141,19 +147,15 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   List<Episode> get _filteredEps {
     final want = _scanlator;
     if (want == null) return widget.seasonEps;
-    return [
+    final list = [
       for (final e in widget.seasonEps)
         if (e.scanlator?.trim() == want) e,
     ];
+    return list.isEmpty ? widget.seasonEps : list;
   }
 
   /// Reading progress lives in [ReadStore] (page index / scroll permille),
-  /// keyed by showId — the video [ResumeStore] never holds a mark for a
-  /// chapter, so without this a read chapter could never dim. Also OR's in
-  /// the connected tracker's chapter progress ([_EpisodesTab.trackerProgress]),
-  /// same idea as [_stateFor]'s watched calc for video — a chapter you've
-  /// only read on AniList/MAL should dim too. No seasons in reading, so no
-  /// hasMultipleSeasons guard is needed here.
+  /// keyed by showId.
   ({bool watched, bool inProgress, bool resume, double fraction}) _readStateFor(
     Episode ep,
   ) {
@@ -168,8 +170,6 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     return (
       watched: watched,
       inProgress: inProgress,
-      // No CONTINUE badge in the reading row, and the resume index we're
-      // handed is the video one — so never claim a resume here.
       resume: false,
       fraction: inProgress ? (mark.pos / mark.total).clamp(0.0, 1.0) : 0.0,
     );
@@ -179,14 +179,13 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     ResumeStore store,
     Episode ep,
     int fullIndex,
+    int resumeIdx,
   ) {
     if (widget.isReading) return _readStateFor(ep);
     final mark = store.get(widget.sourceId, widget.showUrl, ep.id);
     final inProgress =
         mark != null && !mark.finished && mark.duration > Duration.zero;
     // Watched = finished locally, OR at/below the tracker's watched count.
-    // Only applied to single-season shows, where episode numbers map cleanly
-    // to the tracker's per-entry progress (avoids mis-greying across seasons).
     final epNum = ep.number?.toInt();
     final watched = (mark != null && mark.finished) ||
         (widget.trackerProgress != null &&
@@ -194,7 +193,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             epNum != null &&
             epNum <= widget.trackerProgress!);
     final resume =
-        widget.hasAnyMark && fullIndex == widget.resumeIndex(widget.eps);
+        widget.hasAnyMark && resumeIdx >= 0 && fullIndex == resumeIdx;
     final fraction = inProgress
         ? (mark.position.inMilliseconds / mark.duration.inMilliseconds).clamp(
             0.0,
@@ -215,9 +214,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
       builder: (_) => const _JumpDialog(),
     );
     if (n == null || !mounted) return;
-    // Match by episode number; fall back to a 1-based position. Searched in
-    // the FILTERED list, so jumping while a scanlator is picked lands on that
-    // group's chapter rather than a position in the unfiltered run.
+    // Match by episode number; fall back to a 1-based position.
     final eps = _filteredEps;
     var local = eps.indexWhere((e) => e.number?.toInt() == n);
     if (local < 0 && n >= 1 && n <= eps.length) local = n - 1;
@@ -238,20 +235,32 @@ class _EpisodesTabState extends State<_EpisodesTab> {
       );
     }
     final store = sl<ResumeStore>();
+    final isTv = sl<AppMode>().isTv;
+
+    final groups = _scanlators;
+    if (_scanlator != null && !groups.contains(_scanlator)) {
+      _scanlator = null;
+    }
+
     final eps = _filteredEps;
     final total = eps.length;
-    // A group with fewer chapters than the one before it can leave the range
-    // index past the end, so clamp before slicing.
-    final maxRange = _rangeCount == 0 ? 0 : _rangeCount - 1;
+    final rangeCount = episodeRangeCount(total);
+    final maxRange = rangeCount == 0 ? 0 : rangeCount - 1;
     final rangeIndex = _rangeIndex.clamp(0, maxRange);
     final slice = episodeRangeSlice(rangeIndex, total);
     final visible = eps.sublist(slice.start, slice.end);
-    final showRanges = _rangeCount > 1;
-    final groups = _scanlators;
+    final showRanges = rangeCount > 1;
 
-    // One scrollable (slivers): the header + chips scroll with the list so the
-    // tab can never overflow when the NestedScrollView hands it a tiny height
-    // during a layout pass (the Column+Expanded version did).
+    // Fast O(1) index map to replace repeated linear searches during list building
+    final indexById = <String, int>{
+      for (var i = 0; i < widget.eps.length; i++) widget.eps[i].id: i,
+    };
+
+    // Calculate resume index once per frame instead of per-item
+    final resumeIdx = widget.hasAnyMark && widget.eps.isNotEmpty
+        ? widget.resumeIndex(widget.eps)
+        : -1;
+
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -265,15 +274,11 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             onToggleView: () => setState(() => _grid = !_grid),
             onJump: showRanges ? _jump : null,
             isReading: widget.isReading,
-            onBulkDownload:
-                widget.onDownloadMany != null && !sl<AppMode>().isTv
+            onBulkDownload: widget.onDownloadMany != null && !isTv
                 ? () => _openBulkDownload(eps)
                 : null,
           ),
         ),
-        // Only when the tracker says the show is still airing. Sits under the
-        // header so it reads as part of the episode list rather than another
-        // thing competing with the hero.
         if (widget.nextAiringEpisode != null && widget.nextAiringAt != null)
           SliverToBoxAdapter(
             child: Padding(
@@ -286,8 +291,6 @@ class _EpisodesTabState extends State<_EpisodesTab> {
                   children: [
                     TextSpan(text: 'Episode ${widget.nextAiringEpisode} '),
                     const TextSpan(text: 'airs in '),
-                    // The countdown carries the weight — it's the part worth
-                    // glancing at; the rest is scaffolding around it.
                     TextSpan(
                       text: airsIn(widget.nextAiringAt!, long: true),
                       style: AppText.body.copyWith(
@@ -300,8 +303,6 @@ class _EpisodesTabState extends State<_EpisodesTab> {
               ),
             ),
           ),
-        // Only when a title actually has more than one group — a single
-        // scanlator needs no picker, and most titles have exactly one.
         if (groups.length > 1)
           SliverToBoxAdapter(
             child: _RangeChips(
@@ -318,7 +319,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         if (showRanges)
           SliverToBoxAdapter(
             child: _RangeChips(
-              count: _rangeCount,
+              count: rangeCount,
               selected: rangeIndex,
               labelFor: (i) => episodeRangeLabel(eps, i),
               onSelect: (i) => setState(() {
@@ -328,17 +329,14 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             ),
           ),
         if (_grid)
-          _buildGrid(store, visible, slice.start)
+          _buildGrid(store, visible, slice.start, indexById, resumeIdx)
         else
-          _buildList(store, visible, slice.start),
+          _buildList(store, visible, slice.start, indexById, resumeIdx, isTv),
         const SliverToBoxAdapter(child: SizedBox(height: 48)),
       ],
     );
   }
 
-  /// "Download next N" over the chapters that aren't saved yet, counting from
-  /// the top of the list as displayed — so it follows the user's sort order
-  /// instead of guessing at chapter numbers the source may not provide.
   void _openBulkDownload(List<Episode> eps) {
     final store = sl<ChapterDownloadStore>();
     final pending = eps
@@ -354,8 +352,6 @@ class _EpisodesTabState extends State<_EpisodesTab> {
       return;
     }
 
-    // Only offer counts that mean something — "Next 25" on a 6-chapter list is
-    // just "All" wearing a hat.
     final counts = [10, 25, 50].where((n) => n < pending.length).toList();
 
     showModalBottomSheet<void>(
@@ -434,8 +430,6 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   }
 
   Future<void> _enqueueAll(List<Episode> chapters) async {
-    // A long series can be thousands of chapters, and one tap shouldn't commit
-    // to that much storage and traffic without saying so out loud.
     if (chapters.length > 50) {
       final ok = await showDialog<bool>(
         context: context,
@@ -482,13 +476,20 @@ class _EpisodesTabState extends State<_EpisodesTab> {
       );
   }
 
-  Widget _buildList(ResumeStore store, List<Episode> visible, int offset) {
+  Widget _buildList(
+    ResumeStore store,
+    List<Episode> visible,
+    int offset,
+    Map<String, int> indexById,
+    int resumeIdx,
+    bool isTv,
+  ) {
     return SliverList.builder(
       itemCount: visible.length,
       itemBuilder: (context, i) {
         final ep = visible[i];
-        final fullIndex = widget.eps.indexOf(ep);
-        final st = _stateFor(store, ep, fullIndex);
+        final fullIndex = indexById[ep.id] ?? 0;
+        final st = _stateFor(store, ep, fullIndex, resumeIdx);
         final epNum = ep.number?.toInt() ?? (offset + i + 1);
         final displayTitle = widget.hasMultipleSeasons
             ? cleanTitle(ep.title)
@@ -507,6 +508,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
               onTap: () => widget.onOpen(fullIndex),
               onDownload: () => widget.onDownload(ep),
               sourceId: widget.sourceId,
+              isTv: isTv,
             ),
           );
         }
@@ -529,13 +531,20 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             onDownload: () => widget.onDownload(ep),
             sourceId: widget.sourceId,
             showId: widget.showId,
+            isTv: isTv,
           ),
         );
       },
     );
   }
 
-  Widget _buildGrid(ResumeStore store, List<Episode> visible, int offset) {
+  Widget _buildGrid(
+    ResumeStore store,
+    List<Episode> visible,
+    int offset,
+    Map<String, int> indexById,
+    int resumeIdx,
+  ) {
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
       sliver: SliverGrid.builder(
@@ -548,8 +557,8 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         itemCount: visible.length,
         itemBuilder: (context, i) {
           final ep = visible[i];
-          final fullIndex = widget.eps.indexOf(ep);
-          final st = _stateFor(store, ep, fullIndex);
+          final fullIndex = indexById[ep.id] ?? 0;
+          final st = _stateFor(store, ep, fullIndex, resumeIdx);
           final epNum = ep.number?.toInt() ?? (offset + i + 1);
           return _EpisodeGridTile(
             number: epNum,
@@ -593,22 +602,11 @@ class _EpisodesHeader extends StatelessWidget {
   final List<int> seasons;
   final int currentSeason;
   final ValueChanged<int> onSelectSeason;
-
-  /// Force-refresh the list past the source cache (header ↻); null hides it.
   final Future<void> Function()? onRefresh;
-
-  /// Whether the grid view is active (toggles the view icon).
   final bool grid;
   final VoidCallback onToggleView;
-
-  /// Jump-to-episode; null hides the button (short seasons don't need it).
   final VoidCallback? onJump;
-
-  /// True for reading types — the single-season label reads "Chapters".
   final bool isReading;
-
-  /// Download a run of chapters at once; null hides the button. Reading only —
-  /// a 200-chapter manga one tap at a time isn't a feature.
   final VoidCallback? onBulkDownload;
 
   Widget _circle(IconData icon, VoidCallback onTap, {String? semanticLabel}) =>
@@ -650,7 +648,6 @@ class _EpisodesHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
       child: Row(
         children: [
-          // Left: season dropdown pill (multi-season) or a plain label.
           Expanded(
             child: Align(
               alignment: Alignment.centerLeft,
@@ -671,7 +668,7 @@ class _EpisodesHeader extends StatelessWidget {
                                 style: AppText.headline,
                               ),
                               const SizedBox(width: 6),
-                              const Icon(
+                              Icon(
                                 Icons.keyboard_arrow_down_rounded,
                                 color: AppColors.textPrimary,
                                 size: 22,
@@ -687,7 +684,6 @@ class _EpisodesHeader extends StatelessWidget {
                     ),
             ),
           ),
-          // Right: jump-to-episode (long seasons) · list/grid toggle · ⓘ info.
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -737,9 +733,6 @@ class _EpisodesHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
               ],
-              // The ⓘ that used to sit here jumped to the Details tab — which
-              // is a tap away in the tab bar directly above it. Two controls,
-              // same destination, inches apart.
             ],
           ),
         ],
@@ -748,8 +741,7 @@ class _EpisodesHeader extends StatelessWidget {
   }
 }
 
-// Dark, rounded-top bottom sheet listing the available seasons with a coral
-// check on the current one. Returns the picked season via Navigator.pop.
+// Dark, rounded-top bottom sheet listing the available seasons.
 class _SeasonSheet extends StatelessWidget {
   const _SeasonSheet({required this.seasons, required this.currentSeason});
 
@@ -763,7 +755,6 @@ class _SeasonSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Grab handle.
           Container(
             margin: const EdgeInsets.only(top: 10, bottom: 6),
             width: 40,
@@ -830,8 +821,7 @@ class _SeasonSheet extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Range chips — horizontal "1–50 / 51–100 / …" selector for long seasons so
-// big anime stay navigable without endless scrolling. Selected chip is coral.
+// Range chips — horizontal "1–50 / 51–100 / …" selector for long seasons.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _RangeChips extends StatelessWidget {
@@ -885,9 +875,7 @@ class _RangeChips extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Compact episode-number tile for the grid view — coral when it's the resume
-// target, dimmed + ✓ when watched, a filler dot, and a resume bar when partly
-// watched. Outlined briefly after a jump.
+// Compact episode-number tile for the grid view.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EpisodeGridTile extends StatelessWidget {
@@ -911,10 +899,6 @@ class _EpisodeGridTile extends StatelessWidget {
   final bool highlight;
   final double fraction;
   final VoidCallback onTap;
-
-  /// Long-press opens the "play this episode with" sheet. Optional so the
-  /// reading path can leave it off — a chapter opens the reader, where a
-  /// player picker has nothing to say.
   final VoidCallback? onLongPress;
 
   @override
@@ -1044,15 +1028,7 @@ class _JumpDialogState extends State<_JumpDialog> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Reading (manga/novel) chapter row — the minimal counterpart to _EpisodeRow.
-// A 44×62 portrait cover (the series art, dimmed once read), the chapter title
-// with no "14." prefix (sources put the number in the title already), a muted
-// meta line, and a hairline accent bar while a chapter is part-read. No play
-// glyph, no tick, no badges — none of that means anything for a chapter.
-//
-// Deliberately a separate widget rather than a flag inside _EpisodeRow: it
-// needs a third of _EpisodeRow's inputs, and this way the streaming row's code
-// is untouched.
+// Reading (manga/novel) chapter row.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ChapterRow extends StatelessWidget {
@@ -1068,10 +1044,9 @@ class _ChapterRow extends StatelessWidget {
     required this.onTap,
     required this.onDownload,
     required this.sourceId,
+    required this.isTv,
   });
 
-  /// Key on the portrait cover — the one structural marker that tells a
-  /// chapter row apart from an episode row (see chapter row tests).
   static const coverKey = Key('chapterCover');
 
   final Episode ep;
@@ -1085,6 +1060,7 @@ class _ChapterRow extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onDownload;
   final String sourceId;
+  final bool isTv;
 
   @override
   Widget build(BuildContext context) {
@@ -1145,8 +1121,6 @@ class _ChapterRow extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  // Dropped entirely when the source gives us nothing to put
-                  // here, so the row shrinks instead of holding blank space.
                   if (meta != null) ...[
                     const SizedBox(height: 4),
                     Text(
@@ -1177,9 +1151,7 @@ class _ChapterRow extends StatelessWidget {
                 ],
               ),
             ),
-            // Same rule as the episode row: phone only. Reading is phone-only
-            // anyway, but a TV chapter list would still reach this.
-            if (!sl<AppMode>().isTv) ...[
+            if (!isTv) ...[
               const SizedBox(width: 8),
               _ChapterDownloadIcon(
                 sourceId: sourceId,
@@ -1193,15 +1165,6 @@ class _ChapterRow extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Netflix episode block — a Column per episode (NO divider lines, whitespace
-// instead):  Row[ rounded ~116px 16:9 thumb + centered play-circle (watched dim
-// / ✓ / resume bar) | "N. Title" bold + date under + CONTINUE/FILLER badges |
-// download icon ]  then, when the episode has a date, a muted line full-width
-// below. Our model has no per-episode synopsis/duration, so we surface the air
-// date in the below-row slot and omit it gracefully when absent (no faked data).
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _EpisodeRow extends StatelessWidget {
   const _EpisodeRow({
@@ -1219,6 +1182,7 @@ class _EpisodeRow extends StatelessWidget {
     required this.onDownload,
     required this.sourceId,
     required this.showId,
+    required this.isTv,
     this.filler = false,
   });
 
@@ -1233,14 +1197,11 @@ class _EpisodeRow extends StatelessWidget {
   final bool isResume;
   final double fraction;
   final VoidCallback onTap;
-
-  /// Long-press opens the "play this episode with" sheet. Optional because the
-  /// reading path reuses none of this — a chapter opens the reader, where a
-  /// player picker has nothing to say.
   final VoidCallback? onLongPress;
   final VoidCallback onDownload;
   final String sourceId;
   final String showId;
+  final bool isTv;
 
   @override
   Widget build(BuildContext context) {
@@ -1252,27 +1213,20 @@ class _EpisodeRow extends StatelessWidget {
         ? ep.thumbnail!
         : coverUrl;
 
-    // Air date stays as a small line next to the title; the episode synopsis
-    // (AniZip/TMDB, ~3 lines) spans full width below the row — under the image
-    // too, CloudStream-style.
     final desc = (ep.description != null && ep.description!.trim().isNotEmpty)
         ? ep.description!.trim()
         : null;
-    // Runtime · air date. The rating now rides as a chip on the thumbnail
-    // (always fully visible) instead of getting clipped on this cramped line.
+
     final metaLine = [
       if (ep.runtimeMinutes != null) '${ep.runtimeMinutes} min',
       if (ep.date != null && ep.date!.trim().isNotEmpty) ep.date!.trim(),
     ].join('  ·  ');
 
-    // Prefer the real AniZip/TMDB title when the source only gave a generic
-    // "Episode N" (or nothing); keep the source's own title when it has a real
-    // one.
     final srcTitle = displayTitle.trim();
-    final titleText = episodeDisplayTitle(ep, sourceTitle: srcTitle, number: epNum) ?? '';
-    final heading = titleText.isNotEmpty
-        ? '$epNum. $titleText'
-        : 'Episode $epNum';
+    final titleText =
+        episodeDisplayTitle(ep, sourceTitle: srcTitle, number: epNum) ?? '';
+    final heading =
+        titleText.isNotEmpty ? '$epNum. $titleText' : 'Episode $epNum';
 
     return InkWell(
       onTap: onTap,
@@ -1280,7 +1234,6 @@ class _EpisodeRow extends StatelessWidget {
       splashColor: AppColors.accentSoft,
       highlightColor: AppColors.surface,
       child: Padding(
-        // Generous vertical spacing between episodes (whitespace, no dividers).
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1288,7 +1241,6 @@ class _EpisodeRow extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Rounded 16:9 thumbnail with a centered play-circle.
                 SizedBox(
                   width: 116,
                   child: AspectRatio(
@@ -1301,10 +1253,11 @@ class _EpisodeRow extends StatelessWidget {
                           thumbUrl.isNotEmpty
                               ? CachedNetworkImage(
                                   imageUrl: thumbUrl,
-                                  cacheManager: AppImageCache.cacheManagerOrDefault,
+                                  cacheManager:
+                                      AppImageCache.cacheManagerOrDefault,
                                   httpHeaders: coverHeaders,
                                   fit: BoxFit.cover,
-                                  memCacheWidth: 320,
+                                  memCacheWidth: 232,
                                   placeholder: (c, u) =>
                                       ColoredBox(color: AppColors.surface2),
                                   errorWidget: (c, u, e) =>
@@ -1318,7 +1271,6 @@ class _EpisodeRow extends StatelessWidget {
                               ),
                               child: SizedBox.expand(),
                             ),
-                          // Centered play-circle (white ring like the ref).
                           const Center(
                             child: DecoratedBox(
                               decoration: BoxDecoration(
@@ -1345,9 +1297,6 @@ class _EpisodeRow extends StatelessWidget {
                                 size: 16,
                               ),
                             ),
-                          // Rating chip — top-left so it never overlaps the
-                          // watched check (top-right); always fully visible,
-                          // unlike the old inline "★ 8.0" that got clipped.
                           if (ep.rating != null)
                             Positioned(
                               top: 4,
@@ -1398,7 +1347,6 @@ class _EpisodeRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 14),
-                // Title + date/duration under + badges.
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1439,10 +1387,7 @@ class _EpisodeRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                // Per-episode download icon (phone only). On TV it's redundant
-                // clutter next to the main Download button + hard to focus, so
-                // it's hidden — the TV path downloads via the Download action.
-                if (!sl<AppMode>().isTv) ...[
+                if (!isTv) ...[
                   const SizedBox(width: 8),
                   _EpisodeDownloadIcon(
                     sourceId: sourceId,
@@ -1453,7 +1398,6 @@ class _EpisodeRow extends StatelessWidget {
                 ],
               ],
             ),
-            // Full-width synopsis under the whole row (under the image too).
             if (desc != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -1474,10 +1418,7 @@ class _EpisodeRow extends StatelessWidget {
   }
 }
 
-// Per-chapter download icon (manga/novel). Watches the downloader for live
-// progress and the store for what's already saved, so only this row rebuilds.
-// A chapter that failed shows the plain download glyph again — enqueueing it
-// again is the retry, and it picks up the pages already in the .part folder.
+
 class _ChapterDownloadIcon extends StatelessWidget {
   const _ChapterDownloadIcon({
     required this.sourceId,
@@ -1542,13 +1483,14 @@ class _ChapterDownloadIcon extends StatelessWidget {
     required String tooltip,
     required VoidCallback onPressed,
     required Widget icon,
-  }) => IconButton(
-    onPressed: onPressed,
-    visualDensity: VisualDensity.compact,
-    splashRadius: 22,
-    tooltip: tooltip,
-    icon: icon,
-  );
+  }) =>
+      IconButton(
+        onPressed: onPressed,
+        visualDensity: VisualDensity.compact,
+        splashRadius: 22,
+        tooltip: tooltip,
+        icon: icon,
+      );
 
   void _offerDelete(
     BuildContext context,
@@ -1587,8 +1529,6 @@ class _ChapterDownloadIcon extends StatelessWidget {
   }
 }
 
-// Per-episode download icon — self-updates from the DownloadManager so the
-// row reflects live progress without the whole list rebuilding.
 class _EpisodeDownloadIcon extends StatelessWidget {
   const _EpisodeDownloadIcon({
     required this.sourceId,
@@ -1610,8 +1550,6 @@ class _EpisodeDownloadIcon extends StatelessWidget {
       builder: (context, _) {
         final rec = manager.recordFor(sourceId, showId, episodeId);
         final s = rec?.status;
-        // While a download is live (or paused/queued/resolving), tapping the ring
-        // opens a Pause/Cancel menu instead of re-opening the server picker.
         final inProgress = rec != null &&
             (s == DownloadStatus.downloading ||
                 s == DownloadStatus.paused ||
@@ -1667,7 +1605,6 @@ class _EpisodeDownloadIcon extends StatelessWidget {
         color: AppColors.accent,
         size: 24,
       ),
-      // null (never downloaded) or canceled → offer to download.
       _ => const Icon(
         Icons.file_download_outlined,
         color: AppColors.textPrimary,
@@ -1691,8 +1628,6 @@ class _EpisodeDownloadIcon extends StatelessWidget {
     );
   }
 
-  // Tap on a live download's ring → a small Pause/Resume + Cancel sheet, rather
-  // than the server picker (which only makes sense before a download starts).
   void _showDownloadMenu(
     BuildContext context,
     DownloadManager manager,
