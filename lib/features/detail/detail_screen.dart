@@ -1422,32 +1422,6 @@ class _DetailViewState extends State<_DetailView>
         );
         targetDetail = detail;
         targetEp = ep;
-      } else {
-        var resolved = await _resolveCatalogPlayback(category: category);
-        if (resolved != null) {
-          final candidateEp = _matchTargetEpisode(resolved.detail, resolved.item, ep);
-          final sources = await _fetchVideoSources(candidateEp.url, resolved.item.sourceId);
-          if (sources.isEmpty) {
-            resolved = null;
-          } else {
-            targetItem = resolved.item;
-            targetDetail = resolved.detail;
-            targetEp = candidateEp;
-          }
-        }
-
-        if (resolved == null && mounted) {
-          resolved = await _showProviderPickerSheet(detail, category: category, ignoreActionInFlight: true);
-          if (resolved != null) {
-            targetItem = resolved.item;
-            targetDetail = resolved.detail;
-            targetEp = _matchTargetEpisode(targetDetail, targetItem, ep);
-          }
-        }
-        if (resolved == null || !mounted) {
-          _snack('No matching title found on installed providers');
-          return;
-        }
       }
     }
 
@@ -1465,7 +1439,32 @@ class _DetailViewState extends State<_DetailView>
         loadingMessage: isCatalog
             ? 'Searching providers for download sources…'
             : 'Resolving download options…',
+        onChooseProvider: isCatalog
+            ? () async {
+                final picked = await _showProviderPickerSheet(detail, category: category, ignoreActionInFlight: true);
+                if (picked != null && mounted) {
+                  final pickedEp = _matchTargetEpisode(picked.detail, picked.item, ep);
+                  await _pickSourceAndDownload(pickedEp, picked.detail, category);
+                }
+              }
+            : null,
         resolve: ([onProgress]) async {
+          if (isCatalog && (targetDetail.sourceId == 'tmdb:catalog' || targetDetail.sourceId.startsWith('tpdb:'))) {
+            final resolved = await _resolveCatalogPlayback(category: category);
+            if (resolved != null) {
+              targetItem = resolved.item;
+              targetDetail = resolved.detail;
+              targetEp = _matchTargetEpisode(targetDetail, targetItem, ep);
+            } else {
+              return (
+                sources: <VideoSource>[],
+                resolvedItem: targetItem,
+                resolvedDetail: targetDetail,
+                resolvedEpisode: targetEp,
+                error: 'No matching title found on installed providers',
+              );
+            }
+          }
           var s = await sl<SourceRepository>().sources(
             targetEp.url,
             sourceId: targetDetail.sourceId,

@@ -47,11 +47,13 @@ class _SourcePickerSheet extends StatefulWidget {
     required this.title,
     required this.resolve,
     this.loadingMessage,
+    this.onChooseProvider,
   });
 
   final String title;
   final SourcePickerResolver resolve;
   final String? loadingMessage;
+  final VoidCallback? onChooseProvider;
 
   @override
   State<_SourcePickerSheet> createState() => _SourcePickerSheetState();
@@ -200,14 +202,35 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
-                      OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textPrimary,
-                          side: BorderSide(color: AppColors.textTertiary),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Text('Close'),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 12,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.textPrimary,
+                              side: BorderSide(color: AppColors.textTertiary),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: const Text('Close'),
+                          ),
+                          if (widget.onChooseProvider != null)
+                            FilledButton.icon(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                widget.onChooseProvider!();
+                              },
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppColors.accent,
+                                foregroundColor: Colors.black,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                              label: const Text('Choose Provider'),
+                            ),
+                        ],
                       ),
                     ],
                   ),
