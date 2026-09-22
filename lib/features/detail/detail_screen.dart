@@ -148,6 +148,77 @@ String? _repoLabelFromUrl(String? repoUrl) {
   }
 }
 
+Episode _matchTargetEpisode(MediaDetail targetDetail, MediaItem targetItem, Episode origEp) {
+  if (targetDetail.episodes.isNotEmpty) {
+    for (final candidate in targetDetail.episodes) {
+      if (candidate.id == origEp.id) return candidate;
+    }
+    final wantedSeason = seasonOf(origEp);
+    final wantedNumber = origEp.number;
+    for (final candidate in targetDetail.episodes) {
+      if (candidate.number == wantedNumber &&
+          (wantedSeason == null || seasonOf(candidate) == wantedSeason)) {
+        return candidate;
+      }
+    }
+    if (wantedNumber != null) {
+      for (final candidate in targetDetail.episodes) {
+        if (candidate.number == wantedNumber) return candidate;
+      }
+    }
+    return targetDetail.episodes.first;
+  }
+  return Episode(
+    id: targetItem.id,
+    number: 1,
+    title: targetDetail.title.trim().isNotEmpty ? targetDetail.title : targetItem.title,
+    url: targetItem.url,
+  );
+}
+
+Future<List<VideoSource>> _fetchVideoSources(String url, String sourceId) async {
+  var s = await sl<SourceRepository>().sources(
+    url,
+    sourceId: sourceId,
+    fast: true,
+  );
+  if (s.isNotEmpty) return s;
+
+  var done = false;
+  var pollTries = 0;
+  final knownUrls = s.map((e) => e.url).toSet();
+
+  while (!done && pollTries < 15) {
+    await Future.delayed(const Duration(milliseconds: 750));
+    pollTries++;
+    final polled = await sl<SourceRepository>().polledSources(
+      url,
+      sourceId: sourceId,
+    );
+    done = polled.done;
+    final newSources = polled.sources.where((e) => !knownUrls.contains(e.url)).toList();
+    if (newSources.isNotEmpty) {
+      for (final ns in newSources) {
+        knownUrls.add(ns.url);
+      }
+      s = [...s, ...newSources];
+      return s;
+    }
+  }
+
+  if (s.isEmpty) {
+    final fallbackSources = await sl<SourceRepository>().sources(
+      url,
+      sourceId: sourceId,
+      fast: false,
+    );
+    if (fallbackSources.isNotEmpty) {
+      s = fallbackSources;
+    }
+  }
+  return s;
+}
+
 enum DetailTrailerContext { model, studio }
 
 class DetailScreen extends StatelessWidget {
@@ -1329,77 +1400,6 @@ class _DetailViewState extends State<_DetailView>
           : ContentMode.manga,
     );
   }
-
-Episode _matchTargetEpisode(MediaDetail targetDetail, MediaItem targetItem, Episode origEp) {
-  if (targetDetail.episodes.isNotEmpty) {
-    for (final candidate in targetDetail.episodes) {
-      if (candidate.id == origEp.id) return candidate;
-    }
-    final wantedSeason = seasonOf(origEp);
-    final wantedNumber = origEp.number;
-    for (final candidate in targetDetail.episodes) {
-      if (candidate.number == wantedNumber &&
-          (wantedSeason == null || seasonOf(candidate) == wantedSeason)) {
-        return candidate;
-      }
-    }
-    if (wantedNumber != null) {
-      for (final candidate in targetDetail.episodes) {
-        if (candidate.number == wantedNumber) return candidate;
-      }
-    }
-    return targetDetail.episodes.first;
-  }
-  return Episode(
-    id: targetItem.id,
-    number: 1,
-    title: targetDetail.title.trim().isNotEmpty ? targetDetail.title : targetItem.title,
-    url: targetItem.url,
-  );
-}
-
-Future<List<VideoSource>> _fetchVideoSources(String url, String sourceId) async {
-  var s = await sl<SourceRepository>().sources(
-    url,
-    sourceId: sourceId,
-    fast: true,
-  );
-  if (s.isNotEmpty) return s;
-
-  var done = false;
-  var pollTries = 0;
-  final knownUrls = s.map((e) => e.url).toSet();
-
-  while (!done && pollTries < 15) {
-    await Future.delayed(const Duration(milliseconds: 750));
-    pollTries++;
-    final polled = await sl<SourceRepository>().polledSources(
-      url,
-      sourceId: sourceId,
-    );
-    done = polled.done;
-    final newSources = polled.sources.where((e) => !knownUrls.contains(e.url)).toList();
-    if (newSources.isNotEmpty) {
-      for (final ns in newSources) {
-        knownUrls.add(ns.url);
-      }
-      s = [...s, ...newSources];
-      return s;
-    }
-  }
-
-  if (s.isEmpty) {
-    final fallbackSources = await sl<SourceRepository>().sources(
-      url,
-      sourceId: sourceId,
-      fast: false,
-    );
-    if (fallbackSources.isNotEmpty) {
-      s = fallbackSources;
-    }
-  }
-  return s;
-}
 
   Future<void> _pickSourceAndDownload(
     Episode ep,
