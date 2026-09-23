@@ -15,6 +15,7 @@ import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
+import '../../core/models/video_source.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
@@ -141,21 +142,71 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   /// ExoPlayer player at the saved episode (it seeks to the stored position on
   /// load via ResumeStore).
   Future<void> _resume(HistoryEntry e) async {
-    List<Episode> episodes;
-    try {
-      episodes = await sl<SourceRepository>().episodes(
-        e.showUrl,
-        category: e.category,
-        sourceId: e.sourceId,
-      );
-    } catch (_) {
-      episodes = const [];
+    final repo = sl<SourceRepository>();
+    final isCatalog = e.sourceId == 'tmdb:catalog' || e.sourceId.startsWith('tpdb:');
+    final mediaItem = MediaItem(
+      id: e.showId,
+      title: e.showTitle,
+      url: e.showUrl,
+      sourceId: e.sourceId,
+      cover: e.cover,
+      coverHeaders: e.coverHeaders,
+      type: ProviderType.movie,
+      malId: e.malId,
+    );
+
+    List<Episode> episodes = const [];
+    if (isCatalog) {
+      final resolved = await repo.resolveCatalogTitle(mediaItem, category: e.category);
+      if (resolved != null && resolved.detail.episodes.isNotEmpty) {
+        episodes = resolved.detail.episodes;
+      }
+    } else {
+      try {
+        episodes = await repo.episodes(
+          e.showUrl,
+          category: e.category,
+          sourceId: e.sourceId,
+        );
+      } catch (_) {
+        episodes = const [];
+      }
     }
-    if (!mounted || episodes.isEmpty) return;
-    var idx = episodes.indexWhere((ep) => ep.id == e.episodeId);
+
+    if (episodes.isEmpty) {
+      episodes = [
+        Episode(
+          id: e.episodeId,
+          title: e.showTitle,
+          number: e.episodeNumber ?? 1,
+          url: e.episodeUrl.isNotEmpty ? e.episodeUrl : e.showUrl,
+        ),
+      ];
+    }
+
+    if (!mounted) return;
+    var idx = episodes.indexWhere((ep) => ep.id == e.episodeId || (e.episodeNumber != null && ep.number == e.episodeNumber));
     if (idx < 0) idx = 0;
-    resolveSources(String u) =>
-        sl<SourceRepository>().sources(u, sourceId: e.sourceId, fast: true);
+
+    Future<List<VideoSource>> resolveSources(String u) async {
+      if (isCatalog) {
+        final resolved = await repo.resolveCatalogTitle(mediaItem, category: e.category);
+        if (resolved != null) {
+          String targetUrl = resolved.item.url;
+          for (final ep in resolved.detail.episodes) {
+            if (ep.url == u ||
+                ep.id == u ||
+                (e.episodeNumber != null && ep.number == e.episodeNumber)) {
+              targetUrl = ep.url;
+              break;
+            }
+          }
+          return repo.sources(targetUrl, sourceId: resolved.item.sourceId, fast: true);
+        }
+      }
+      return repo.sources(u, sourceId: e.sourceId, fast: true);
+    }
+
     await launchTvPlayback(
       context: context,
       sourceId: e.sourceId,

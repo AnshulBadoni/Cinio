@@ -227,7 +227,8 @@ class DetailCubit extends Cubit<DetailState> {
     }
   }
 
-  Future<void> retry() {
+  Future<void> retry() async {
+    await _repo.clearHttpCache();
     emit(state.copyWith(clearError: true));
     return load();
   }
@@ -236,7 +237,16 @@ class DetailCubit extends Cubit<DetailState> {
     final isCatalog = _sourceId == 'tmdb:catalog' ||
         (_sourceId?.startsWith('tpdb:') ?? false);
     if (!isCatalog) {
-      return _repo.detail(_url, category: category, sourceId: _sourceId);
+      try {
+        return await _repo.detail(_url, category: category, sourceId: _sourceId);
+      } catch (_) {
+        if (_catalogDetail != null) return _catalogDetail!;
+        if (_catalogItem != null) {
+          final shell = _shellDetail(_catalogItem, _sourceId, _url);
+          if (shell != null) return shell;
+        }
+        rethrow;
+      }
     }
 
     final catalogItem = _catalogItem ?? MediaItem(
@@ -246,11 +256,11 @@ class DetailCubit extends Cubit<DetailState> {
       cover: _catalogDetail?.cover,
       url: _url,
       type: _catalogDetail?.type ?? ProviderType.movie,
-      sourceId: _sourceId!,
+      sourceId: _sourceId ?? '',
       tmdbId: _catalogDetail?.tmdbId,
       tmdbIsTv: _catalogDetail?.tmdbIsTv ?? false,
     );
-    if (_catalogDetail != null) return _catalogDetail;
+    if (_catalogDetail != null) return _catalogDetail!;
 
     if (_sourceId == 'tmdb:catalog') {
       return sl<TmdbDiscoverService>().movieDetail(catalogItem);

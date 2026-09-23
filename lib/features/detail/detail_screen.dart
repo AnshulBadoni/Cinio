@@ -1092,9 +1092,7 @@ class _DetailViewState extends State<_DetailView>
         ),
       );
     } finally {
-      Future.delayed(const Duration(milliseconds: 350), () {
-        if (mounted) _actionInFlight = false;
-      });
+      if (mounted) _actionInFlight = false;
     }
   }
 
@@ -1615,20 +1613,38 @@ class _DetailViewState extends State<_DetailView>
           }
           if (state.detail == null && state.status == DetailStatus.error) {
             return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const EmptyState(
-                    icon: Icons.error_outline,
-                    message: 'Failed to load this title',
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton.icon(
-                    onPressed: () => context.read<DetailCubit>().retry(),
-                    icon: Icon(Icons.refresh_rounded, color: AppColors.accent),
-                    label: Text('Tap to retry', style: TextStyle(color: AppColors.accent)),
-                  ),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const EmptyState(
+                      icon: Icons.error_outline,
+                      message: 'Failed to load this title',
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => context.read<DetailCubit>().retry(),
+                          icon: Icon(Icons.refresh_rounded, color: AppColors.accent),
+                          label: Text('Tap to retry', style: TextStyle(color: AppColors.accent)),
+                        ),
+                        const SizedBox(width: 12),
+                        TextButton.icon(
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => SearchScreen(initialQuery: widget.item.title),
+                            ),
+                          ),
+                          icon: Icon(Icons.search_rounded, color: AppColors.accent),
+                          label: Text('Search sources', style: TextStyle(color: AppColors.accent)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             );
           }

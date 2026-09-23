@@ -23,6 +23,7 @@ import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/person.dart';
 import '../../core/models/provider_info.dart';
+import '../../core/models/video_source.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/platform/apple_tv.dart';
 import '../../core/playback/my_list.dart';
@@ -470,16 +471,48 @@ class _HomeViewState extends State<_HomeView>
     final category =
         sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
         _prefs.defaultCategory;
+    final isCatalog = item.sourceId == 'tmdb:catalog' || item.sourceId.startsWith('tpdb:');
+
+    Future<List<Episode>> resolveEpisodes() async {
+      if (isCatalog) {
+        final resolved = await _repo.resolveCatalogTitle(item, category: category);
+        if (resolved != null && resolved.detail.episodes.isNotEmpty) {
+          return resolved.detail.episodes;
+        }
+        return [Episode(id: item.id, title: item.title, number: 1, url: item.url)];
+      }
+      try {
+        final eps = await _repo.episodes(item.url, sourceId: item.sourceId);
+        if (eps.isNotEmpty) return eps;
+      } catch (_) {}
+      return [Episode(id: item.id, title: item.title, number: 1, url: item.url)];
+    }
+
+    Future<List<VideoSource>> resolveVideoSources(String u) async {
+      if (isCatalog) {
+        final resolved = await _repo.resolveCatalogTitle(item, category: category);
+        if (resolved != null) {
+          String targetUrl = resolved.item.url;
+          for (final ep in resolved.detail.episodes) {
+            if (ep.url == u || ep.id == u) {
+              targetUrl = ep.url;
+              break;
+            }
+          }
+          return _repo.sources(targetUrl, sourceId: resolved.item.sourceId, fast: true);
+        }
+      }
+      return _repo.sources(u, sourceId: item.sourceId, fast: true);
+    }
+
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PlayerScreen(
           sourceId: item.sourceId,
-          episodesResolver: () =>
-              _repo.episodes(item.url, sourceId: item.sourceId),
+          episodesResolver: resolveEpisodes,
           resume: sl<ResumeStore>(),
-          resolveSources: (u) =>
-              _repo.sources(u, sourceId: item.sourceId, fast: true),
+          resolveSources: resolveVideoSources,
           history: sl<WatchHistory>(),
           showTitle: item.title,
           cover: item.cover,
@@ -497,22 +530,81 @@ class _HomeViewState extends State<_HomeView>
   }
 
   Future<void> _resume(HistoryEntry e) async {
+    final isCatalog = e.sourceId == 'tmdb:catalog' || e.sourceId.startsWith('tpdb:');
+    final mediaItem = MediaItem(
+      id: e.showId,
+      title: e.showTitle,
+      url: e.showUrl,
+      sourceId: e.sourceId,
+      cover: e.cover,
+      coverHeaders: e.coverHeaders,
+      type: ProviderType.movie,
+      malId: e.malId,
+    );
+
+    Future<List<Episode>> resolveEpisodes() async {
+      if (isCatalog) {
+        final resolved = await _repo.resolveCatalogTitle(mediaItem, category: e.category);
+        if (resolved != null && resolved.detail.episodes.isNotEmpty) {
+          return resolved.detail.episodes;
+        }
+        return [
+          Episode(
+            id: e.episodeId,
+            title: e.showTitle,
+            number: e.episodeNumber ?? 1,
+            url: e.episodeUrl.isNotEmpty ? e.episodeUrl : e.showUrl,
+          ),
+        ];
+      }
+      try {
+        final eps = await _repo.episodes(
+          e.showUrl,
+          category: e.category,
+          sourceId: e.sourceId,
+        );
+        if (eps.isNotEmpty) return eps;
+      } catch (_) {}
+      return [
+        Episode(
+          id: e.episodeId,
+          title: e.showTitle,
+          number: e.episodeNumber ?? 1,
+          url: e.episodeUrl.isNotEmpty ? e.episodeUrl : e.showUrl,
+        ),
+      ];
+    }
+
+    Future<List<VideoSource>> resolveVideoSources(String u) async {
+      if (isCatalog) {
+        final resolved = await _repo.resolveCatalogTitle(mediaItem, category: e.category);
+        if (resolved != null) {
+          String targetUrl = resolved.item.url;
+          for (final ep in resolved.detail.episodes) {
+            if (ep.url == u ||
+                ep.id == u ||
+                (e.episodeNumber != null && ep.number == e.episodeNumber)) {
+              targetUrl = ep.url;
+              break;
+            }
+          }
+          return _repo.sources(targetUrl, sourceId: resolved.item.sourceId, fast: true);
+        }
+      }
+      return _repo.sources(u, sourceId: e.sourceId, fast: true);
+    }
+
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PlayerScreen(
           sourceId: e.sourceId,
-          episodesResolver: () => _repo.episodes(
-            e.showUrl,
-            category: e.category,
-            sourceId: e.sourceId,
-          ),
+          episodesResolver: resolveEpisodes,
           resumeEpisodeId: e.episodeId,
           resumeEpisodeNumber: e.episodeNumber,
           resumePosition: e.position,
           resume: sl<ResumeStore>(),
-          resolveSources: (u) =>
-              _repo.sources(u, sourceId: e.sourceId, fast: true),
+          resolveSources: resolveVideoSources,
           history: sl<WatchHistory>(),
           showTitle: e.showTitle,
           cover: e.cover,
