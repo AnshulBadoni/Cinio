@@ -19,17 +19,23 @@ class PosterCard extends StatefulWidget {
     this.headers,
     this.onTap,
     this.onLongPress,
+    this.heroTag,
     this.tags = const [],
     this.cellWidth = 180,
     this.showTitle = true,
     this.qualityBadge,
     this.dubBadge,
+    this.completed = false,
   });
   final String title;
   final String? imageUrl;
   final Map<String, String>? headers;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
+  /// Optional Hero tag used by browse screens that animate the poster into a
+  /// focused quick-action overlay. Null keeps the card's normal rendering.
+  final String? heroTag;
 
   /// Small overlay badges drawn at the bottom-left of the art (e.g. SUB/DUB).
   final List<String> tags;
@@ -49,6 +55,11 @@ class PosterCard extends StatefulWidget {
   /// the quality badge and rides the SAME setting — one switch for poster
   /// badges, not one per kind.
   final String? dubBadge;
+
+  /// Whether this title is completed in the user's watch state. When true the
+  /// top-right poster badge becomes an accent-coloured completion check.
+  final bool completed;
+
   final double cellWidth;
 
   /// When false, render only the poster art (no title below). Used on TV so the
@@ -68,6 +79,33 @@ bool get _showBadges {
     return sl<PlaybackPrefs>().qualityBadges;
   } catch (_) {
     return true;
+  }
+}
+
+
+class _CompletionBadge extends StatelessWidget {
+  const _CompletionBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.accent,
+        shape: BoxShape.circle,
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x55000000),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: const SizedBox(
+        width: 30,
+        height: 30,
+        child: Icon(Icons.check_rounded, color: Colors.white, size: 18),
+      ),
+    );
   }
 }
 
@@ -97,6 +135,41 @@ class _PosterCardState extends State<PosterCard> {
     return int.tryParse(raw);
   }
 
+  Widget _posterImage(int? aniSrcId, int? mihonSrcId, int memW) {
+    Widget image;
+    if (widget.imageUrl == null) {
+      image = const ColoredBox(color: AppColors.surface2);
+    } else if (aniSrcId != null || mihonSrcId != null) {
+      image = Image(
+        image: ResizeImage(
+          aniSrcId != null
+              ? AniyomiImage(aniSrcId, widget.imageUrl!)
+              : MihonImage(mihonSrcId!, widget.imageUrl!),
+          width: memW,
+        ),
+        fit: BoxFit.cover,
+        frameBuilder: imageFadeIn,
+        loadingBuilder: (_, child, progress) =>
+            progress == null ? child : const ColoredBox(color: AppColors.surface2),
+        errorBuilder: (context, error, stackTrace) =>
+            const ColoredBox(color: AppColors.surface2),
+      );
+    } else {
+      image = CachedNetworkImage(
+        imageUrl: widget.imageUrl!,
+        cacheManager: AppImageCache.manager,
+        httpHeaders: widget.headers,
+        memCacheWidth: memW,
+        fit: BoxFit.cover,
+        fadeInDuration: const Duration(milliseconds: 180),
+        placeholder: (context, url) => const ColoredBox(color: AppColors.surface2),
+        errorWidget: (context, url, err) => const ColoredBox(color: AppColors.surface2),
+      );
+    }
+    if (widget.heroTag == null) return image;
+    return Hero(tag: widget.heroTag!, child: image);
+  }
+
   @override
   Widget build(BuildContext context) {
     final dpr = MediaQuery.devicePixelRatioOf(context);
@@ -119,8 +192,8 @@ class _PosterCardState extends State<PosterCard> {
         onTapCancel: interactive ? _handleTapCancel : null,
         child: AnimatedScale(
           scale: _pressed ? 0.97 : 1.0,
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOut,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -130,44 +203,7 @@ class _PosterCardState extends State<PosterCard> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      if (widget.imageUrl == null)
-                        ColoredBox(color: AppColors.surface2)
-                      else if (aniSrcId != null || mihonSrcId != null)
-                        // Aniyomi/Mihon path: fetch bytes through the source's own
-                        // OkHttpClient (carries CF session cookies) instead of
-                        // going through CachedNetworkImage which can't pass CF.
-                        Image(
-                          // Resize to the cell's pixel width so a big cover
-                          // doesn't sit full-res in the image cache (matches the
-                          // memCacheWidth the non-native path already uses).
-                          image: ResizeImage(
-                            aniSrcId != null
-                                ? AniyomiImage(aniSrcId, widget.imageUrl!)
-                                : MihonImage(mihonSrcId!, widget.imageUrl!),
-                            width: memW,
-                          ),
-                          fit: BoxFit.cover,
-                          frameBuilder: imageFadeIn,
-                          loadingBuilder: (_, child, progress) =>
-                              progress == null
-                                  ? child
-                                  : ColoredBox(color: AppColors.surface2),
-                          errorBuilder: (context, error, stackTrace) =>
-                              ColoredBox(color: AppColors.surface2),
-                        )
-                      else
-                        CachedNetworkImage(
-                          imageUrl: widget.imageUrl!,
-                          cacheManager: AppImageCache.manager,
-                          httpHeaders: widget.headers,
-                          memCacheWidth: memW,
-                          fit: BoxFit.cover,
-                          fadeInDuration: const Duration(milliseconds: 180),
-                          placeholder: (context, url) =>
-                              ColoredBox(color: AppColors.surface2),
-                          errorWidget: (context, url, err) =>
-                              ColoredBox(color: AppColors.surface2),
-                        ),
+                      _posterImage(aniSrcId, mihonSrcId, memW),
                       const DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -181,7 +217,13 @@ class _PosterCardState extends State<PosterCard> {
                           ),
                         ),
                       ),
-                      if (widget.qualityBadge != null)
+                      if (widget.completed)
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: _CompletionBadge(),
+                        )
+                      else if (widget.qualityBadge != null)
                         Positioned(
                           top: 6,
                           right: 6,

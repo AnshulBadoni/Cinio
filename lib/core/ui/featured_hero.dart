@@ -186,7 +186,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                     colors: [
                       tint.withValues(alpha: 0.66),
                       tint.withValues(alpha: 0.28),
-                      const Color(0x000B0B0F),
+                      AppColors.bg.withValues(alpha: 0.0),
                     ],
                     stops: const [0.0, 0.5, 0.84],
                   ),
@@ -226,7 +226,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                     // Always use the fixed tall hero frame. Do not change the
                     // layout based on the source artwork aspect ratio.
                     fit: BoxFit.cover,
-                    alignment: Alignment.center,
+                    alignment: const Alignment(0, -0.10),
                     filterQuality: FilterQuality.high,
                     frameBuilder: imageFadeIn,
                     gaplessPlayback: true,
@@ -260,11 +260,11 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Color(0x000B0B0F),
-                          Color(0xA60B0B0F),
+                          AppColors.bg.withValues(alpha: 0.0),
+                          AppColors.bg.withValues(alpha: 0.68),
                           AppColors.bg,
                         ],
-                        stops: const [0.42, 0.72, 1.0],
+                        stops: const [0.44, 0.72, 1.0],
                       ),
                     ),
                   ),
@@ -339,7 +339,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   Widget _titleText() => Text(
     widget.item.title,
     textAlign: TextAlign.center,
-    style: AppText.largeTitle.copyWith(
+    style: AppText.display.copyWith(
       fontSize: 30,
       height: 1.02,
       letterSpacing: -0.6,

@@ -20,6 +20,7 @@ import '../../core/di/injector.dart';
 import '../../core/discord/discord_rpc.dart';
 import '../../core/metadata/episode_metadata_service.dart';
 import '../../core/metadata/tmdb_discover_service.dart';
+import '../../core/metadata/title_logo_service.dart';
 import '../../core/notify/cs_notify.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/notify/subscription_store.dart';
@@ -300,8 +301,10 @@ class _DetailView extends StatefulWidget {
 
 class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
-  static const double _expandedHeight = 320;
+  static const double _expandedHeight = 350;
   bool _showAppBarTitle = false;
+  String? _titleLogoUrl;
+  String? _titleLogoKey;
 
   String? _prefetchedEpUrl;
   bool _prefetchedCatalog = false;
@@ -443,6 +446,23 @@ class _DetailViewState extends State<_DetailView>
           _maybePrefetch(eps[resumeIdx].url, resolved.item.sourceId);
         }
       } catch (_) {}
+    });
+  }
+
+  void _loadTitleLogo(MediaDetail detail) {
+    if (!sl.isRegistered<TitleLogoService>()) return;
+    final tmdbId = detail.tmdbId ?? widget.item.tmdbId;
+    final isTv = detail.tmdbIsTv || widget.item.tmdbIsTv;
+    final key = '$tmdbId|$isTv|${detail.title}';
+    if (_titleLogoKey == key) return;
+    _titleLogoKey = key;
+    sl<TitleLogoService>()
+        .logoForDetail(title: detail.title, tmdbId: tmdbId, isTv: isTv)
+        .then((url) {
+      if (!mounted || _titleLogoKey != key) return;
+      if (url != null && url.isNotEmpty) {
+        setState(() => _titleLogoUrl = url);
+      }
     });
   }
 
@@ -773,6 +793,11 @@ class _DetailViewState extends State<_DetailView>
           resume.get(widget.item.sourceId, widget.item.url, ep.id)?.finished ??
           false,
       tracksToServices: hub.anyConnected,
+      thumbnailUrl: (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
+          ? ep.thumbnail
+          : (detail.cover ?? widget.item.cover),
+      thumbnailHeaders: (detail.coverHeaders ?? widget.item.coverHeaders),
+      heroTag: 'episode-quick:${widget.item.sourceId}:${widget.item.id}:${ep.id}',
     );
     if (action == null || !mounted) return;
 
@@ -851,11 +876,17 @@ class _DetailViewState extends State<_DetailView>
         );
 
       case EpisodeAction.markAboveWatched:
-        for (var i = 0; i <= index; i++) {
+        final currentSeason = seasonOf(ep);
+        final sameSeason = currentSeason == null
+            ? episodes
+            : episodes.where((candidate) => seasonOf(candidate) == currentSeason).toList();
+        final targetIndex = sameSeason.indexWhere((candidate) => candidate.id == ep.id);
+        if (targetIndex < 0) return;
+        for (var i = 0; i <= targetIndex; i++) {
           await resume.setWatched(
             widget.item.sourceId,
             widget.item.url,
-            episodes[i].id,
+            sameSeason[i].id,
             watched: true,
           );
         }
@@ -863,7 +894,7 @@ class _DetailViewState extends State<_DetailView>
         if (!mounted) return;
         setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Marked ${index + 1} episodes as watched')),
+          SnackBar(content: Text('Marked ${targetIndex + 1} episodes as watched')),
         );
     }
   }
@@ -1655,6 +1686,45 @@ class _DetailViewState extends State<_DetailView>
     );
   }
 
+  Widget _titleHeader(MediaDetail detail) {
+    final logo = _titleLogoUrl;
+    if (logo == null || logo.isEmpty) {
+      return Text(
+        detail.title,
+        style: AppText.display.copyWith(fontSize: 30),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 310, maxHeight: 82),
+      child: CachedNetworkImage(
+        imageUrl: logo,
+        fit: BoxFit.contain,
+        alignment: Alignment.centerLeft,
+        fadeInDuration: const Duration(milliseconds: 220),
+        placeholder: (_, _) => SizedBox(
+          height: 48,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              detail.title,
+              style: AppText.display.copyWith(fontSize: 30),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+        errorWidget: (_, _, _) => Text(
+          detail.title,
+          style: AppText.display.copyWith(fontSize: 30),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    );
+  }
+
   Widget _buildBody(
     BuildContext context,
     DetailState state,
@@ -1662,6 +1732,7 @@ class _DetailViewState extends State<_DetailView>
   ) {
     final item = widget.item;
     final cubit = context.read<DetailCubit>();
+    _loadTitleLogo(detail);
     final category = state.category;
     final selectedSeason = state.selectedSeason;
     final eps = detail.episodes;
@@ -1764,8 +1835,13 @@ class _DetailViewState extends State<_DetailView>
 
     final sourceName = _sourceLabel(item.sourceId);
 
-    return NestedScrollView(
-      controller: _scrollController,
+    return StretchingOverscrollIndicator(
+      axisDirection: AxisDirection.down,
+      child: NestedScrollView(
+        controller: _scrollController,
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
       headerSliverBuilder: (context, _) => [
         SliverAppBar(
           expandedHeight: _expandedHeight,
@@ -1786,8 +1862,14 @@ class _DetailViewState extends State<_DetailView>
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          stretch: true,
+          stretchTriggerOffset: 90,
           flexibleSpace: FlexibleSpaceBar(
             collapseMode: CollapseMode.parallax,
+            stretchModes: const [
+              StretchMode.zoomBackground,
+              StretchMode.fadeTitle,
+            ],
             background: RepaintBoundary(
               child: _Hero(
                 coverUrl: coverUrl,
@@ -1817,12 +1899,7 @@ class _DetailViewState extends State<_DetailView>
                             SearchScreen(initialQuery: detail.title),
                       ),
                     ),
-                    child: Text(
-                      detail.title,
-                      style: AppText.largeTitle.copyWith(fontSize: 28),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: _titleHeader(detail),
                   ),
                   if (metaLine.isNotEmpty) ...[
                     const SizedBox(height: 8),
@@ -2162,6 +2239,7 @@ class _DetailViewState extends State<_DetailView>
           ),
         ],
       ),
+      ),
     );
   }
 }
@@ -2169,26 +2247,10 @@ class _DetailViewState extends State<_DetailView>
 /// Checks if a movie is currently in theatrical/cinema release.
 bool _isInCinema(MediaDetail? detail) {
   if (detail == null || detail.isSeries) return false;
-  final tmdbStatus = detail.tmdbStatus?.trim().toLowerCase();
-  if (tmdbStatus == 'in theaters' ||
-      tmdbStatus == 'in cinemas' ||
-      tmdbStatus == 'theatrical' ||
-      tmdbStatus == 'in cinema') {
-    return true;
-  }
-  final fullDate = detail.releaseDate?.trim();
-  if (fullDate != null && fullDate.isNotEmpty) {
-    final parsed = DateTime.tryParse(fullDate);
-    if (parsed != null) {
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final days = today.difference(parsed).inDays;
-      if (days >= 0 && days <= 60 && (tmdbStatus == 'released' || tmdbStatus == null || tmdbStatus.isEmpty)) {
-        return true;
-      }
-    }
-  }
-  return false;
+  // Never infer cinema availability from a recent release date. TMDB's
+  // release-type data is the source of truth: OTT/digital releases must not
+  // continue to show the movie as being in cinemas.
+  return detail.tmdbTheatricalRelease;
 }
 
 /// Checks if a title is unreleased ("Coming Soon").

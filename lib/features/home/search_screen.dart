@@ -23,11 +23,14 @@ import '../../core/playback/search_source_prefs.dart';
 import '../../core/playback/source_health_store.dart' show SourceOutcome;
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/playback/list_status_store.dart';
+import '../../core/models/watch_status.dart';
 import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/media_info_sheet.dart';
+import '../../core/ui/poster_quick_actions.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../core/ui/poster_card.dart';
@@ -389,11 +392,62 @@ class _SearchViewState extends State<_SearchView>
   }
 
   Future<MediaItem?> _resolveCatalogItem(MediaItem item) async {
-    if (item.sourceId != 'tmdb:catalog' && !item.sourceId.startsWith('tpdb:')) return item;
-    return item;
+    if (item.sourceId != 'tmdb:catalog' && !item.sourceId.startsWith('tpdb:')) {
+      return item;
+    }
+    final category =
+        sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
+        sl<PlaybackPrefs>().defaultCategory;
+    final resolved = await _repo.resolveCatalogTitle(item, category: category);
+    return resolved?.item;
   }
 
-  Future<void> _play(MediaItem item) async {
+  Future<void> _showQuickActions(MediaItem item) async {
+    final statusStore = sl<ListStatusStore>();
+    final inLibrary = _myList.contains(item) || statusStore.statusOf(item) != null;
+    final watched = statusStore.statusOf(item) == WatchStatus.completed;
+    final matchingHistory = sl<WatchHistory>()
+        .all()
+        .where((e) => e.sourceId == item.sourceId && (e.showId == item.url || e.showUrl == item.url))
+        .where((e) => !e.finished)
+        .fold<HistoryEntry?>(null, (best, e) =>
+            best == null || e.updatedAt > best.updatedAt ? e : best);
+    final playLabel = matchingHistory == null
+        ? null
+        : 'Resume ${((matchingHistory.progress * 100).round()).clamp(1, 99)}%';
+    if (!mounted) return;
+    await showPosterQuickActions(
+      context,
+      item: item,
+      heroTag: _posterHeroTag(item),
+      playLabel: playLabel,
+      inLibrary: inLibrary,
+      watched: watched,
+      onPlay: () => _play(item, resumeEntry: matchingHistory),
+      onMarkWatched: () async {
+        if (!_myList.contains(item)) await _myList.add(item);
+        await statusStore.setStatus(item, WatchStatus.completed);
+        await _myList.pushStatus(item);
+        if (mounted) setState(() {});
+      },
+      onToggleLibrary: () async {
+        if (!requireLogin(context, action: 'add to My List')) {
+          return _myList.contains(item);
+        }
+        await _myList.toggle(item);
+        if (!_myList.contains(item)) {
+          await statusStore.remove(item);
+        }
+        if (mounted) setState(() {});
+        return _myList.contains(item);
+      },
+    );
+  }
+
+  String _posterHeroTag(MediaItem item) =>
+      'discover-poster:${item.sourceId}:${item.id}';
+
+  Future<void> _play(MediaItem item, {HistoryEntry? resumeEntry}) async {
     if (item.sourceId == 'tpdb:performer' || item.sourceId == 'tpdb:studio') {
       _openDetail(item);
       return;
@@ -414,6 +468,9 @@ class _SearchViewState extends State<_SearchView>
       MaterialPageRoute(
         builder: (_) => PlayerScreen(
           sourceId: resolved.sourceId,
+          resumeEpisodeId: resumeEntry?.episodeId,
+          resumeEpisodeNumber: resumeEntry?.episodeNumber,
+          resumePosition: resumeEntry?.position,
           episodesResolver: () =>
               _repo.episodes(resolved.url, sourceId: resolved.sourceId),
           resume: sl<ResumeStore>(),
@@ -1324,6 +1381,7 @@ class _SearchViewState extends State<_SearchView>
                         tags: _tagsFor(item),
                         qualityBadge: item.quality,
                         dubBadge: item.dubBadge,
+                        completed: sl<ListStatusStore>().statusOf(item) == WatchStatus.completed,
                         cellWidth: itemW,
                         onTap: () => _openDetail(item),
                         onLongPress: () => _showInfo(item),
@@ -1383,6 +1441,7 @@ class _SearchViewState extends State<_SearchView>
                 tags: _tagsFor(item),
                 qualityBadge: item.quality,
                 dubBadge: item.dubBadge,
+                completed: sl<ListStatusStore>().statusOf(item) == WatchStatus.completed,
                 cellWidth: cellW,
                 onTap: () => _openDetail(item),
                 onLongPress: () => _showInfo(item),
@@ -1622,6 +1681,7 @@ class _SearchViewState extends State<_SearchView>
           tags: _tagsFor(item),
           qualityBadge: item.quality,
           dubBadge: item.dubBadge,
+          completed: sl<ListStatusStore>().statusOf(item) == WatchStatus.completed,
           cellWidth: cellW,
           onTap: () => _openDetail(item),
           onLongPress: () => _showInfo(item),
@@ -1678,9 +1738,11 @@ class _SearchViewState extends State<_SearchView>
           tags: _tagsFor(item),
           qualityBadge: item.quality,
           dubBadge: item.dubBadge,
+          completed: sl<ListStatusStore>().statusOf(item) == WatchStatus.completed,
           cellWidth: cellW,
+          heroTag: _posterHeroTag(item),
           onTap: () => _openDetail(item),
-          onLongPress: () => _showInfo(item),
+          onLongPress: () => _showQuickActions(item),
         );
       },
     );

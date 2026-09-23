@@ -66,6 +66,31 @@ class _Hero extends StatelessWidget {
     );
   }
 
+  Widget _heroPoster() {
+    final aniId = int.tryParse(coverHeaders?['x-ani-src'] ?? '');
+    final mihonId = int.tryParse(coverHeaders?['x-mihon-src'] ?? '');
+    if (aniId != null || mihonId != null) {
+      return Image(
+        image: ResizeImage(
+          aniId != null
+              ? AniyomiImage(aniId, coverUrl)
+              : MihonImage(mihonId!, coverUrl),
+          width: 360,
+        ),
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => const ColoredBox(color: AppColors.surface2),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: coverUrl,
+      httpHeaders: coverHeaders,
+      fit: BoxFit.cover,
+      memCacheWidth: 360,
+      placeholder: (_, _) => const ColoredBox(color: AppColors.surface2),
+      errorWidget: (_, _, _) => const ColoredBox(color: AppColors.surface2),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -83,12 +108,12 @@ class _Hero extends StatelessWidget {
               )
             : _coverBackdrop(),
         // Gradients render OVER the video for title readability.
-        const IgnorePointer(
+        IgnorePointer(
           child: DecoratedBox(
             decoration: BoxDecoration(gradient: AppColors.topScrim),
           ),
         ),
-        const IgnorePointer(
+        IgnorePointer(
           child: DecoratedBox(
             decoration: BoxDecoration(gradient: AppColors.scrim),
           ),
@@ -103,15 +128,30 @@ class _Hero extends StatelessWidget {
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  AppColors.bg.withValues(alpha: 0.22),
-                  AppColors.bg.withValues(alpha: 0.72),
-                  AppColors.bg,
+                  AppColors.bg.withValues(alpha: 0.18),
+                  AppColors.bg.withValues(alpha: 0.62),
+                  AppColors.bg.withValues(alpha: 0.96),
                 ],
-                stops: const [0.42, 0.68, 0.86, 1.0],
+                stops: const [0.44, 0.68, 0.86, 1.0],
               ),
             ),
           ),
         ),
+        if (hasCover)
+          Positioned(
+            left: 18,
+            bottom: 14,
+            child: RepaintBoundary(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: SizedBox(
+                  width: 120,
+                  height: 178,
+                  child: _heroPoster(),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }

@@ -27,6 +27,8 @@ import '../../core/models/video_source.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/platform/apple_tv.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/playback/list_status_store.dart';
+import '../../core/models/watch_status.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
@@ -138,6 +140,7 @@ class _HomeViewState extends State<_HomeView>
   // Cached services (avoid repeated SL lookups on hot paths).
   final SourceRepository _repo = sl<SourceRepository>();
   final MyListStore _myList = sl<MyListStore>();
+  final ListStatusStore _listStatus = sl<ListStatusStore>();
   final ContentModeCubit _modeCubit = sl<ContentModeCubit>();
   final PlaybackPrefs _prefs = sl<PlaybackPrefs>();
 
@@ -529,6 +532,12 @@ class _HomeViewState extends State<_HomeView>
     if (mounted) setState(() {});
   }
 
+  int? _tmdbIdFromHistory(HistoryEntry e) {
+    if (e.sourceId != 'tmdb:catalog') return null;
+    final match = RegExp(r'/((?:tv|movie))/([0-9]+)').firstMatch(e.showUrl);
+    return match == null ? null : int.tryParse(match.group(2)!);
+  }
+
   Future<void> _resume(HistoryEntry e) async {
     final isCatalog = e.sourceId == 'tmdb:catalog' || e.sourceId.startsWith('tpdb:');
     final mediaItem = MediaItem(
@@ -540,6 +549,8 @@ class _HomeViewState extends State<_HomeView>
       coverHeaders: e.coverHeaders,
       type: ProviderType.movie,
       malId: e.malId,
+      tmdbIsTv: e.sourceId == 'tmdb:catalog' && e.showUrl.contains('/tv/'),
+      tmdbId: _tmdbIdFromHistory(e),
     );
 
     Future<List<Episode>> resolveEpisodes() async {
@@ -548,14 +559,7 @@ class _HomeViewState extends State<_HomeView>
         if (resolved != null && resolved.detail.episodes.isNotEmpty) {
           return resolved.detail.episodes;
         }
-        return [
-          Episode(
-            id: e.episodeId,
-            title: e.showTitle,
-            number: e.episodeNumber ?? 1,
-            url: e.episodeUrl.isNotEmpty ? e.episodeUrl : e.showUrl,
-          ),
-        ];
+        throw StateError('Could not resolve a streaming provider for ${e.showTitle}');
       }
       try {
         final eps = await _repo.episodes(
@@ -782,6 +786,7 @@ class _HomeViewState extends State<_HomeView>
             cellWidth: width,
             qualityBadge: item.quality,
             dubBadge: item.dubBadge,
+          completed: _listStatus.statusOf(item) == WatchStatus.completed,
             onTap: () {
               if (item.sourceId == 'tpdb:studio') {
                 _openStudio(item);
@@ -814,6 +819,7 @@ class _HomeViewState extends State<_HomeView>
           cellWidth: width,
           qualityBadge: item.quality,
           dubBadge: item.dubBadge,
+          completed: _listStatus.statusOf(item) == WatchStatus.completed,
           onTap: () => _openDetail(item),
           onLongPress: () => _showInfo(item),
         );

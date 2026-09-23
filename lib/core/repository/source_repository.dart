@@ -592,50 +592,59 @@ class SourceRepository {
       }
     }
 
-    // Fan out to remaining providers in parallel.
+    // Probe providers in small batches instead of opening a request storm across
+    // every installed extension. Large source sets can otherwise create dozens
+    // of simultaneous network/JS jobs when a Continue card or catalog detail is
+    // opened, which makes the UI appear frozen and can starve the player.
     final remaining = candidates.where((id) => !tried.contains(id)).toList();
     if (remaining.isEmpty) return null;
 
     final completer = Completer<({MediaItem item, MediaDetail detail})?>();
-    final pendingCount = remaining.length;
-    var left = pendingCount;
     ({MediaItem item, MediaDetail detail})? bestFuzzyResult;
     double bestFuzzyScore = 0.0;
-    Timer? fuzzyGraceTimer;
 
     void finishWith(({MediaItem item, MediaDetail detail})? res) {
       if (completer.isCompleted) return;
-      fuzzyGraceTimer?.cancel();
       completer.complete(res);
     }
 
-    for (final id in remaining) {
-      _resolveCatalogOnSource(catalog, id, category)
-          .timeout(const Duration(seconds: 12), onTimeout: () => null)
-          .then((result) {
-        if (completer.isCompleted) return;
-        if (result != null) {
-          final score = TitleMatcher.matchScore(catalog.title, result.item.title, altWanted: catalog.englishTitle);
-          if (score >= 0.90) {
-            // Validated strict match: complete immediately with zero delay
-            finishWith(result);
-            return;
-          } else if (score > bestFuzzyScore && score >= 0.70) {
-            bestFuzzyScore = score;
-            bestFuzzyResult = result;
-            fuzzyGraceTimer ??= Timer(const Duration(milliseconds: 500), () {
-              finishWith(bestFuzzyResult);
-            });
-          }
+    for (var offset = 0; offset < remaining.length && !completer.isCompleted; offset += 4) {
+      final batch = remaining.sublist(offset, math.min(offset + 4, remaining.length));
+      final results = await Future.wait([
+        for (final id in batch)
+          _resolveCatalogOnSource(catalog, id, category)
+              .timeout(const Duration(seconds: 12), onTimeout: () => null),
+      ]);
+
+      for (var i = 0; i < results.length; i++) {
+        if (completer.isCompleted) break;
+        final result = results[i];
+        if (result == null) continue;
+        final score = TitleMatcher.matchScore(
+          catalog.title,
+          result.item.title,
+          altWanted: catalog.englishTitle,
+        );
+        if (score >= 0.90) {
+          finishWith(result);
+          break;
         }
-        left -= 1;
-        if (left == 0) {
-          finishWith(bestFuzzyResult);
+        if (score > bestFuzzyScore && score >= 0.70) {
+          bestFuzzyScore = score;
+          bestFuzzyResult = result;
         }
-      });
+      }
+
+      // If the current batch produced a usable fuzzy match and no strict match,
+      // give the next batch a chance; otherwise avoid keeping the user waiting
+      // through every remaining extension for a weak result.
+      if (!completer.isCompleted && bestFuzzyResult != null && offset + 4 >= remaining.length) {
+        finishWith(bestFuzzyResult);
+      }
     }
+
+    if (!completer.isCompleted) finishWith(bestFuzzyResult);
     final result = await completer.future;
-    fuzzyGraceTimer?.cancel();
     if (result != null) {
       _catalogResolutionCache[key] = (at: DateTime.now(), value: result);
     }

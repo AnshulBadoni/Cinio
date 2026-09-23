@@ -3,6 +3,7 @@ import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/media_item.dart';
+import '../models/provider_info.dart';
 import 'tmdb.dart';
 
 /// Best-effort TMDB "title logo" (the stylized title-art PNG) for a hero item,
@@ -56,6 +57,26 @@ class TitleLogoService {
         await logoFor(it);
       } catch (_) {/* best-effort */}
     }
+  }
+
+  /// Resolve a title logo when a detail object has fresher TMDB identity than
+  /// the original browse item. This avoids forcing feature screens to duplicate
+  /// the TMDB image lookup/caching rules.
+  Future<String?> logoForDetail({
+    required String title,
+    int? tmdbId,
+    bool isTv = false,
+  }) async {
+    final item = MediaItem(
+      id: 'logo:$tmdbId:${isTv ? 'tv' : 'movie'}:$title',
+      title: title,
+      tmdbId: tmdbId,
+      tmdbIsTv: isTv,
+      url: '',
+      type: ProviderType.movie,
+      sourceId: 'tmdb:logo',
+    );
+    return logoFor(item);
   }
 
   Future<String?> logoFor(MediaItem item) async {

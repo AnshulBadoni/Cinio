@@ -9,6 +9,8 @@ import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_item.dart';
+import '../../core/models/watch_status.dart';
+import '../../core/playback/list_status_store.dart';
 import '../../core/anilist/anilist_service.dart';
 import '../../core/playback/category_store.dart';
 import '../../core/ui/reveal_item.dart';
@@ -16,9 +18,7 @@ import '../../core/ui/global_messenger.dart';
 import '../../core/ui/anilist_custom_lists_sheet.dart';
 import '../../core/prefs/list_sort.dart';
 import '../../core/models/provider_info.dart';
-import '../../core/models/watch_status.dart';
 import '../../core/playback/my_list.dart';
-import '../../core/playback/list_status_store.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tracker/tracker.dart';
@@ -901,9 +901,11 @@ class _MyListViewState extends State<_MyListView> {
           child: CircularProgressIndicator(color: AppColors.accent),
         );
       case TrackerListStatus.error:
-        content = const EmptyState(
+        content = EmptyState(
           icon: Icons.cloud_off_rounded,
-          message: 'Couldn’t load — pull to refresh',
+          message: 'Couldn’t load this list.',
+          actionLabel: 'Retry',
+          onAction: () => context.read<TrackerListCubit>().refresh(),
         );
       case TrackerListStatus.idle:
       case TrackerListStatus.ready:
@@ -1069,6 +1071,7 @@ class _MyListViewState extends State<_MyListView> {
                         imageUrl: entry.item.cover,
                         headers: entry.item.coverHeaders,
                         cellWidth: cellW,
+                        completed: entry.status == WatchStatus.completed,
                         onTap: () => onTap(entry.item),
                         // Long-press opens the per-card edit sheet (own list →
                         // status/remove; tracker → the tracker editor).
@@ -1083,10 +1086,27 @@ class _MyListViewState extends State<_MyListView> {
     );
   }
 
-  /// Open a tracker stub (no provider attached): drop into the app's global
-  /// search pre-filled with the title so the user picks the source/result.
-  void _openTrackerItem(BuildContext context, MediaItem stub) {
-    Navigator.of(context).push(
+  /// Open a tracker entry. Simkl movie/TV entries already carry a TMDB id, so
+  /// opening the catalog directly is both faster and deterministic. Anime/MAL
+  /// entries still use title search because the tracker deliberately stores no
+  /// streaming-provider URL.
+  Future<void> _openTrackerItem(BuildContext context, MediaItem stub) async {
+    if (stub.tmdbId != null) {
+      final item = MediaItem(
+        id: 'tmdb:${stub.tmdbIsTv ? 'tv' : 'movie'}:${stub.tmdbId}',
+        title: stub.title,
+        cover: stub.cover,
+        url: 'tmdb://${stub.tmdbIsTv ? 'tv' : 'movie'}/${stub.tmdbId}',
+        type: ProviderType.movie,
+        sourceId: 'tmdb:catalog',
+        tmdbId: stub.tmdbId,
+        tmdbIsTv: stub.tmdbIsTv,
+      );
+      await Navigator.of(context).push(DetailScreen.route(item));
+      return;
+    }
+
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => SearchScreen(initialQuery: stub.title),
       ),

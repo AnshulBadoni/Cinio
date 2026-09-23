@@ -12,6 +12,17 @@ abstract class AppText {
     letterSpacing: -0.5,
     color: AppColors.textPrimary,
   );
+  /// Stronger display face for cinematic title headings. The UI remains
+  /// Inter; Noto Sans is only used where a title needs more visual weight.
+  static const display = TextStyle(
+    fontFamily: 'Noto Sans',
+    fontSize: 30,
+    height: 1.08,
+    fontWeight: FontWeight.w800,
+    letterSpacing: -0.7,
+    color: AppColors.textPrimary,
+  );
+
   static const title = TextStyle(
     fontFamily: _f,
     fontSize: 22,

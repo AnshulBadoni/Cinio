@@ -706,17 +706,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _failJoinOrPop() {
-    if (widget.joinRoomCode != null) {
-      final sourceInstalled = sl<SourceRepository>().hasSource(widget.sourceId);
-      setState(() => _loadError = sourceInstalled
-          ? "Couldn't load this show right now.\n\n"
-              'The source is available, but the episode list came back empty. Tap Back and try again.'
-          : "Couldn't open this room's video source on your device.\n\n"
-              "The host is watching on a source you don't have installed. Add it "
-              'from Settings, or ask the host to use a built-in source.');
-    } else {
-      _leavePlayer();
-    }
+    final sourceInstalled = sl<SourceRepository>().hasSource(widget.sourceId);
+    final message = widget.joinRoomCode != null
+        ? (sourceInstalled
+            ? "Couldn't load this show right now.\n\nThe source is available, but the episode list came back empty. Tap Back and try again."
+            : "Couldn't open this room's video source on your device.\n\nThe host is watching on a source you don't have installed. Add it from Settings, or ask the host to use a built-in source.")
+        : "Couldn't resume this title right now.\n\nThe saved episode or its streaming provider could not be resolved. Tap Back and try again.";
+    if (mounted) setState(() => _loadError = message);
   }
 
   void _leavePlayer() {

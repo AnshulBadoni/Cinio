@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
+import '../../core/models/watch_status.dart';
+import '../../core/playback/list_status_store.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/poster_card.dart';

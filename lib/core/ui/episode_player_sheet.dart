@@ -1,3 +1,6 @@
+import 'dart:ui' show ImageFilter;
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/video_source.dart';
@@ -34,99 +37,267 @@ enum EpisodeAction {
   playMirror,
 }
 
-/// The long-press menu itself. Kept separate from the player sheet so the
-/// player list doesn't push the actions off-screen once several players are
-/// installed.
+/// The centered long-press action surface for an episode. The selected
+/// thumbnail is brought into focus while the detail page behind it is blurred
+/// and dimmed. Keeping the action surface independent from playback resolution
+/// lets the caller reuse the same state and player logic.
 Future<EpisodeAction?> showEpisodeActionSheet(
   BuildContext context, {
   required String episodeLabel,
   required String currentPlayerLabel,
-
-  /// Drives the watched row's wording — the same row unmarks when the episode
-  /// is already watched, so a mis-tap isn't a one-way door.
   required bool isWatched,
-
-  /// Whether any tracker is linked. Only used for the subtitle, so nobody is
-  /// surprised that marking an episode moved their AniList progress.
   required bool tracksToServices,
+  String? thumbnailUrl,
+  Map<String, String>? thumbnailHeaders,
+  String? heroTag,
 }) {
-  return showModalBottomSheet<EpisodeAction>(
+  return showGeneralDialog<EpisodeAction>(
     context: context,
-    backgroundColor: AppColors.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    barrierDismissible: true,
+    barrierLabel: 'Episode actions',
+    barrierColor: Colors.transparent,
+    transitionDuration: const Duration(milliseconds: 280),
+    reverseTransitionDuration: const Duration(milliseconds: 200),
+    pageBuilder: (dialogContext, _, _) => _EpisodeQuickActions(
+      episodeLabel: episodeLabel,
+      currentPlayerLabel: currentPlayerLabel,
+      isWatched: isWatched,
+      tracksToServices: tracksToServices,
+      thumbnailUrl: thumbnailUrl,
+      thumbnailHeaders: thumbnailHeaders,
+      heroTag: heroTag,
     ),
-    builder: (sheetContext) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 10),
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.hairline,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                episodeLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.headline,
-              ),
-            ),
-          ),
-          _PlayerRow(
-            icon: Icons.play_circle_outline_rounded,
-            label: 'Play with…',
-            trailingText: currentPlayerLabel,
-            onTap: () =>
-                Navigator.pop(sheetContext, EpisodeAction.pickPlayer),
-          ),
-          _PlayerRow(
-            icon: Icons.swap_horiz_rounded,
-            label: 'Play mirror',
-            subtitle: 'Choose the source before it starts',
-            onTap: () => Navigator.pop(sheetContext, EpisodeAction.playMirror),
-          ),
-          _PlayerRow(
-            icon: Icons.refresh_rounded,
-            label: 'Reload links',
-            subtitle: 'Fetch fresh streams if playback keeps failing',
-            onTap: () =>
-                Navigator.pop(sheetContext, EpisodeAction.reloadLinks),
-          ),
-          Divider(height: 1, color: AppColors.hairline),
-          _PlayerRow(
-            icon: isWatched
-                ? Icons.remove_done_rounded
-                : Icons.check_circle_outline_rounded,
-            label: isWatched ? 'Mark as unwatched' : 'Mark as watched',
-            subtitle: tracksToServices
-                ? 'Also updates your connected trackers'
-                : null,
-            onTap: () =>
-                Navigator.pop(sheetContext, EpisodeAction.toggleWatched),
-          ),
-          _PlayerRow(
-            icon: Icons.done_all_rounded,
-            label: 'Mark this and all above as watched',
-            onTap: () =>
-                Navigator.pop(sheetContext, EpisodeAction.markAboveWatched),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    ),
+    transitionBuilder: (dialogContext, animation, _, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutBack,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.94, end: 1).animate(curved),
+          child: child,
+        ),
+      );
+    },
   );
 }
 
-/// Long-press an episode → pick where it plays, for this episode only.
+class _EpisodeQuickActions extends StatelessWidget {
+  const _EpisodeQuickActions({
+    required this.episodeLabel,
+    required this.currentPlayerLabel,
+    required this.isWatched,
+    required this.tracksToServices,
+    this.thumbnailUrl,
+    this.thumbnailHeaders,
+    this.heroTag,
+  });
+
+  final String episodeLabel;
+  final String currentPlayerLabel;
+  final bool isWatched;
+  final bool tracksToServices;
+  final String? thumbnailUrl;
+  final Map<String, String>? thumbnailHeaders;
+  final String? heroTag;
+
+  Widget _thumbnail(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final width = (size.width * 0.72).clamp(260.0, 460.0);
+    final height = width * 9 / 16;
+    final image = ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: thumbnailUrl == null || thumbnailUrl!.isEmpty
+            ? ColoredBox(color: AppColors.surface2)
+            : CachedNetworkImage(
+                imageUrl: thumbnailUrl!,
+                httpHeaders: thumbnailHeaders,
+                fit: BoxFit.cover,
+                memCacheWidth: (width * MediaQuery.devicePixelRatioOf(context)).round(),
+                placeholder: (_, _) => const ColoredBox(color: AppColors.surface2),
+                errorWidget: (_, _, _) => const ColoredBox(color: AppColors.surface2),
+              ),
+      ),
+    );
+    if (heroTag == null) return image;
+    return Hero(tag: heroTag!, child: image);
+  }
+
+  void _close(BuildContext context, EpisodeAction action) {
+    Navigator.of(context).pop(action);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: ColoredBox(color: Colors.black.withValues(alpha: 0.68)),
+          ),
+          SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 480,
+                  maxHeight: size.height - 40,
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _thumbnail(context),
+                      const SizedBox(height: 18),
+                      Text(
+                        episodeLabel,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.title,
+                      ),
+                      const SizedBox(height: 18),
+                      _EpisodeActionButton(
+                        icon: Icons.play_arrow_rounded,
+                        label: 'Play with',
+                        trailing: currentPlayerLabel,
+                        primary: true,
+                        onTap: () => _close(context, EpisodeAction.pickPlayer),
+                      ),
+                      const SizedBox(height: 8),
+                      _EpisodeActionButton(
+                        icon: Icons.swap_horiz_rounded,
+                        label: 'Play mirror',
+                        onTap: () => _close(context, EpisodeAction.playMirror),
+                      ),
+                      const SizedBox(height: 8),
+                      _EpisodeActionButton(
+                        icon: Icons.refresh_rounded,
+                        label: 'Reload links',
+                        onTap: () => _close(context, EpisodeAction.reloadLinks),
+                      ),
+                      const SizedBox(height: 8),
+                      _EpisodeActionButton(
+                        icon: isWatched
+                            ? Icons.remove_done_rounded
+                            : Icons.check_rounded,
+                        label: isWatched ? 'Mark as unwatched' : 'Mark as watched',
+                        subtitle: tracksToServices
+                            ? 'Also updates your connected trackers'
+                            : null,
+                        onTap: () => _close(context, EpisodeAction.toggleWatched),
+                      ),
+                      const SizedBox(height: 8),
+                      _EpisodeActionButton(
+                        icon: Icons.done_all_rounded,
+                        label: 'Mark this and all above as watched',
+                        onTap: () => _close(
+                          context,
+                          EpisodeAction.markAboveWatched,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EpisodeActionButton extends StatelessWidget {
+  const _EpisodeActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.subtitle,
+    this.trailing,
+    this.primary = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final String? subtitle;
+  final String? trailing;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = primary ? Colors.white : AppColors.textPrimary;
+    final background = primary ? AppColors.accent : AppColors.surface;
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Icon(icon, color: foreground, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: AppText.button.copyWith(color: foreground, fontSize: 15),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.caption.copyWith(
+                          color: primary
+                              ? Colors.white.withValues(alpha: 0.78)
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    trailing!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.caption.copyWith(
+                      color: primary
+                          ? Colors.white.withValues(alpha: 0.82)
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pick where an episode plays, for this episode only.
 ///
 /// Deliberately doesn't touch [PlaybackPrefs.externalPlayerPackage]: Settings
 /// stays the place that says "always use X", and trying VLC once shouldn't

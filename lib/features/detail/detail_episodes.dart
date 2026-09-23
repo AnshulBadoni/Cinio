@@ -937,13 +937,23 @@ class _EpisodeGridTile extends StatelessWidget {
               ),
             ),
             if (isWatched && !isResume)
-              const Positioned(
+              Positioned(
                 top: 4,
                 right: 4,
-                child: Icon(
-                  Icons.check_rounded,
-                  size: 13,
-                  color: AppColors.textTertiary,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: Icon(
+                      Icons.check_rounded,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             if (isFiller)
@@ -1227,6 +1237,8 @@ class _EpisodeRow extends StatelessWidget {
         episodeDisplayTitle(ep, sourceTitle: srcTitle, number: epNum) ?? '';
     final heading =
         titleText.isNotEmpty ? '$epNum. $titleText' : 'Episode $epNum';
+    final quickActionHeroTag =
+        'episode-quick:$sourceId:$showId:${ep.id}';
 
     return InkWell(
       onTap: onTap,
@@ -1245,7 +1257,9 @@ class _EpisodeRow extends StatelessWidget {
                   width: 116,
                   child: AspectRatio(
                     aspectRatio: 16 / 9,
-                    child: ClipRRect(
+                    child: Hero(
+                      tag: quickActionHeroTag,
+                      child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: Stack(
                         fit: StackFit.expand,
@@ -1288,13 +1302,23 @@ class _EpisodeRow extends StatelessWidget {
                             ),
                           ),
                           if (isWatched)
-                            const Positioned(
+                            Positioned(
                               top: 4,
                               right: 4,
-                              child: Icon(
-                                Icons.check_circle,
-                                color: Colors.white,
-                                size: 16,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: AppColors.accent,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: Icon(
+                                    Icons.check_rounded,
+                                    color: Colors.white,
+                                    size: 15,
+                                  ),
+                                ),
                               ),
                             ),
                           if (ep.rating != null)
@@ -1344,6 +1368,7 @@ class _EpisodeRow extends StatelessWidget {
                         ],
                       ),
                     ),
+                      ),
                   ),
                 ),
                 const SizedBox(width: 14),

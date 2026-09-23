@@ -109,6 +109,11 @@ class MediaDetail extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final List<int> availableSeasons;
 
+  /// True when TMDB reports a currently relevant theatrical release and no
+  /// already-available digital/OTT release supersedes it. Runtime-only.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final bool tmdbTheatricalRelease;
+
   const MediaDetail({
     required this.id,
     required this.title,
@@ -137,6 +142,7 @@ class MediaDetail extends Equatable {
     this.releaseDate,
     this.tmdbStatus,
     this.availableSeasons = const [],
+    this.tmdbTheatricalRelease = false,
   });
 
   factory MediaDetail.fromJson(Map<String, dynamic> json) =>
@@ -171,6 +177,7 @@ class MediaDetail extends Equatable {
     String? releaseDate,
     String? tmdbStatus,
     List<int>? availableSeasons,
+    bool? tmdbTheatricalRelease,
   }) => MediaDetail(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -199,6 +206,7 @@ class MediaDetail extends Equatable {
     releaseDate: releaseDate ?? this.releaseDate,
     tmdbStatus: tmdbStatus ?? this.tmdbStatus,
     availableSeasons: availableSeasons ?? this.availableSeasons,
+    tmdbTheatricalRelease: tmdbTheatricalRelease ?? this.tmdbTheatricalRelease,
   );
 
   @override
@@ -230,5 +238,6 @@ class MediaDetail extends Equatable {
     releaseDate,
     tmdbStatus,
     availableSeasons,
+    tmdbTheatricalRelease,
   ];
 }

@@ -37,19 +37,21 @@ abstract class AppColors {
   /// the chosen accent (was the const `0x26FF4D57`).
   static Color get accentSoft => accent.withValues(alpha: 0.15);
 
-  /// Bottom-up scrim for art overlays (near-black -> transparent).
-  static const scrim = LinearGradient(
+  /// Bottom-up scrim for art overlays. Uses the runtime background so the
+  /// same artwork treatment remains correct when AMOLED mode switches the app
+  /// background to true black.
+  static LinearGradient get scrim => LinearGradient(
     begin: Alignment.bottomCenter,
     end: Alignment.topCenter,
-    colors: [Color(0xF20B0B0F), Color(0x000B0B0F)],
-    stops: [0.0, 0.65],
+    colors: [bg.withValues(alpha: 0.95), bg.withValues(alpha: 0.0)],
+    stops: const [0.0, 0.65],
   );
 
   /// Top-down scrim for hero readability under the status bar.
-  static const topScrim = LinearGradient(
+  static LinearGradient get topScrim => LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [Color(0x990B0B0F), Color(0x000B0B0F)],
-    stops: [0.0, 0.5],
+    colors: [bg.withValues(alpha: 0.60), bg.withValues(alpha: 0.0)],
+    stops: const [0.0, 0.5],
   );
 }

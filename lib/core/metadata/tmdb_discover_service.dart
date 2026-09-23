@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
@@ -231,6 +230,48 @@ class TmdbDiscoverService {
     final overview = row['overview']?.toString();
     var date = (item.tmdbIsTv ? row['first_air_date'] : row['release_date'])?.toString();
     final tmdbStatus = row['status']?.toString();
+    var theatricalRelease = false;
+
+    // TMDB release type: 2/3 = theatrical, 4 = digital/OTT, 5 = physical,
+    // 6 = TV. A recent release date alone is NOT enough to call something
+    // 'In Cinema': many OTT titles have a recent digital release. Prefer the
+    // current device region when available and let a digital release supersede
+    // theatrical availability.
+    if (!item.tmdbIsTv && row['release_dates'] is Map) {
+      final results = row['release_dates']['results'];
+      if (results is List) {
+        Map? matchCountry;
+        for (final r in results) {
+          if (r is Map && r['iso_3166_1'] == _deviceRegion) {
+            matchCountry = r;
+            break;
+          }
+        }
+        matchCountry ??= results.cast<dynamic>().whereType<Map>().firstWhere(
+          (r) => r['release_dates'] is List,
+          orElse: () => <dynamic,dynamic>{},
+        );
+        final dates = matchCountry?['release_dates'];
+        if (dates is List) {
+          final today = DateTime.now();
+          DateTime? latestTheatrical;
+          DateTime? latestDigital;
+          for (final d in dates) {
+            if (d is! Map || d['release_date'] is! String) continue;
+            final parsed = DateTime.tryParse((d['release_date'] as String).split('T').first);
+            if (parsed == null || parsed.isAfter(today)) continue;
+            final type = (d['type'] as num?)?.toInt();
+            if (type == 2 || type == 3) {
+              if (latestTheatrical == null || parsed.isAfter(latestTheatrical)) latestTheatrical = parsed;
+            } else if (type == 4) {
+              if (latestDigital == null || parsed.isAfter(latestDigital)) latestDigital = parsed;
+            }
+          }
+          theatricalRelease = latestTheatrical != null &&
+              (latestDigital == null || latestTheatrical.isAfter(latestDigital));
+        }
+      }
+    }
 
     // Check regional release date for movie if available
     if (!item.tmdbIsTv && row['release_dates'] is Map) {
@@ -273,13 +314,14 @@ class TmdbDiscoverService {
             if (season is Map) (season['season_number'] as num?)?.toInt(),
         ].whereType<int>().where((n) => n > 0).toList();
 
-        // Batch seasons in pools of 3 to avoid TMDB 429 rate limit or socket exhaustion
+        // Keep metadata loading bounded. A series with many seasons used to
+        // fan out large groups of 12s requests and retry each failed season 3x,
+        // which could make the detail screen look frozen for minutes.
         final seasonResults = <List<Episode>>[];
-        for (var i = 0; i < seasonNumbers.length; i += 3) {
-          final chunk = seasonNumbers.sublist(i, math.min(i + 3, seasonNumbers.length));
+        for (var i = 0; i < seasonNumbers.length; i += 2) {
+          final chunk = seasonNumbers.sublist(i, math.min(i + 2, seasonNumbers.length));
           final chunkRes = await Future.wait([
-            for (final seasonNumber in chunk)
-              _loadTmdbSeason(id, seasonNumber),
+            for (final seasonNumber in chunk) _loadTmdbSeason(id, seasonNumber),
           ]);
           seasonResults.addAll(chunkRes);
         }
@@ -302,6 +344,7 @@ class TmdbDiscoverService {
           releaseDate: date,
           tmdbStatus: tmdbStatus,
           availableSeasons: seasonNumbers,
+          tmdbTheatricalRelease: theatricalRelease,
         );
       }
     } else {
@@ -320,46 +363,43 @@ class TmdbDiscoverService {
       isSeries: item.tmdbIsTv, genres: item.genres, cast: cast, episodes: episodes,
       releaseDate: date,
       tmdbStatus: tmdbStatus,
+      tmdbTheatricalRelease: theatricalRelease,
     );
   }
 
   Future<List<Episode>> _loadTmdbSeason(int id, int seasonNumber) async {
-    for (var attempt = 0; attempt < 3; attempt++) {
-      try {
-        final response = await _dio.get<dynamic>(
-          '${Tmdb.base}/tv/$id/season/$seasonNumber',
-          options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
-        );
-        final rawData = response.data;
-        if (rawData is! Map) return const [];
-        return await Isolate.run(() {
-          final rows = rawData['episodes'];
-          if (rows is! List) return const <Episode>[];
-          return <Episode>[
-            for (final e in rows)
-              if (e is Map && e['episode_number'] is num)
-                Episode(
-                  id: 'tmdb:tv:$id:s$seasonNumber:e${(e['episode_number'] as num).toInt()}:${e['id'] ?? ''}',
-                  title: (e['name'] ?? 'Episode ${(e['episode_number'] as num).toInt()}').toString(),
-                  number: (e['episode_number'] as num).toDouble(),
-                  url: 'tmdb://tv/$id/season/$seasonNumber/episode/${(e['episode_number'] as num).toInt()}',
-                  date: e['air_date']?.toString(),
-                  thumbnail: e['still_path'] is String && (e['still_path'] as String).isNotEmpty ? '${Tmdb.img}/w342${e['still_path']}' : null,
-                  season: seasonNumber,
-                  description: e['overview']?.toString(),
-                  metaTitle: e['name']?.toString(),
-                  rating: double.tryParse('${e['vote_average'] ?? ''}'),
-                  runtimeMinutes: (e['runtime'] as num?)?.toInt(),
-                ),
-          ];
-        });
-      } catch (_) {
-        if (attempt < 2) {
-          await Future.delayed(Duration(milliseconds: 300 * (attempt + 1)));
-        }
-      }
+    try {
+      final response = await _dio.get<dynamic>(
+        '${Tmdb.base}/tv/$id/season/$seasonNumber',
+        options: Options(
+          receiveTimeout: const Duration(seconds: 8),
+          sendTimeout: const Duration(seconds: 8),
+        ),
+      );
+      final rawData = response.data;
+      if (rawData is! Map) return const [];
+      final rows = rawData['episodes'];
+      if (rows is! List) return const [];
+      return <Episode>[
+        for (final e in rows)
+          if (e is Map && e['episode_number'] is num)
+            Episode(
+              id: 'tmdb:tv:$id:s$seasonNumber:e${(e['episode_number'] as num).toInt()}:${e['id'] ?? ''}',
+              title: (e['name'] ?? 'Episode ${(e['episode_number'] as num).toInt()}').toString(),
+              number: (e['episode_number'] as num).toDouble(),
+              url: 'tmdb://tv/$id/season/$seasonNumber/episode/${(e['episode_number'] as num).toInt()}',
+              date: e['air_date']?.toString(),
+              thumbnail: e['still_path'] is String && (e['still_path'] as String).isNotEmpty ? '${Tmdb.img}/w342${e['still_path']}' : null,
+              season: seasonNumber,
+              description: e['overview']?.toString(),
+              metaTitle: e['name']?.toString(),
+              rating: double.tryParse('${e['vote_average'] ?? ''}'),
+              runtimeMinutes: (e['runtime'] as num?)?.toInt(),
+            ),
+      ];
+    } catch (_) {
+      return const [];
     }
-    return const [];
   }
 
   Future<List<MediaItem>> discover({
