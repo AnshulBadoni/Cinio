@@ -18,6 +18,7 @@ class AdaptiveContentRow extends StatefulWidget {
     required this.onTap,
     required this.onLongPress,
     this.onSeeAll,
+    this.heroTagBuilder,
   });
 
   final String title;
@@ -25,6 +26,9 @@ class AdaptiveContentRow extends StatefulWidget {
   final void Function(MediaItem) onTap;
   final void Function(MediaItem) onLongPress;
   final VoidCallback? onSeeAll;
+
+  /// Optional unique Hero tag for long-press quick actions.
+  final String Function(MediaItem item, int index)? heroTagBuilder;
 
   @override
   State<AdaptiveContentRow> createState() => _AdaptiveContentRowState();
@@ -119,6 +123,7 @@ class _AdaptiveContentRowState extends State<AdaptiveContentRow> {
           qualityBadge: item.quality,
           dubBadge: item.dubBadge,
           onTap: () => widget.onTap(item),
+          heroTag: widget.heroTagBuilder?.call(item, index),
           onLongPress: () => widget.onLongPress(item),
         );
       },

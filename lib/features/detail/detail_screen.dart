@@ -1701,7 +1701,7 @@ class _DetailViewState extends State<_DetailView>
       child: CachedNetworkImage(
         imageUrl: logo,
         fit: BoxFit.contain,
-        alignment: Alignment.centerLeft,
+        alignment: Alignment.center,
         fadeInDuration: const Duration(milliseconds: 220),
         placeholder: (_, _) => SizedBox(
           height: 48,
@@ -1888,9 +1888,9 @@ class _DetailViewState extends State<_DetailView>
         SliverToBoxAdapter(
           child: RepaintBoundary(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   GestureDetector(
                     onTap: () => Navigator.of(context).push(
@@ -1899,17 +1899,20 @@ class _DetailViewState extends State<_DetailView>
                             SearchScreen(initialQuery: detail.title),
                       ),
                     ),
-                    child: _titleHeader(detail),
+                    child: Center(child: _titleHeader(detail)),
                   ),
                   if (metaLine.isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    Text(
-                      metaLine,
+                    Center(
+                      child: Text(
+                        metaLine,
                       style: AppText.body.copyWith(
                         color: AppColors.textSecondary,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                   ],
                 ],

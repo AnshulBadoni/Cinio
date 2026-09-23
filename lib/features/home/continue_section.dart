@@ -170,6 +170,7 @@ class _ContinueWatchingPosterCard extends StatelessWidget {
           headers: entry.coverHeaders,
           cellWidth: 140,
           qualityBadge: _episodeBadge(entry),
+          heroTag: 'continue-poster:${entry.sourceId}:${entry.showId}:${entry.episodeId}',
           onTap: onTap,
           onLongPress: onLongPress,
         ),

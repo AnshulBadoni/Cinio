@@ -1,4 +1,7 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:cached_network_image/cached_network_image.dart';
+
 import 'package:flutter/material.dart';
 
 import '../models/media_item.dart';
@@ -22,36 +25,36 @@ Future<void> showPosterQuickActions(
   bool inLibrary = false,
   bool watched = false,
 }) {
-  return showGeneralDialog<void>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: 'Poster actions',
-    barrierColor: Colors.black.withValues(alpha: 0.78),
-    transitionDuration: const Duration(milliseconds: 300),
-    pageBuilder: (context, _, _) => _PosterQuickActions(
-      item: item,
-      heroTag: heroTag,
-      onPlay: onPlay,
-      onMarkWatched: onMarkWatched,
-      onToggleLibrary: onToggleLibrary,
-      playLabel: playLabel,
-      initialInLibrary: inLibrary,
-      initialWatched: watched,
-    ),
-    transitionBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutBack,
-        reverseCurve: Curves.easeInCubic,
-      );
-      return FadeTransition(
-        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-        child: ScaleTransition(
-          scale: Tween<double>(begin: 0.94, end: 1).animate(curved),
+  return Navigator.of(context).push<void>(
+    PageRouteBuilder<void>(
+      opaque: false,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 320),
+      reverseTransitionDuration: const Duration(milliseconds: 240),
+      pageBuilder: (context, animation, secondaryAnimation) =>
+          _PosterQuickActions(
+        item: item,
+        heroTag: heroTag,
+        onPlay: onPlay,
+        onMarkWatched: onMarkWatched,
+        onToggleLibrary: onToggleLibrary,
+        playLabel: playLabel,
+        initialInLibrary: inLibrary,
+        initialWatched: watched,
+      ),
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
           child: child,
-        ),
-      );
-    },
+        );
+      },
+    ),
   );
 }
 
@@ -121,12 +124,27 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
     final maxPosterHeight = size.height * 0.43;
     final posterWidth = maxPosterHeight * 0.675;
 
-    return SafeArea(
-      child: Material(
-        color: Colors.transparent,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).pop(),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.62),
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: Column(

@@ -51,35 +51,32 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   Map<String, String>? thumbnailHeaders,
   String? heroTag,
 }) {
-  return showGeneralDialog<EpisodeAction>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: 'Episode actions',
-    barrierColor: Colors.transparent,
-    transitionDuration: const Duration(milliseconds: 280),
-    pageBuilder: (dialogContext, _, _) => _EpisodeQuickActions(
-      episodeLabel: episodeLabel,
-      currentPlayerLabel: currentPlayerLabel,
-      isWatched: isWatched,
-      tracksToServices: tracksToServices,
-      thumbnailUrl: thumbnailUrl,
-      thumbnailHeaders: thumbnailHeaders,
-      heroTag: heroTag,
+  return Navigator.of(context).push<EpisodeAction>(
+    PageRouteBuilder<EpisodeAction>(
+      opaque: false,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 320),
+      reverseTransitionDuration: const Duration(milliseconds: 240),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) =>
+          _EpisodeQuickActions(
+        episodeLabel: episodeLabel,
+        currentPlayerLabel: currentPlayerLabel,
+        isWatched: isWatched,
+        tracksToServices: tracksToServices,
+        thumbnailUrl: thumbnailUrl,
+        thumbnailHeaders: thumbnailHeaders,
+        heroTag: heroTag,
+      ),
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(opacity: curved, child: child);
+      },
     ),
-    transitionBuilder: (dialogContext, animation, _, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutBack,
-        reverseCurve: Curves.easeInCubic,
-      );
-      return FadeTransition(
-        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-        child: ScaleTransition(
-          scale: Tween<double>(begin: 0.94, end: 1).animate(curved),
-          child: child,
-        ),
-      );
-    },
   );
 }
 
@@ -139,9 +136,17 @@ class _EpisodeQuickActions extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: ColoredBox(color: Colors.black.withValues(alpha: 0.68)),
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).pop(),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.64),
+                ),
+              ),
+            ),
           ),
           SafeArea(
             child: Center(

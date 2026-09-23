@@ -49,6 +49,7 @@ import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/people_row.dart';
 import '../../core/ui/poster_card.dart';
+import '../../core/ui/poster_quick_actions.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../core/ui/states.dart';
@@ -351,7 +352,100 @@ class _HomeViewState extends State<_HomeView>
     ProviderType.novel => 'Novel',
   };
 
+  // ── Poster quick actions ─────────────────────────────────────────────────
+
+  Future<void> _showQuickActions(MediaItem item, String heroTag) async {
+    final history = sl<WatchHistory>()
+        .all()
+        .where((e) => e.sourceId == item.sourceId &&
+            (e.showId == item.url || e.showUrl == item.url))
+        .where((e) => !e.finished)
+        .fold<HistoryEntry?>(
+          null,
+          (best, e) => best == null || e.updatedAt > best.updatedAt ? e : best,
+        );
+    final watched = _listStatus.statusOf(item) == WatchStatus.completed;
+    final inLibrary = _myList.contains(item) || _listStatus.statusOf(item) != null;
+    final playLabel = history == null
+        ? null
+        : 'Resume ${((history.progress * 100).round()).clamp(1, 99)}%';
+
+    if (!mounted) return;
+    await showPosterQuickActions(
+      context,
+      item: item,
+      heroTag: heroTag,
+      playLabel: playLabel,
+      inLibrary: inLibrary,
+      watched: watched,
+      onPlay: () => _playFeatured(item),
+      onMarkWatched: () async {
+        if (!_myList.contains(item)) await _myList.add(item);
+        await _listStatus.setStatus(item, WatchStatus.completed);
+        await _myList.pushStatus(item);
+        if (mounted) setState(() {});
+      },
+      onToggleLibrary: () async {
+        await _myList.toggle(item);
+        if (!_myList.contains(item)) {
+          await _listStatus.remove(item);
+        }
+        if (mounted) setState(() {});
+        return _myList.contains(item);
+      },
+    );
+  }
+
+  String _posterHeroTag(HomeSection section, int index, MediaItem item) =>
+      'home-poster:${identityHashCode(section)}:$index:${item.sourceId}:${item.id}';
+
   // ── Info sheets ───────────────────────────────────────────────────────────
+
+  Future<void> _showContinueQuickActions(HistoryEntry entry) async {
+    final item = MediaItem(
+      id: entry.showId,
+      title: entry.showTitle,
+      url: entry.showUrl,
+      sourceId: entry.sourceId,
+      cover: entry.cover,
+      coverHeaders: entry.coverHeaders,
+      type: ProviderType.movie,
+      malId: entry.malId,
+      tmdbId: _tmdbIdFromHistory(entry),
+      tmdbIsTv: entry.sourceId == 'tmdb:catalog' && entry.showUrl.contains('/tv/'),
+    );
+    final heroTag =
+        'continue-poster:${entry.sourceId}:${entry.showId}:${entry.episodeId}';
+    final watched = _listStatus.statusOf(item) == WatchStatus.completed ||
+        entry.finished;
+    final inLibrary = _myList.contains(item) || _listStatus.statusOf(item) != null;
+    final playLabel = entry.finished
+        ? 'Watch Again'
+        : 'Resume ${((entry.progress * 100).round()).clamp(1, 99)}%';
+
+    if (!mounted) return;
+    await showPosterQuickActions(
+      context,
+      item: item,
+      heroTag: heroTag,
+      playLabel: playLabel,
+      inLibrary: inLibrary,
+      watched: watched,
+      onPlay: () => _resume(entry),
+      onMarkWatched: () async {
+        if (!_myList.contains(item)) await _myList.add(item);
+        await _listStatus.setStatus(item, WatchStatus.completed);
+        await _myList.pushStatus(item);
+        if (mounted) setState(() {});
+      },
+      onToggleLibrary: () async {
+        await _myList.toggle(item);
+        if (!_myList.contains(item)) await _listStatus.remove(item);
+        if (mounted) setState(() {});
+        return _myList.contains(item);
+      },
+    );
+  }
 
   void _showInfo(MediaItem item) {
     showMediaInfoSheet(
@@ -762,7 +856,11 @@ class _HomeViewState extends State<_HomeView>
       items: section.items,
       onSeeAll: () => _openSeeAll(section),
       onTap: _openDetail,
-      onLongPress: _showInfo,
+      onLongPress: (item) => _showQuickActions(
+        item,
+        _posterHeroTag(section, section.items.indexOf(item), item),
+      ),
+      heroTagBuilder: (item, index) => _posterHeroTag(section, index, item),
     );
   }
 
@@ -786,7 +884,8 @@ class _HomeViewState extends State<_HomeView>
             cellWidth: width,
             qualityBadge: item.quality,
             dubBadge: item.dubBadge,
-          completed: _listStatus.statusOf(item) == WatchStatus.completed,
+            heroTag: _posterHeroTag(section, i, item),
+            completed: _listStatus.statusOf(item) == WatchStatus.completed,
             onTap: () {
               if (item.sourceId == 'tpdb:studio') {
                 _openStudio(item);
@@ -794,7 +893,7 @@ class _HomeViewState extends State<_HomeView>
                 _openDetail(item, trailerContext: DetailTrailerContext.studio);
               }
             },
-            onLongPress: () => _showInfo(item),
+            onLongPress: () => _showQuickActions(item, _posterHeroTag(section, i, item)),
           ),
         );
       },
@@ -820,8 +919,9 @@ class _HomeViewState extends State<_HomeView>
           qualityBadge: item.quality,
           dubBadge: item.dubBadge,
           completed: _listStatus.statusOf(item) == WatchStatus.completed,
+          heroTag: _posterHeroTag(section, i, item),
           onTap: () => _openDetail(item),
-          onLongPress: () => _showInfo(item),
+          onLongPress: () => _showQuickActions(item, _posterHeroTag(section, i, item)),
         );
       },
     );
@@ -1192,7 +1292,7 @@ class _HomeScrollView extends StatelessWidget {
             ContinueSection(
               loggedIn: state.loggedIn,
               onResume: view._resume,
-              onLongPress: view._showContinueInfo,
+              onLongPress: view._showContinueQuickActions,
               onSeeAll: view._openHistory,
               onResumeReading: view._resumeReading,
               onLongPressReading: view._showContinueReadingInfo,
