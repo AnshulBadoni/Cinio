@@ -78,7 +78,7 @@ class _Hero extends StatelessWidget {
           width: 360,
         ),
         fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => const ColoredBox(color: AppColors.surface2),
+        errorBuilder: (_, _, _) => ColoredBox(color: AppColors.surface2),
       );
     }
     return CachedNetworkImage(
@@ -86,8 +86,8 @@ class _Hero extends StatelessWidget {
       httpHeaders: coverHeaders,
       fit: BoxFit.cover,
       memCacheWidth: 360,
-      placeholder: (_, _) => const ColoredBox(color: AppColors.surface2),
-      errorWidget: (_, _, _) => const ColoredBox(color: AppColors.surface2),
+      placeholder: (_, _) => ColoredBox(color: AppColors.surface2),
+      errorWidget: (_, _, _) => ColoredBox(color: AppColors.surface2),
     );
   }
 

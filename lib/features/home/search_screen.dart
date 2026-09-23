@@ -470,7 +470,7 @@ class _SearchViewState extends State<_SearchView>
           sourceId: resolved.sourceId,
           resumeEpisodeId: resumeEntry?.episodeId,
           resumeEpisodeNumber: resumeEntry?.episodeNumber,
-          resumePosition: resumeEntry?.position,
+          resumePosition: resumeEntry?.position ?? Duration.zero,
           episodesResolver: () =>
               _repo.episodes(resolved.url, sourceId: resolved.sourceId),
           resume: sl<ResumeStore>(),

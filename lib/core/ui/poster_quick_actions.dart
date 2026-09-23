@@ -28,7 +28,6 @@ Future<void> showPosterQuickActions(
     barrierLabel: 'Poster actions',
     barrierColor: Colors.black.withValues(alpha: 0.78),
     transitionDuration: const Duration(milliseconds: 300),
-    reverseTransitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (context, _, _) => _PosterQuickActions(
       item: item,
       heroTag: heroTag,
@@ -149,7 +148,7 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                                 placeholder: (_, _) => ColoredBox(color: AppColors.surface2),
                                 errorWidget: (_, _, _) => ColoredBox(color: AppColors.surface2),
                               )
-                            : const ColoredBox(color: AppColors.surface2),
+                            : ColoredBox(color: AppColors.surface2),
                       ),
                     ),
                   ),

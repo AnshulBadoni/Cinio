@@ -138,7 +138,7 @@ class _PosterCardState extends State<PosterCard> {
   Widget _posterImage(int? aniSrcId, int? mihonSrcId, int memW) {
     Widget image;
     if (widget.imageUrl == null) {
-      image = const ColoredBox(color: AppColors.surface2);
+      image = ColoredBox(color: AppColors.surface2);
     } else if (aniSrcId != null || mihonSrcId != null) {
       image = Image(
         image: ResizeImage(
@@ -150,9 +150,9 @@ class _PosterCardState extends State<PosterCard> {
         fit: BoxFit.cover,
         frameBuilder: imageFadeIn,
         loadingBuilder: (_, child, progress) =>
-            progress == null ? child : const ColoredBox(color: AppColors.surface2),
+            progress == null ? child : ColoredBox(color: AppColors.surface2),
         errorBuilder: (context, error, stackTrace) =>
-            const ColoredBox(color: AppColors.surface2),
+            ColoredBox(color: AppColors.surface2),
       );
     } else {
       image = CachedNetworkImage(
@@ -162,8 +162,8 @@ class _PosterCardState extends State<PosterCard> {
         memCacheWidth: memW,
         fit: BoxFit.cover,
         fadeInDuration: const Duration(milliseconds: 180),
-        placeholder: (context, url) => const ColoredBox(color: AppColors.surface2),
-        errorWidget: (context, url, err) => const ColoredBox(color: AppColors.surface2),
+        placeholder: (context, url) => ColoredBox(color: AppColors.surface2),
+        errorWidget: (context, url, err) => ColoredBox(color: AppColors.surface2),
       );
     }
     if (widget.heroTag == null) return image;

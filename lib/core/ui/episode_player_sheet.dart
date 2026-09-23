@@ -57,7 +57,6 @@ Future<EpisodeAction?> showEpisodeActionSheet(
     barrierLabel: 'Episode actions',
     barrierColor: Colors.transparent,
     transitionDuration: const Duration(milliseconds: 280),
-    reverseTransitionDuration: const Duration(milliseconds: 200),
     pageBuilder: (dialogContext, _, _) => _EpisodeQuickActions(
       episodeLabel: episodeLabel,
       currentPlayerLabel: currentPlayerLabel,
@@ -119,8 +118,8 @@ class _EpisodeQuickActions extends StatelessWidget {
                 httpHeaders: thumbnailHeaders,
                 fit: BoxFit.cover,
                 memCacheWidth: (width * MediaQuery.devicePixelRatioOf(context)).round(),
-                placeholder: (_, _) => const ColoredBox(color: AppColors.surface2),
-                errorWidget: (_, _, _) => const ColoredBox(color: AppColors.surface2),
+                placeholder: (_, _) => ColoredBox(color: AppColors.surface2),
+                errorWidget: (_, _, _) => ColoredBox(color: AppColors.surface2),
               ),
       ),
     );
