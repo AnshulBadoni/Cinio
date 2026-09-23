@@ -211,7 +211,9 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
           ),
         ),
       ),
-    );
+      ],
+    ),
+  );
   }
 }
 
