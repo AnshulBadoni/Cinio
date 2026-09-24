@@ -314,17 +314,10 @@ class TmdbDiscoverService {
             if (season is Map) (season['season_number'] as num?)?.toInt(),
         ].whereType<int>().where((n) => n > 0).toList();
 
-        // Load only the first season during initial navigation. Other seasons
-        // are fetched lazily when selected, so a long series cannot keep the
-        // detail page waiting through dozens of network requests.
-        final firstSeason = seasonNumbers.isNotEmpty ? seasonNumbers.first : 1;
-        episodes.addAll(await _loadTmdbSeason(id, firstSeason));
-        episodes.sort((a, b) {
-          final sa = a.season ?? 1, sb = b.season ?? 1;
-          final sn = sa.compareTo(sb);
-          return sn != 0 ? sn : (a.number ?? 0).compareTo(b.number ?? 0);
-        });
-
+        // Do not fetch episode lists as part of the metadata request. The
+        // detail page can render immediately, then the cubit loads the selected
+        // season in the background. This keeps slow episode endpoints from
+        // delaying first paint or making navigation look frozen.
         return MediaDetail(
           id: item.id, title: title, englishTitle: item.englishTitle,
           cover: poster == null ? item.cover : '${Tmdb.img}/w500$poster',

@@ -199,7 +199,7 @@ class DetailCubit extends Cubit<DetailState> {
     MediaDetail? detail;
     try {
       detail = await _loadDetailForCurrentSource(state.category)
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 20));
     } catch (_) {
       detail = null;
     }
@@ -213,6 +213,7 @@ class DetailCubit extends Cubit<DetailState> {
         extrasLoading: _sourceId == 'tmdb:catalog' || _sourceId == 'tpdb:catalog',
         clearError: true,
       ));
+      unawaited(selectSeason(state.selectedSeason));
       unawaited(() async {
         await Future<void>.delayed(const Duration(milliseconds: 350));
         if (!isClosed) await _enrich(detail!);
@@ -284,6 +285,7 @@ class DetailCubit extends Cubit<DetailState> {
         cast: detail.castMembers,
         relations: detail.relations,
       ));
+      unawaited(selectSeason(state.selectedSeason));
     } catch (_) {
       // Keep what's on screen — a failed pull shouldn't blank the page.
     }
@@ -449,8 +451,9 @@ class DetailCubit extends Cubit<DetailState> {
   final Set<int> _seasonLoads = <int>{};
 
   Future<void> selectSeason(int s) async {
-    if (s == state.selectedSeason) return;
-    emit(state.copyWith(selectedSeason: s));
+    if (s != state.selectedSeason) {
+      emit(state.copyWith(selectedSeason: s));
+    }
     final d = state.detail;
     if (d == null || !d.tmdbIsTv || d.tmdbId == null || d.sourceId != 'tmdb:catalog') {
       return;
@@ -462,13 +465,14 @@ class DetailCubit extends Cubit<DetailState> {
           .seasonEpisodes(d.tmdbId!, s)
           .timeout(const Duration(seconds: 10));
       if (isClosed || loaded.isEmpty) return;
-      final merged = <Episode>[...d.episodes, ...loaded]
+      final latest = state.detail ?? d;
+      final merged = <Episode>[...latest.episodes, ...loaded]
         ..sort((a, b) {
           final sa = a.season ?? 1, sb = b.season ?? 1;
           final bySeason = sa.compareTo(sb);
           return bySeason != 0 ? bySeason : (a.number ?? 0).compareTo(b.number ?? 0);
         });
-      emit(state.copyWith(detail: d.copyWith(episodes: merged)));
+      emit(state.copyWith(detail: latest.copyWith(episodes: merged)));
     } catch (_) {
       // Keep the season selector responsive if a season request fails.
     } finally {

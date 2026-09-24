@@ -305,7 +305,6 @@ class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
   static const double _expandedHeight = 350;
   bool _showAppBarTitle = false;
-  final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0);
   String? _titleLogoUrl;
   String? _titleLogoKey;
 
@@ -347,13 +346,25 @@ class _DetailViewState extends State<_DetailView>
   late WatchStatus? _status = _listStatus.statusOf(widget.item);
   late bool _inMyList = _status != null || _myList.contains(widget.item);
 
-  Future<TrailerSource?>? _trailerFuture;
   TrailerSource? _trailerSource;
   Timer? _trailerDelayTimer;
-  bool _heroTrailerReady = false;
+  String? _trailerDetailKey;
+  bool _trailerResolving = false;
+
+  void _scheduleTrailerResolution(MediaDetail detail) {
+    final key = '${detail.sourceId}:${detail.id}:${detail.title}:${detail.year ?? ''}';
+    if (_trailerDetailKey == key || _trailerResolving) return;
+    _trailerDetailKey = key;
+    _trailerDelayTimer?.cancel();
+    _trailerDelayTimer = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      _resolveTrailer(detail);
+    });
+  }
 
   void _resolveTrailer(MediaDetail detail) {
-    if (!_heroTrailerReady || _trailerFuture != null) return;
+    if (_trailerResolving) return;
+    _trailerResolving = true;
 
     var nsfwEnabled = false;
     try {
@@ -378,19 +389,28 @@ class _DetailViewState extends State<_DetailView>
       alternateContext = null;
     }
 
-    _trailerFuture = sl<TrailerService>().resolveTrailer(
-      title: detail.title,
-      englishTitle: detail.englishTitle,
-      type: detail.type,
-      year: detail.year,
-      alternateContext: alternateContext,
-      tpdbId: isTpdb ? widget.item.id : null,
-    )..then((source) {
-          if (!mounted) return;
-          if (source != null && source != _trailerSource) {
-            setState(() => _trailerSource = source);
-          }
-        });
+    unawaited(() async {
+      try {
+        final source = await sl<TrailerService>()
+            .resolveTrailer(
+              title: detail.title,
+              englishTitle: detail.englishTitle,
+              type: detail.type,
+              year: detail.year,
+              alternateContext: alternateContext,
+              tpdbId: isTpdb ? widget.item.id : null,
+            )
+            .timeout(const Duration(seconds: 10));
+        if (!mounted) return;
+        if (source != null && source != _trailerSource) {
+          setState(() => _trailerSource = source);
+        }
+      } catch (_) {
+        // Trailer lookup is optional; keep the static hero if it fails.
+      } finally {
+        _trailerResolving = false;
+      }
+    }());
   }
 
   @override
@@ -420,7 +440,6 @@ class _DetailViewState extends State<_DetailView>
     if (sl.isRegistered<DiscordRpc>()) sl<DiscordRpc>().setBrowsing();
     _trailerDelayTimer?.cancel();
     _scrollController.dispose();
-    _heroStretch.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -814,6 +833,8 @@ class _DetailViewState extends State<_DetailView>
           ? ep.thumbnail
           : (detail.cover ?? widget.item.cover),
       thumbnailHeaders: (detail.coverHeaders ?? widget.item.coverHeaders),
+      fallbackThumbnailUrl: detail.cover ?? widget.item.cover,
+      fallbackThumbnailHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
       rating: ep.rating,
       heroTag: 'episode-quick:${widget.item.sourceId}:${widget.item.id}:${ep.id}',
     );
@@ -1781,6 +1802,7 @@ class _DetailViewState extends State<_DetailView>
         if (!mounted) return;
         _ensureFiller(detail.malId ?? item.malId);
         _maybeFetchTrackerProgress(detail);
+        _scheduleTrailerResolution(detail);
       });
     }
 
@@ -1869,23 +1891,7 @@ class _DetailViewState extends State<_DetailView>
 
     final sourceName = _sourceLabel(item.sourceId);
 
-    return NotificationListener<OverscrollNotification>(
-      onNotification: (notification) {
-        if (notification.depth == 0 &&
-            notification.metrics.axis == Axis.vertical &&
-            notification.overscroll < 0 &&
-            notification.metrics.pixels <= 0) {
-          _heroStretch.value =
-              (_heroStretch.value - notification.overscroll).clamp(0.0, 140.0);
-        }
-        return false;
-      },
-      child: NotificationListener<ScrollEndNotification>(
-        onNotification: (_) {
-          _heroStretch.value = 0;
-          return false;
-        },
-        child: NestedScrollView(
+    return NestedScrollView(
           controller: _scrollController,
           physics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
@@ -1928,7 +1934,6 @@ class _DetailViewState extends State<_DetailView>
                 onTapFullscreen: _trailerSource != null
                     ? () => _openTrailer(_trailerSource!)
                     : null,
-                stretch: _heroStretch,
               ),
             ),
           ),
@@ -2292,8 +2297,6 @@ class _DetailViewState extends State<_DetailView>
             description: detail.description,
           ),
         ],
-      ),
-        ),
       ),
     );
   }

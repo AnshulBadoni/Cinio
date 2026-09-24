@@ -123,9 +123,10 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final maxPosterHeight = (size.height * 0.54).clamp(330.0, 760.0);
-
-    final posterWidth = maxPosterHeight * 0.675;
+    // Keep the focus artwork intentionally smaller than a detail hero. The
+    // long-press surface is an action palette, not a full-screen poster page.
+    final posterHeight = (size.height * 0.32).clamp(230.0, 440.0);
+    final posterWidth = posterHeight * 2 / 3;
 
     return Material(
       color: Colors.transparent,
@@ -135,125 +136,154 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
           if (widget.item.cover?.isNotEmpty == true)
             Positioned.fill(
               child: IgnorePointer(
-                child: Opacity(
-                  opacity: 0.18,
-                  child: Image(
-                    image: nativeCoverProvider(widget.item.cover!, widget.item.coverHeaders),
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.low,
+                child: ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                  child: Opacity(
+                    opacity: 0.12,
+                    child: Image(
+                      image: nativeCoverProvider(
+                        widget.item.cover!,
+                        widget.item.coverHeaders,
+                      ),
+                      fit: BoxFit.cover,
+                      filterQuality: FilterQuality.low,
+                    ),
                   ),
                 ),
               ),
             ),
           Positioned.fill(
-            child: AnimatedBuilder(
-              animation: ModalRoute.of(context)?.animation ?? kAlwaysCompleteAnimation,
-              builder: (context, _) {
-                final progress = (ModalRoute.of(context)?.animation?.value ?? 1.0)
-                    .clamp(0.0, 1.0);
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).pop(),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(
-                      sigmaX: 26 * progress,
-                      sigmaY: 26 * progress,
-                    ),
-                    child: ColoredBox(
-                      color: Colors.black.withValues(alpha: 0.20 * progress),
-                    ),
-                  ),
-                );
-              },
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).pop(),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.42),
+                ),
+              ),
             ),
           ),
           SafeArea(
             child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Hero(
-                    tag: widget.heroTag,
-                    createRectTween: (begin, end) => MaterialRectArcTween(begin: begin, end: end),
-                    flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
-                        direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: SizedBox(
-                        width: posterWidth,
-                        height: maxPosterHeight,
-                        child: widget.item.cover?.isNotEmpty == true
-                            ? Image(
-                                image: nativeCoverProvider(widget.item.cover!, widget.item.coverHeaders),
-                                fit: BoxFit.cover,
-                                gaplessPlayback: true,
-                                filterQuality: FilterQuality.high,
-                              )
-                            : ColoredBox(color: AppColors.surface2),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 30),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 430),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Hero(
+                        tag: widget.heroTag,
+                        createRectTween: (begin, end) =>
+                            MaterialRectArcTween(begin: begin, end: end),
+                        flightShuttleBuilder:
+                            (context, animation, direction, fromHero, toHero) =>
+                                direction == HeroFlightDirection.push
+                                    ? fromHero.widget
+                                    : toHero.widget,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: SizedBox(
+                            width: posterWidth,
+                            height: posterHeight,
+                            child: widget.item.cover?.isNotEmpty == true
+                                ? Image(
+                                    image: nativeCoverProvider(
+                                      widget.item.cover!,
+                                      widget.item.coverHeaders,
+                                    ),
+                                    fit: BoxFit.cover,
+                                    gaplessPlayback: true,
+                                    filterQuality: FilterQuality.high,
+                                    errorBuilder: (context, error, stackTrace) =>
+                                        const ColoredBox(color: AppColors.surface2),
+                                  )
+                                : const ColoredBox(color: AppColors.surface2),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 14),
+                      Text(
+                        widget.item.title,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.display.copyWith(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        [
+                          if (widget.item.year?.isNotEmpty == true)
+                            widget.item.year!,
+                          widget.item.tmdbIsTv ? 'Series' : 'Movie',
+                        ].join('  ·  '),
+                        textAlign: TextAlign.center,
+                        style: AppText.caption.copyWith(
+                          color: AppColors.textSecondary,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _QuickActionButton(
+                              icon: _watched
+                                  ? Icons.replay_rounded
+                                  : Icons.play_arrow_rounded,
+                              label: _playText,
+                              primary: true,
+                              compact: true,
+                              onTap: _play,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _QuickActionButton(
+                              icon: _watched
+                                  ? Icons.check_rounded
+                                  : Icons.done_all_rounded,
+                              label: 'Watched',
+                              compact: true,
+                              onTap: _markWatched,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _QuickActionButton(
+                              icon: _inLibrary
+                                  ? Icons.check_rounded
+                                  : Icons.add_rounded,
+                              label: _inLibrary ? 'In Library' : 'Library',
+                              compact: true,
+                              onTap: _toggleLibrary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_busy) ...[
+                        const SizedBox(height: 12),
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 18),
-                  Text(
-                    widget.item.title,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.display.copyWith(fontSize: 22),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    [
-                      if (widget.item.year?.isNotEmpty == true) widget.item.year!,
-                      widget.item.tmdbIsTv ? 'Series' : 'Movie',
-                    ].join('  ·  '),
-                    textAlign: TextAlign.center,
-                    style: AppText.caption.copyWith(
-                      color: AppColors.textSecondary,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _QuickActionButton(
-                    icon: _watched ? Icons.replay_rounded : Icons.play_arrow_rounded,
-                    label: _playText,
-                    primary: true,
-                    onTap: _play,
-                  ),
-                  const SizedBox(height: 8),
-                  _QuickActionButton(
-                    icon: _watched ? Icons.check_rounded : Icons.done_all_rounded,
-                    label: _watched ? 'Watched' : 'Mark as Watched',
-                    onTap: _markWatched,
-                  ),
-                  const SizedBox(height: 8),
-                  _QuickActionButton(
-                    icon: _inLibrary ? Icons.check_rounded : Icons.add_rounded,
-                    label: _inLibrary ? 'In Library' : 'Add to Library',
-                    onTap: _toggleLibrary,
-                  ),
-                  if (_busy) ...[
-                    const SizedBox(height: 12),
-                    const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ],
-                ],
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ),
-      ],
-    ),
-  );
+    );
   }
+
 }
 
 class _QuickActionButton extends StatelessWidget {
@@ -262,18 +292,20 @@ class _QuickActionButton extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.primary = false,
+    this.compact = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final bool primary;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: primary ? 84 : 72,
+      height: compact ? 54 : (primary ? 84 : 72),
       child: Material(
         color: primary ? Colors.white : AppColors.surface,
         borderRadius: BorderRadius.circular(primary ? 18 : 16),
@@ -281,15 +313,15 @@ class _QuickActionButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(primary ? 18 : 16),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 22),
+            padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 22),
             child: Row(
               children: [
                 Icon(
                   icon,
                   color: primary ? Colors.black : Colors.white,
-                  size: primary ? 25 : 23,
+                  size: compact ? 18 : (primary ? 25 : 23),
                 ),
-                const SizedBox(width: 18),
+                SizedBox(width: compact ? 6 : 18),
                 Expanded(
                   child: Text(
                     label,
@@ -297,7 +329,7 @@ class _QuickActionButton extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: AppText.button.copyWith(
                       color: primary ? Colors.black : Colors.white,
-                      fontSize: primary ? 18 : 17,
+                      fontSize: compact ? 11.5 : (primary ? 18 : 17),
                       fontWeight: FontWeight.w600,
                     ),
                   ),

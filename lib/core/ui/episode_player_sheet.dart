@@ -1,6 +1,5 @@
 import 'dart:ui' show ImageFilter;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/video_source.dart';
@@ -50,6 +49,8 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   required bool tracksToServices,
   String? thumbnailUrl,
   Map<String, String>? thumbnailHeaders,
+  String? fallbackThumbnailUrl,
+  Map<String, String>? fallbackThumbnailHeaders,
   double? rating,
   String? heroTag,
 }) async {
@@ -76,6 +77,8 @@ Future<EpisodeAction?> showEpisodeActionSheet(
         tracksToServices: tracksToServices,
         thumbnailUrl: thumbnailUrl,
         thumbnailHeaders: thumbnailHeaders,
+        fallbackThumbnailUrl: fallbackThumbnailUrl,
+        fallbackThumbnailHeaders: fallbackThumbnailHeaders,
         rating: rating,
         heroTag: heroTag,
       ),
@@ -99,6 +102,8 @@ class _EpisodeQuickActions extends StatelessWidget {
     required this.tracksToServices,
     this.thumbnailUrl,
     this.thumbnailHeaders,
+    this.fallbackThumbnailUrl,
+    this.fallbackThumbnailHeaders,
     this.rating,
     this.heroTag,
   });
@@ -109,8 +114,27 @@ class _EpisodeQuickActions extends StatelessWidget {
   final bool tracksToServices;
   final String? thumbnailUrl;
   final Map<String, String>? thumbnailHeaders;
+  final String? fallbackThumbnailUrl;
+  final Map<String, String>? fallbackThumbnailHeaders;
   final double? rating;
   final String? heroTag;
+
+  Widget _fallbackImage() {
+    if (fallbackThumbnailUrl == null || fallbackThumbnailUrl!.isEmpty) {
+      return const ColoredBox(color: AppColors.surface2);
+    }
+    return Image(
+      image: nativeCoverProvider(
+        fallbackThumbnailUrl!,
+        fallbackThumbnailHeaders,
+      ),
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.high,
+      errorBuilder: (context, error, stackTrace) =>
+          const ColoredBox(color: AppColors.surface2),
+    );
+  }
 
   Widget _thumbnail(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
@@ -122,12 +146,13 @@ class _EpisodeQuickActions extends StatelessWidget {
         width: width,
         height: height,
         child: thumbnailUrl == null || thumbnailUrl!.isEmpty
-            ? ColoredBox(color: AppColors.surface2)
+            ? _fallbackImage()
             : Image(
                 image: nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
                 filterQuality: FilterQuality.high,
+                errorBuilder: (context, error, stackTrace) => _fallbackImage(),
               ),
       ),
     );
@@ -184,15 +209,25 @@ class _EpisodeQuickActions extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
+          if ((thumbnailUrl != null && thumbnailUrl!.isNotEmpty) ||
+              (fallbackThumbnailUrl != null && fallbackThumbnailUrl!.isNotEmpty))
             Positioned.fill(
               child: IgnorePointer(
                 child: Opacity(
-                  opacity: 0.16,
+                  opacity: 0.11,
                   child: Image(
-                    image: nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
+                    image: nativeCoverProvider(
+                      (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
+                          ? thumbnailUrl!
+                          : fallbackThumbnailUrl!,
+                      (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
+                          ? thumbnailHeaders
+                          : fallbackThumbnailHeaders,
+                    ),
                     fit: BoxFit.cover,
                     filterQuality: FilterQuality.low,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const ColoredBox(color: AppColors.bg),
                   ),
                 ),
               ),

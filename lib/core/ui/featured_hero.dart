@@ -287,27 +287,33 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    if ((_logoUrl != null && _logoUrl!.isNotEmpty) || widget.item.heroImage?.isEmpty != false)
-                      GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onTap: widget.onInfo,
-                        child: SizedBox(
-                          height: 78,
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 180),
-                            switchInCurve: Curves.easeOutCubic,
-                            switchOutCurve: Curves.easeInCubic,
-                            child: KeyedSubtree(
-                              key: ValueKey(_logoUrl),
-                              child: CachedNetworkImage(
-                                imageUrl: _logoUrl!,
-                                fit: BoxFit.contain,
-                                fadeInDuration: const Duration(milliseconds: 140),
-                              ),
-                            ),
-                          ),
+                    GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: widget.onInfo,
+                      child: SizedBox(
+                        height: 78,
+                        width: double.infinity,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          child: (_logoUrl != null && _logoUrl!.isNotEmpty)
+                              ? KeyedSubtree(
+                                  key: const ValueKey('logo'),
+                                  child: CachedNetworkImage(
+                                    imageUrl: _logoUrl!,
+                                    fit: BoxFit.contain,
+                                    fadeInDuration: const Duration(milliseconds: 140),
+                                    errorWidget: (context, url, error) => _titleText(),
+                                  ),
+                                )
+                              : KeyedSubtree(
+                                  key: const ValueKey('text-title'),
+                                  child: _titleText(),
+                                ),
                         ),
                       ),
+                    ),
                     const SizedBox(height: 12),
                     SizedBox(height: 18, child: Center(child: _metaLine())),
                     const SizedBox(height: 18),

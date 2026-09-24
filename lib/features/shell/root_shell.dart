@@ -1,7 +1,6 @@
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/rendering.dart' show ScrollDirection;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -238,18 +237,21 @@ class _RootShellState extends State<RootShell>
           body: Builder(builder: (context) {
             final visible = _visibleTabs();
             final active = visible.indexOf(_tab);
-            return NotificationListener<UserScrollNotification>(
+            return NotificationListener<ScrollNotification>(
               onNotification: (notification) {
                 if (notification.depth != 0) return false;
-                if (notification.direction == ScrollDirection.reverse &&
-                    notification.metrics.pixels > 10 &&
-                    _dockCtrl.value < 0.995) {
-                  _dockCompact = true;
-                  _dockCtrl.animateTo(1.0, duration: const Duration(milliseconds: 520), curve: Curves.easeInOutCubic);
-                } else if (notification.direction == ScrollDirection.forward &&
-                    _dockCtrl.value > 0.005) {
-                  _dockCompact = false;
-                  _dockCtrl.animateTo(0.0, duration: const Duration(milliseconds: 560), curve: Curves.easeInOutCubic);
+
+                // The dock follows the user's finger instead of running its
+                // own timed expand/collapse animation. A positive scroll delta
+                // (moving down the page) compresses it; a negative delta
+                // (pulling back up) expands it immediately.
+                if (notification is ScrollUpdateNotification) {
+                  final delta = notification.scrollDelta ?? 0.0;
+                  if (delta.abs() > 0.01) {
+                    final next = (_dockCtrl.value + delta / 140.0).clamp(0.0, 1.0);
+                    _dockCtrl.value = next;
+                    _dockCompact = next > 0.5;
+                  }
                 }
                 return false;
               },
@@ -314,7 +316,13 @@ class _RootShellState extends State<RootShell>
 /// state change lives in the icon itself (deliberately not the Material
 /// pill/indicator look).
 class _FloatingDock extends StatelessWidget {
-  const _FloatingDock({required this.tabs, required this.active, required this.compact, required this.collapse, required this.onSelected});
+  const _FloatingDock({
+    required this.tabs,
+    required this.active,
+    required this.compact,
+    required this.collapse,
+    required this.onSelected,
+  });
 
   final List<DockTab> tabs;
   final DockTab active;
@@ -329,9 +337,12 @@ class _FloatingDock extends StatelessWidget {
     return AnimatedBuilder(
       animation: collapse,
       builder: (context, _) {
-        final t = Curves.easeInOutCubic.transform(collapse.value.clamp(0.0, 1.0));
-        final width = screenWidth * (0.90 - (0.30 * t));
-        final height = 72.0 - (14.0 * t);
+        // This value is directly driven by ScrollUpdateNotification. There is
+        // deliberately no duration/settling animation here: the glass dock
+        // should feel attached to the gesture, like a system surface.
+        final t = Curves.easeOutCubic.transform(collapse.value.clamp(0.0, 1.0));
+        final width = screenWidth * (0.92 - (0.30 * t));
+        final height = 72.0 - (12.0 * t);
         final radius = height / 2;
         return Align(
           alignment: Alignment.bottomCenter,
@@ -340,26 +351,88 @@ class _FloatingDock extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(radius),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
                 child: Container(
                   width: width,
                   height: height,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  clipBehavior: Clip.antiAlias,
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
                   decoration: BoxDecoration(
-                    color: const Color(0xD9151518),
                     borderRadius: BorderRadius.circular(radius),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.105),
+                        const Color(0xE00E0E10).withValues(alpha: 0.92),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.20),
+                      width: 0.8,
+                    ),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.42), blurRadius: 30, spreadRadius: 1, offset: const Offset(0, 10)),
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.48),
+                        blurRadius: 34,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 12),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.035),
+                        blurRadius: 8,
+                        spreadRadius: -2,
+                        offset: const Offset(0, -1),
+                      ),
                     ],
                   ),
-                  child: Row(
+                  child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      for (final tab in tabs)
-                        if (tab == DockTab.profile)
-                          _ProfileDockItem(selected: active == tab, onTap: () => onSelected(tab), collapse: collapse)
-                        else
-                          _DockItem(label: tab.label, glyph: null, icon: _iconFor(tab), selected: active == tab, onTap: () => onSelected(tab), collapse: collapse),
+                      // A thin specular wash at the top edge is what makes the
+                      // surface read as glass instead of a dark opaque pill.
+                      IgnorePointer(
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: FractionallySizedBox(
+                            widthFactor: 0.72,
+                            heightFactor: 0.34,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(999),
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.white.withValues(alpha: 0.075),
+                                    Colors.white.withValues(alpha: 0.0),
+                                  ],
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          for (final tab in tabs)
+                            if (tab == DockTab.profile)
+                              _ProfileDockItem(
+                                selected: active == tab,
+                                onTap: () => onSelected(tab),
+                                collapse: collapse,
+                              )
+                            else
+                              _DockItem(
+                                label: tab.label,
+                                glyph: null,
+                                icon: _iconFor(tab),
+                                selected: active == tab,
+                                onTap: () => onSelected(tab),
+                                collapse: collapse,
+                              ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -445,16 +518,26 @@ class _DockItem extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   SizedBox(height: 25, child: Center(child: _DockPop(selected: selected, child: glyph != null ? DockIcon(glyph!, color: color, filled: selected) : Icon(selected ? icon!.$2 : icon!.$1, color: color, size: 23)))),
-                  ClipRect(
-                    child: Align(
-                      heightFactor: labelOpacity,
+                  // Keep a fixed label slot and fade its contents instead of
+                  // changing the child's layout height. This prevents text
+                  // from escaping the capsule while the dock is being pinched
+                  // down by a scroll gesture.
+                  SizedBox(
+                    height: 14,
+                    child: ClipRect(
                       child: Opacity(
                         opacity: labelOpacity,
-                        child: SizedBox(
-                          height: 14,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(label, maxLines: 1, softWrap: false, style: TextStyle(fontSize: 10.5, color: color, fontWeight: selected ? FontWeight.w600 : FontWeight.w400)),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: color,
+                              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                            ),
                           ),
                         ),
                       ),
@@ -528,14 +611,14 @@ class _ProfileDockItem extends StatelessWidget {
                       ),
                     ),
                   ),
-                  ClipRect(
-                    child: Align(
-                      heightFactor: labelOpacity,
+                  SizedBox(
+                    height: 14,
+                    child: ClipRect(
                       child: Opacity(
                         opacity: labelOpacity,
-                        child: const SizedBox(
-                          height: 14,
-                          child: FittedBox(fit: BoxFit.scaleDown, child: Text('Profile', maxLines: 1, softWrap: false)),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: const Text('Profile', maxLines: 1, softWrap: false),
                         ),
                       ),
                     ),
