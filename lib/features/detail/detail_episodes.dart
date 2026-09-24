@@ -924,7 +924,14 @@ class _EpisodeGridTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        onLongPress: onLongPress,
+        onLongPress: onLongPress == null
+          ? null
+          : () {
+              if (thumbUrl.isNotEmpty) {
+                unawaited(precacheImage(nativeCoverProvider(thumbUrl, coverHeaders), context));
+              }
+              onLongPress!();
+            },
         child: Stack(
           children: [
             Center(
@@ -1259,6 +1266,9 @@ class _EpisodeRow extends StatelessWidget {
                     aspectRatio: 16 / 9,
                     child: Hero(
                       tag: quickActionHeroTag,
+                      createRectTween: (begin, end) => MaterialRectArcTween(begin: begin, end: end),
+                      flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
+                          direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
                       child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: Stack(

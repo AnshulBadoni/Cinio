@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -8,6 +10,7 @@ import '../playback/playback_prefs.dart';
 import 'image_fade.dart';
 import '../aniyomi/aniyomi_image_provider.dart';
 import '../mihon/mihon_image_provider.dart';
+import 'native_cover_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 
@@ -172,7 +175,13 @@ class _PosterCardState extends State<PosterCard> {
       );
     }
     if (widget.heroTag == null) return image;
-    return Hero(tag: widget.heroTag!, child: image);
+    return Hero(
+      tag: widget.heroTag!,
+      createRectTween: (begin, end) => MaterialRectArcTween(begin: begin, end: end),
+      flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
+          direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
+      child: image,
+    );
   }
 
   @override
@@ -191,7 +200,7 @@ class _PosterCardState extends State<PosterCard> {
     return RepaintBoundary(
       child: GestureDetector(
         onTap: widget.onTap,
-        onLongPress: widget.onLongPress,
+        onLongPress: widget.onLongPress == null ? null : _handleLongPress,
         onTapDown: interactive ? _handleTapDown : null,
         onTapUp: interactive ? _handleTapUp : null,
         onTapCancel: interactive ? _handleTapCancel : null,

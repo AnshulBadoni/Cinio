@@ -24,3 +24,12 @@ class CinioScrollBehavior extends MaterialScrollBehavior {
     );
   }
 }
+
+
+class CinioBounceOnlyScrollBehavior extends MaterialScrollBehavior {
+  const CinioBounceOnlyScrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) =>
+      const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics());
+}

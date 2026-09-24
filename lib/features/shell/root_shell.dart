@@ -67,6 +67,7 @@ class _RootShellState extends State<RootShell>
   /// Double-back-to-exit: timestamp of the last root Back press. A second Back
   /// within 2s exits the app; the first just shows the "press back again" toast.
   DateTime? _lastBackPress;
+  bool _dockCompact = false;
 
   /// Tab-switch entrance: the visible page swaps immediately and the INCOMING
   /// tab fades + slides up into place (200ms, ease-out). We never fade the old
@@ -227,9 +228,18 @@ class _RootShellState extends State<RootShell>
           body: Builder(builder: (context) {
             final visible = _visibleTabs();
             final active = visible.indexOf(_tab);
-            return AnimatedBuilder(
-            animation: _switch,
-            builder: (context, child) {
+            return NotificationListener<UserScrollNotification>(
+              onNotification: (notification) {
+                if (notification.direction == ScrollDirection.reverse && !_dockCompact) {
+                  setState(() => _dockCompact = true);
+                } else if (notification.direction == ScrollDirection.forward && _dockCompact) {
+                  setState(() => _dockCompact = false);
+                }
+                return false;
+              },
+              child: AnimatedBuilder(
+                animation: _switch,
+                builder: (context, child) {
               final v = _switch.value;
               // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
               return Opacity(
@@ -240,17 +250,18 @@ class _RootShellState extends State<RootShell>
                 ),
               );
             },
-            // RepaintBoundary → the page is a single cached layer the transition
-            // just composites (opacity + translate), so no repaint per frame.
-            child: RepaintBoundary(
+                // RepaintBoundary → the page is a single cached layer the transition
+                // just composites (opacity + translate), so no repaint per frame.
+                child: RepaintBoundary(
               child: IndexedStack(
                 // indexOf can be -1 for one frame if the mode flipped before
                 // the listener ran; clamp rather than throw.
                 index: active < 0 ? 0 : active,
                 children: _pagesFor(visible),
               ),
-            ),
-          );
+                ),
+              ),
+            );
           }),
           bottomNavigationBar: ValueListenableBuilder<bool>(
             valueListenable: dockHiddenBySection,
@@ -268,6 +279,7 @@ class _RootShellState extends State<RootShell>
                   child: _FloatingDock(
                     tabs: _visibleTabs(),
                     active: _tab,
+                    compact: _dockCompact,
                     onSelected: _onTabSelected,
                   ),
                 ),
@@ -288,6 +300,7 @@ class _FloatingDock extends StatelessWidget {
   const _FloatingDock({
     required this.tabs,
     required this.active,
+    required this.compact,
     required this.onSelected,
   });
 
@@ -295,6 +308,7 @@ class _FloatingDock extends StatelessWidget {
   /// content mode — the dock does no picking of its own any more.
   final List<DockTab> tabs;
   final DockTab active;
+  final bool compact;
   final ValueChanged<DockTab> onSelected;
 
   @override
@@ -307,14 +321,22 @@ class _FloatingDock extends StatelessWidget {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: compact ? 5 : 9),
             decoration: BoxDecoration(
-              // Light enough that content ghosts through even on dark
-              // screens (My List / Settings) — 0.75 read as a solid slab
-              // anywhere the page behind wasn't bright.
-              color: AppColors.surface.withValues(alpha: 0.55),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.white.withValues(alpha: compact ? 0.055 : 0.085),
+                  AppColors.surface.withValues(alpha: compact ? 0.60 : 0.52),
+                ],
+              ),
               borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+              border: Border.all(color: Colors.white.withValues(alpha: compact ? 0.08 : 0.11)),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.28), blurRadius: compact ? 22 : 30, offset: const Offset(0, 10)),
+                BoxShadow(color: Colors.white.withValues(alpha: 0.02), blurRadius: 12, offset: const Offset(0, -1)),
+              ],
             ),
             child: Row(
               children: [
@@ -323,6 +345,7 @@ class _FloatingDock extends StatelessWidget {
                     _ProfileDockItem(
                       selected: active == t,
                       onTap: () => onSelected(t),
+                      compact: compact,
                     )
                   else
                     _DockItem(
@@ -331,6 +354,7 @@ class _FloatingDock extends StatelessWidget {
                       icon: _iconFor(t),
                       selected: active == t,
                       onTap: () => onSelected(t),
+                      compact: compact,
                     ),
               ],
             ),
@@ -383,6 +407,7 @@ class _DockItem extends StatelessWidget {
     required this.icon,
     required this.selected,
     required this.onTap,
+    required this.compact,
   });
 
   final String label;
@@ -394,6 +419,7 @@ class _DockItem extends StatelessWidget {
   final (IconData, IconData)? icon;
   final bool selected;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -408,7 +434,7 @@ class _DockItem extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               SizedBox(
-                height: 25,
+                height: compact ? 21 : 25,
                 child: Center(
                   child: _DockPop(
                     selected: selected,
@@ -417,16 +443,16 @@ class _DockItem extends StatelessWidget {
                         : Icon(
                             selected ? icon!.$2 : icon!.$1,
                             color: color,
-                            size: 23,
+                            size: compact ? 20 : 23,
                           ),
                   ),
                 ),
               ),
-              const SizedBox(height: 3),
+              SizedBox(height: compact ? 1 : 3),
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: compact ? 9 : 10,
                   letterSpacing: 0.1,
                   color: color,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
@@ -444,10 +470,11 @@ class _DockItem extends StatelessWidget {
 /// active), a plain person glyph otherwise. Opens the same Settings screen
 /// the gear used to.
 class _ProfileDockItem extends StatelessWidget {
-  const _ProfileDockItem({required this.selected, required this.onTap});
+  const _ProfileDockItem({required this.selected, required this.onTap, required this.compact});
 
   final bool selected;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -462,7 +489,7 @@ class _ProfileDockItem extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               SizedBox(
-                height: 25,
+                height: compact ? 21 : 25,
                 child: Center(
                   child: _DockPop(
                     selected: selected,
@@ -476,8 +503,8 @@ class _ProfileDockItem extends StatelessWidget {
                               ? auth.displayName[0].toUpperCase()
                               : '?';
                           return Container(
-                            width: 24,
-                            height: 24,
+                            width: compact ? 22 : 24,
+                            height: compact ? 22 : 24,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: ring,
@@ -508,8 +535,8 @@ class _ProfileDockItem extends StatelessWidget {
                         }
                         // Signed out — quiet person glyph in a hairline circle.
                         return Container(
-                          width: 24,
-                          height: 24,
+                          width: compact ? 22 : 24,
+                          height: compact ? 22 : 24,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border:

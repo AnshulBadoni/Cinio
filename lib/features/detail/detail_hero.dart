@@ -8,6 +8,8 @@ part of 'detail_screen.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Hero extends StatelessWidget {
+  static final ValueNotifier<double> _zeroStretch = ValueNotifier<double>(0);
+
   const _Hero({
     required this.coverUrl,
     required this.coverHeaders,
@@ -15,6 +17,7 @@ class _Hero extends StatelessWidget {
     this.trailer,
     this.collapsed = false,
     this.onTapFullscreen,
+    this.stretch,
   });
 
   final String coverUrl;
@@ -29,6 +32,7 @@ class _Hero extends StatelessWidget {
 
   /// Opens the fullscreen trailer when the banner is tapped. Null disables it.
   final VoidCallback? onTapFullscreen;
+  final ValueListenable<double>? stretch;
 
   /// The static cover backdrop — used as the base layer when there's no
   /// trailer, and as the placeholder/fallback underneath the player.
@@ -75,14 +79,25 @@ class _Hero extends StatelessWidget {
         // Backdrop: autoplaying trailer once an id resolves, else the cover
         // image. The cover image always sits underneath as placeholder/fallback
         // so there's never a blank/black flash.
-        (trailer != null)
-            ? _HeroTrailer(
-                trailer: trailer!,
-                collapsed: collapsed,
-                onTapFullscreen: onTapFullscreen,
-                placeholder: _coverBackdrop(),
-              )
-            : _coverBackdrop(),
+        Positioned.fill(
+          child: ValueListenableBuilder<double>(
+            valueListenable: stretch ?? _zeroStretch,
+            builder: (context, overscroll, child) {
+              final scale = 1.0 + (overscroll / 420).clamp(0.0, 0.34);
+              return ClipRect(
+                child: Transform.scale(alignment: Alignment.topCenter, scale: scale, child: child),
+              );
+            },
+            child: (trailer != null)
+                ? _HeroTrailer(
+                    trailer: trailer!,
+                    collapsed: collapsed,
+                    onTapFullscreen: onTapFullscreen,
+                    placeholder: _coverBackdrop(),
+                  )
+                : _coverBackdrop(),
+          ),
+        ),
         // Gradients render OVER the video for title readability.
         IgnorePointer(
           child: DecoratedBox(

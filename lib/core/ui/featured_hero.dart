@@ -8,6 +8,7 @@ import 'package:palette_generator/palette_generator.dart';
 import '../di/injector.dart';
 import 'native_cover_provider.dart';
 import '../metadata/title_logo_service.dart';
+import '../metadata/tmdb_discover_service.dart';
 import '../models/media_item.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -39,6 +40,7 @@ class FeaturedHero extends StatefulWidget {
     this.wrapButton,
     this.reading = false,
     this.fullBleed = false,
+    this.stretch,
   });
 
   final MediaItem item;
@@ -53,6 +55,7 @@ class FeaturedHero extends StatefulWidget {
   /// Removes the inset card treatment and lets the artwork reach the screen
   /// edges. Used by the Home hero; other FeaturedHero callers stay unchanged.
   final bool fullBleed;
+  final ValueListenable<double>? stretch;
 
   final VoidCallback onPlay;
   final VoidCallback onInfo;
@@ -84,16 +87,19 @@ class FeaturedHero extends StatefulWidget {
 }
 
 class _FeaturedHeroState extends State<FeaturedHero> {
+  static final ValueNotifier<double> _zeroStretch = ValueNotifier<double>(0);
   // Cache extracted colours so swiping back doesn't recompute the palette.
   static final Map<String, Color> _paletteCache = {};
   Color? _artColor;
-  String? _logoUrl; // TMDB title logo (null → show the text title)
+  String? _logoUrl;
+  String? _heroPosterUrl;
 
   @override
   void initState() {
     super.initState();
     _loadPalette();
     _loadLogo();
+    _loadHeroPoster();
   }
 
   @override
@@ -104,11 +110,23 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       _logoUrl = null;
       _loadPalette();
       _loadLogo();
-      }
+      _loadHeroPoster();
+    }
   }
 
   /// Best-effort TMDB title-logo lookup; on a hit, swap the text title for the
   /// logo image. Stays as text until (and unless) a logo resolves.
+  Future<void> _loadHeroPoster() async {
+    final item = widget.item;
+    if (item.sourceId != 'tmdb:catalog' || item.tmdbId == null) return;
+    try {
+      final url = await sl<TmdbDiscoverService>().alternatePosterFor(item);
+      if (!mounted || url == null || url.isEmpty || url == item.cover) return;
+      setState(() => _heroPosterUrl = url);
+      try { await precacheImage(NetworkImage(url), context); } catch (_) {}
+    } catch (_) {}
+  }
+
   Future<void> _loadLogo() async {
     if (!sl.isRegistered<TitleLogoService>()) return;
     try {
@@ -157,7 +175,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final cover = item.cover;
+    final cover = _heroPosterUrl ?? item.cover;
     final hasCover = cover != null && cover.isNotEmpty;
     final tint = _artColor ?? AppColors.surface2;
 
@@ -221,15 +239,16 @@ class _FeaturedHeroState extends State<FeaturedHero> {
               ColoredBox(color: AppColors.bg),
               if (provider != null)
                 Positioned.fill(
-                  child: Image(
-                    image: provider,
-                    // Always use the fixed tall hero frame. Do not change the
-                    // layout based on the source artwork aspect ratio.
-                    fit: BoxFit.cover,
-                    alignment: const Alignment(0, -0.10),
-                    filterQuality: FilterQuality.high,
-                    frameBuilder: imageFadeIn,
-                    gaplessPlayback: true,
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: widget.stretch ?? _zeroStretch,
+                    builder: (context, overscroll, child) {
+                      final scale = 1.0 + (overscroll / 420).clamp(0.0, 0.34);
+                      return ClipRect(child: Transform.scale(alignment: Alignment.topCenter, scale: scale, child: child));
+                    },
+                    child: Image(
+                      image: provider, fit: BoxFit.cover, alignment: const Alignment(0, -0.10),
+                      filterQuality: FilterQuality.high, frameBuilder: imageFadeIn, gaplessPlayback: true,
+                    ),
                   ),
                 ),
 

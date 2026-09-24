@@ -8,6 +8,7 @@ import '../playback/external_player.dart';
 import '../playback/source_selection.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import 'native_cover_provider.dart';
 
 /// What a long-press on an episode chose: which player to open it in, this
 /// once. An empty [package] means the built-in player.
@@ -49,6 +50,7 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   required bool tracksToServices,
   String? thumbnailUrl,
   Map<String, String>? thumbnailHeaders,
+  double? rating,
   String? heroTag,
 }) {
   return Navigator.of(context).push<EpisodeAction>(
@@ -65,6 +67,7 @@ Future<EpisodeAction?> showEpisodeActionSheet(
         tracksToServices: tracksToServices,
         thumbnailUrl: thumbnailUrl,
         thumbnailHeaders: thumbnailHeaders,
+        rating: rating,
         heroTag: heroTag,
       ),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -87,6 +90,7 @@ class _EpisodeQuickActions extends StatelessWidget {
     required this.tracksToServices,
     this.thumbnailUrl,
     this.thumbnailHeaders,
+    this.rating,
     this.heroTag,
   });
 
@@ -96,29 +100,57 @@ class _EpisodeQuickActions extends StatelessWidget {
   final bool tracksToServices;
   final String? thumbnailUrl;
   final Map<String, String>? thumbnailHeaders;
+  final double? rating;
   final String? heroTag;
 
   Widget _thumbnail(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final width = (size.width * 0.72).clamp(260.0, 460.0);
     final height = width * 9 / 16;
-    final image = ClipRRect(
+    Widget image = ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: SizedBox(
         width: width,
         height: height,
         child: thumbnailUrl == null || thumbnailUrl!.isEmpty
             ? ColoredBox(color: AppColors.surface2)
-            : CachedNetworkImage(
-                imageUrl: thumbnailUrl!,
-                httpHeaders: thumbnailHeaders,
+            : Image(
+                image: nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
                 fit: BoxFit.cover,
-                memCacheWidth: (width * MediaQuery.devicePixelRatioOf(context)).round(),
-                placeholder: (_, _) => ColoredBox(color: AppColors.surface2),
-                errorWidget: (_, _, _) => ColoredBox(color: AppColors.surface2),
+                gaplessPlayback: true,
+                filterQuality: FilterQuality.high,
               ),
       ),
     );
+    if (rating != null) {
+      image = Stack(
+        fit: StackFit.expand,
+        children: [
+          image,
+          Positioned(
+            top: 8,
+            left: 8,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.72),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star_rounded, color: Color(0xFFFFC107), size: 13),
+                    const SizedBox(width: 3),
+                    Text(rating!.toStringAsFixed(1), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     if (heroTag == null) return image;
     return Hero(
       tag: heroTag!,
@@ -126,6 +158,7 @@ class _EpisodeQuickActions extends StatelessWidget {
         begin: begin,
         end: end,
       ),
+      flightShuttleBuilder: (context, animation, direction, fromHero, toHero) => direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
       child: image,
     );
   }

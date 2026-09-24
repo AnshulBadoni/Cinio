@@ -1,12 +1,12 @@
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
-
-import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:flutter/material.dart';
 
 import '../models/media_item.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import 'native_cover_provider.dart';
 
 /// Long-press action overlay for browse/discover posters.
 ///
@@ -25,6 +25,9 @@ Future<void> showPosterQuickActions(
   bool inLibrary = false,
   bool watched = false,
 }) {
+  if (item.cover != null && item.cover!.isNotEmpty) {
+    unawaited(precacheImage(nativeCoverProvider(item.cover!, item.coverHeaders), context));
+  }
   return Navigator.of(context).push<void>(
     PageRouteBuilder<void>(
       opaque: false,
@@ -161,23 +164,20 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                 children: [
                   Hero(
                     tag: widget.heroTag,
-                    createRectTween: (begin, end) => MaterialRectArcTween(
-                      begin: begin,
-                      end: end,
-                    ),
+                    createRectTween: (begin, end) => MaterialRectArcTween(begin: begin, end: end),
+                    flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
+                        direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(18),
                       child: SizedBox(
                         width: posterWidth,
                         height: maxPosterHeight,
                         child: widget.item.cover?.isNotEmpty == true
-                            ? CachedNetworkImage(
-                                imageUrl: widget.item.cover!,
-                                httpHeaders: widget.item.coverHeaders,
+                            ? Image(
+                                image: nativeCoverProvider(widget.item.cover!, widget.item.coverHeaders),
                                 fit: BoxFit.cover,
-                                memCacheWidth: (posterWidth * MediaQuery.devicePixelRatioOf(context)).round(),
-                                placeholder: (_, _) => ColoredBox(color: AppColors.surface2),
-                                errorWidget: (_, _, _) => ColoredBox(color: AppColors.surface2),
+                                gaplessPlayback: true,
+                                filterQuality: FilterQuality.high,
                               )
                             : ColoredBox(color: AppColors.surface2),
                       ),

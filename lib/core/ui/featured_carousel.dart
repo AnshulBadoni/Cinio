@@ -40,6 +40,7 @@ class FeaturedCarousel extends StatefulWidget {
     this.style = HeroTransition.parallax,
     this.reading = false,
     this.fullBleed = false,
+    this.stretch,
   });
 
   final List<MediaItem> items;
@@ -63,6 +64,7 @@ class FeaturedCarousel extends StatefulWidget {
   /// Full-width hero presentation for Home. Kept opt-in so other callers can
   /// retain their existing presentation.
   final bool fullBleed;
+  final ValueListenable<double>? stretch;
 
   @override
   State<FeaturedCarousel> createState() => _FeaturedCarouselState();
@@ -168,6 +170,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
         kenBurns: kenBurns,
         reading: widget.reading,
         fullBleed: widget.fullBleed,
+        stretch: widget.stretch,
       );
 
   /// The pager — cinematic cross-fade (A) or parallax slide (B).

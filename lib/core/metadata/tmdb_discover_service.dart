@@ -367,6 +367,31 @@ class TmdbDiscoverService {
     );
   }
 
+  Future<String?> alternatePosterFor(MediaItem item) async {
+    final id = item.tmdbId;
+    if (id == null || item.sourceId != 'tmdb:catalog') return null;
+    final kind = item.tmdbIsTv ? 'tv' : 'movie';
+    try {
+      final response = await _dio.get<dynamic>('${Tmdb.base}/$kind/$id/images', queryParameters: {'include_image_language': 'en,null'}, options: Options(receiveTimeout: const Duration(seconds: 8), sendTimeout: const Duration(seconds: 8)));
+      final rows = response.data is Map ? response.data['posters'] : null;
+      if (rows is! List || rows.length < 2) return null;
+      final posters = [for (final row in rows) if (row is Map) row];
+      final primaryPath = item.cover == null ? null : Uri.tryParse(item.cover!)?.pathSegments.last;
+      posters.removeWhere((p) => primaryPath != null && p['file_path'] == '/$primaryPath');
+      if (posters.isEmpty) return null;
+      posters.sort((a,b) {
+        final an = a['iso_639_1'] == null ? 1 : 0;
+        final bn = b['iso_639_1'] == null ? 1 : 0;
+        if (an != bn) return bn.compareTo(an);
+        final av = (a['vote_average'] as num?)?.toDouble() ?? 0;
+        final bv = (b['vote_average'] as num?)?.toDouble() ?? 0;
+        return bv.compareTo(av);
+      });
+      final path = posters.first['file_path']?.toString();
+      return path == null || path.isEmpty ? null : '${Tmdb.img}/w780$path';
+    } catch (_) { return null; }
+  }
+
   Future<List<Episode>> _loadTmdbSeason(int id, int seasonNumber) async {
     try {
       final response = await _dio.get<dynamic>(

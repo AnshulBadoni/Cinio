@@ -667,7 +667,7 @@ class _SearchViewState extends State<_SearchView>
   // ── Discover header ───────────────────────────────────────────────────────
   Widget _discoverHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 14, 32, 0),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -681,16 +681,16 @@ class _SearchViewState extends State<_SearchView>
                     Text(
                       'Discover',
                       style: AppText.display.copyWith(
-                        fontSize: 40,
+                        fontSize: 32,
                         fontWeight: FontWeight.w800,
                         height: 1.0,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Text(
                       'Movies, shows and more for you',
                       style: AppText.body.copyWith(
-                        fontSize: 17,
+                        fontSize: 14,
                         color: AppColors.textSecondary,
                       ),
                     ),
@@ -701,7 +701,7 @@ class _SearchViewState extends State<_SearchView>
               _discoverFilterButton(),
             ],
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 18),
           _discoverSearchField(),
           const SizedBox(height: 18),
           _discoverFilterChips(),
@@ -726,8 +726,8 @@ class _SearchViewState extends State<_SearchView>
               sl<SearchSourcePrefs>().excluded.isNotEmpty;
           final count = state.activeFilterCount + (excluded ? 1 : 0);
           return SizedBox(
-            width: 58,
-            height: 58,
+            width: 48,
+            height: 48,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -740,9 +740,9 @@ class _SearchViewState extends State<_SearchView>
                     customBorder: const CircleBorder(),
                     onTap: () => _openFilterSheet(context),
                     child: const SizedBox(
-                      width: 58,
-                      height: 58,
-                      child: Icon(Icons.tune_rounded, size: 25),
+                      width: 48,
+                      height: 48,
+                      child: Icon(Icons.tune_rounded, size: 22),
                     ),
                   ),
                 ),
@@ -780,16 +780,16 @@ class _SearchViewState extends State<_SearchView>
 
   Widget _discoverSearchField() {
     return Container(
-      height: 58,
+      height: 54,
       decoration: BoxDecoration(
         color: AppColors.surface2,
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(27),
         border: Border.all(color: AppColors.hairline),
       ),
       child: Row(
         children: [
-          const SizedBox(width: 18),
-          const Icon(Icons.search_rounded, size: 25, color: AppColors.textSecondary),
+          const SizedBox(width: 16),
+          const Icon(Icons.search_rounded, size: 22, color: AppColors.textSecondary),
           const SizedBox(width: 14),
           Expanded(
             child: TextField(
@@ -878,7 +878,7 @@ class _SearchViewState extends State<_SearchView>
           child: Row(
             children: [
               for (var i = 0; i < chips.length; i++) ...[
-                if (i > 0) const SizedBox(width: 10),
+                if (i > 0) const SizedBox(width: 8),
                 chips[i],
               ],
             ],
@@ -902,11 +902,11 @@ class _SearchViewState extends State<_SearchView>
         customBorder: const StadiumBorder(),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
           child: Text(
             label,
             style: AppText.body.copyWith(
-              fontSize: 14.5,
+              fontSize: 13.5,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
               color: selected ? Colors.white : AppColors.textSecondary,
             ),
@@ -1998,17 +1998,17 @@ class _SearchViewState extends State<_SearchView>
     return GridView.builder(
       controller: _discoverScrollController,
       padding: EdgeInsets.fromLTRB(
-        32,
-        14,
-        32,
+        16,
+        10,
+        16,
         24 + MediaQuery.paddingOf(context).bottom,
       ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _searchGridColumns,
-        childAspectRatio: 0.60,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 18,
+        childAspectRatio: 0.67,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 16,
       ),
       itemCount: items.length +
           (state.discoverLoadingMore ? _searchGridColumns : 0),

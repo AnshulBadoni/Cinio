@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/ui/jump_prompt.dart';
+import '../../core/ui/native_cover_provider.dart';
 import '../../core/util/title_matcher.dart';
 import '../../core/app_mode.dart';
 import '../../core/cache/app_image_cache.dart';
@@ -323,6 +324,7 @@ class _DetailViewState extends State<_DetailView>
 
   late final ScrollController _scrollController = ScrollController()
     ..addListener(_onScroll);
+  final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0);
 
   late TabController _tabController;
   bool _tabShowsEpisodes = true;
@@ -410,6 +412,7 @@ class _DetailViewState extends State<_DetailView>
   @override
   void dispose() {
     if (sl.isRegistered<DiscordRpc>()) sl<DiscordRpc>().setBrowsing();
+    _heroStretch.dispose();
     _scrollController.dispose();
     _tabController.dispose();
     super.dispose();
@@ -797,6 +800,7 @@ class _DetailViewState extends State<_DetailView>
           ? ep.thumbnail
           : (detail.cover ?? widget.item.cover),
       thumbnailHeaders: (detail.coverHeaders ?? widget.item.coverHeaders),
+      rating: ep.rating,
       heroTag: 'episode-quick:${widget.item.sourceId}:${widget.item.id}:${ep.id}',
     );
     if (action == null || !mounted) return;
@@ -1706,7 +1710,7 @@ class _DetailViewState extends State<_DetailView>
         placeholder: (_, _) => SizedBox(
           height: 48,
           child: Align(
-            alignment: Alignment.centerLeft,
+            alignment: Alignment.center,
             child: Text(
               detail.title,
               style: AppText.display.copyWith(fontSize: 30),
@@ -1835,8 +1839,19 @@ class _DetailViewState extends State<_DetailView>
 
     final sourceName = _sourceLabel(item.sourceId);
 
-    return NestedScrollView(
-        controller: _scrollController,
+    return ScrollConfiguration(
+      behavior: const CinioBounceOnlyScrollBehavior(),
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) return false;
+          final overscroll = notification.metrics.pixels < notification.metrics.minScrollExtent
+              ? notification.metrics.minScrollExtent - notification.metrics.pixels
+              : (notification is OverscrollNotification && notification.overscroll < 0 ? -notification.overscroll : 0.0);
+          _heroStretch.value = overscroll.clamp(0.0, 140.0);
+          return false;
+        },
+        child: NestedScrollView(
+          controller: _scrollController,
         physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
         ),
@@ -1865,7 +1880,6 @@ class _DetailViewState extends State<_DetailView>
           flexibleSpace: FlexibleSpaceBar(
             collapseMode: CollapseMode.parallax,
             stretchModes: const [
-              StretchMode.zoomBackground,
               StretchMode.fadeTitle,
             ],
             background: RepaintBoundary(
@@ -1875,6 +1889,7 @@ class _DetailViewState extends State<_DetailView>
                 hasCover: hasCover,
                 trailer: _trailerSource,
                 collapsed: _showAppBarTitle,
+                stretch: _heroStretch,
                 onTapFullscreen: _trailerSource != null
                     ? () => _openTrailer(_trailerSource!)
                     : null,
@@ -2239,6 +2254,8 @@ class _DetailViewState extends State<_DetailView>
             description: detail.description,
           ),
         ],
+          ),
+        ),
       ),
     );
   }

@@ -138,6 +138,7 @@ class _HomeView extends StatefulWidget {
 
 class _HomeViewState extends State<_HomeView>
     with SingleTickerProviderStateMixin {
+  final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0);
   // Cached services (avoid repeated SL lookups on hot paths).
   final SourceRepository _repo = sl<SourceRepository>();
   final MyListStore _myList = sl<MyListStore>();
@@ -199,6 +200,7 @@ class _HomeViewState extends State<_HomeView>
 
   @override
   void dispose() {
+    _heroStretch.dispose();
     _slashCtrl.dispose();
     super.dispose();
   }
@@ -1207,7 +1209,7 @@ class _HomeViewState extends State<_HomeView>
             RefreshIndicator(
               color: AppColors.accent,
               onRefresh: () => context.read<HomeCubit>().load(),
-              child: const _HomeScrollView(),
+              child: _HomeScrollView(heroStretch: _heroStretch),
             ),
             if (_slashing) _SlashOverlay(controller: _slashCtrl),
           ],
@@ -1222,7 +1224,9 @@ class _HomeViewState extends State<_HomeView>
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _HomeScrollView extends StatelessWidget {
-  const _HomeScrollView();
+  const _HomeScrollView({required this.heroStretch});
+
+  final ValueNotifier<double> heroStretch;
 
   @override
   Widget build(BuildContext context) {
@@ -1263,14 +1267,26 @@ class _HomeScrollView extends StatelessWidget {
         final showSourceSwitcher = !noSourceForMode;
         final cardStyle = view._prefs.homeCardStyle;
 
-        return CustomScrollView(
-          slivers: [
+        return ScrollConfiguration(
+          behavior: const CinioBounceOnlyScrollBehavior(),
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) return false;
+              final overscroll = notification.metrics.pixels < notification.metrics.minScrollExtent
+                  ? notification.metrics.minScrollExtent - notification.metrics.pixels
+                  : (notification is OverscrollNotification && notification.overscroll < 0 ? -notification.overscroll : 0.0);
+              heroStretch.value = overscroll.clamp(0.0, 140.0);
+              return false;
+            },
+            child: CustomScrollView(
+              slivers: [
             SliverToBoxAdapter(
               child: _HeaderSection(
                 heroItems: homeState.heroItems,
                 noSourceForMode: noSourceForMode,
                 activeSourceValid: activeSourceValid,
                 showSourceSwitcher: showSourceSwitcher,
+                heroStretch: heroStretch,
               ),
             ),
             if (noSourceForMode)
@@ -1363,7 +1379,9 @@ class _HomeScrollView extends StatelessWidget {
                 height: 24 + MediaQuery.paddingOf(context).bottom,
               ),
             ),
-          ],
+              ],
+            ),
+          ),
         );
       },
     );
@@ -1380,12 +1398,14 @@ class _HeaderSection extends StatelessWidget {
     required this.noSourceForMode,
     required this.activeSourceValid,
     required this.showSourceSwitcher,
+    required this.heroStretch,
   });
 
   final List<MediaItem> heroItems;
   final bool noSourceForMode;
   final bool activeSourceValid;
   final bool showSourceSwitcher;
+  final ValueNotifier<double> heroStretch;
 
   @override
   Widget build(BuildContext context) {
@@ -1413,6 +1433,7 @@ class _HeaderSection extends StatelessWidget {
             meta: view._heroMeta,
             style: HeroTransition.cinematic,
             fullBleed: true,
+            stretch: heroStretch,
           ),
           Positioned(
             top: MediaQuery.paddingOf(context).top + 10,

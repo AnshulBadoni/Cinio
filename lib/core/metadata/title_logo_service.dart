@@ -136,18 +136,18 @@ class TitleLogoService {
     );
     final logos = (imgs.data is Map) ? imgs.data['logos'] : null;
     if (logos is! List || logos.isEmpty) return null;
-    // Prefer an English logo; else the first available.
-    Map<dynamic, dynamic>? best;
-    for (final l in logos) {
-      if (l is! Map) continue;
-      if (l['iso_639_1'] == 'en') {
-        best = l;
-        break;
-      }
-      best ??= l;
-    }
-    final path = best?['file_path'] as String?;
+    final candidates = [for (final l in logos) if (l is Map) l];
+    candidates.sort((a, b) {
+      int languageScore(Map m) => m['iso_639_1'] == 'en' ? 3 : (m['iso_639_1'] == null ? 2 : 1);
+      final language = languageScore(b).compareTo(languageScore(a));
+      if (language != 0) return language;
+      final av = (a['vote_average'] as num?)?.toDouble() ?? 0;
+      final bv = (b['vote_average'] as num?)?.toDouble() ?? 0;
+      if (av != bv) return bv.compareTo(av);
+      return ((b['width'] as num?)?.toInt() ?? 0).compareTo((a['width'] as num?)?.toInt() ?? 0);
+    });
+    final path = candidates.isEmpty ? null : candidates.first['file_path'] as String?;
     if (path == null || path.isEmpty) return null;
-    return '${Tmdb.img}/w500$path';
+    return '${Tmdb.img}/w780$path';
   }
 }
