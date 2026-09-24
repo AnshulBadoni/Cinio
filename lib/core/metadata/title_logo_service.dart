@@ -66,6 +66,7 @@ class TitleLogoService {
     required String title,
     int? tmdbId,
     bool isTv = false,
+    String? year,
     String sourceId = 'tmdb:logo',
   }) async {
     final item = MediaItem(
@@ -73,6 +74,7 @@ class TitleLogoService {
       title: title,
       tmdbId: tmdbId,
       tmdbIsTv: isTv,
+      year: year,
       url: '',
       type: ProviderType.movie,
       sourceId: sourceId,
@@ -82,8 +84,8 @@ class TitleLogoService {
 
   Future<String?> logoFor(MediaItem item) async {
     final key = item.tmdbId != null
-        ? 'v3:id:${item.tmdbId}:${item.tmdbIsTv}'
-        : 'v3:q:${item.sourceId}:${(item.englishTitle ?? item.title).toLowerCase()}';
+        ? 'v4:id:${item.tmdbId}:${item.tmdbIsTv}'
+        : 'v4:q:${item.sourceId}:${(item.englishTitle ?? item.title).toLowerCase()}:${item.year ?? ''}';
 
     final cached = _mem[key] ?? _box.get(key);
     if (cached != null) {
@@ -136,35 +138,43 @@ class TitleLogoService {
     if (id == null) {
       final q = (item.englishTitle ?? item.title).trim();
       if (q.isEmpty) return null;
-      final s = await _dio.get<dynamic>(
-        '${Tmdb.base}/search/multi',
-        queryParameters: {'query': q},
-        options: Options(validateStatus: (c) => c != null && c < 500),
-      );
-      final results = (s.data is Map) ? s.data['results'] : null;
-      if (results is! List) return null;
 
-      // TPDB titles frequently have names that are unrelated to TMDB's
-      // catalogue. Never take TMDB's first search result for a TPDB title:
-      // that can put the wrong franchise logo on an adult title. Only accept
-      // a very strong title match.
       final wanted = _normaliseTitle(q);
       Map? best;
       var bestScore = 0.0;
-      for (final r in results) {
-        if (r is! Map) continue;
-        final mt = r['media_type'];
-        if (mt != 'movie' && mt != 'tv') continue;
-        final candidate = (r['title'] ?? r['name'])?.toString() ?? '';
-        final score = _titleSimilarity(wanted, _normaliseTitle(candidate));
-        if (score > bestScore) {
-          bestScore = score;
-          best = r;
+
+      Future<void> collect(String kind) async {
+        final params = <String, dynamic>{'query': q};
+        final parsedYear = int.tryParse((item.year ?? '').trim());
+        if (item.sourceId.startsWith('tpdb:') && parsedYear != null) {
+          params[kind == 'tv' ? 'first_air_date_year' : 'year'] = parsedYear;
         }
+        try {
+          final response = await _dio.get<dynamic>(
+            '${Tmdb.base}/search/$kind',
+            queryParameters: params,
+            options: Options(validateStatus: (c) => c != null && c < 500),
+          );
+          final results = response.data is Map ? response.data['results'] : null;
+          if (results is! List) return;
+          for (final r in results) {
+            if (r is! Map) continue;
+            final candidate = (r['title'] ?? r['name'])?.toString() ?? '';
+            final score = _titleSimilarity(wanted, _normaliseTitle(candidate));
+            if (score > bestScore) {
+              bestScore = score;
+              best = r;
+              best = {...r, 'media_type': kind};
+            }
+          }
+        } catch (_) {}
       }
-      // For TPDB we require an exact/near-exact title match. For the other
-      // catalogues keep the same forgiving behaviour as before, but still
-      // prefer the strongest result rather than an arbitrary first result.
+
+      // TPDB titles are overwhelmingly movies/series with names that can be
+      // matched more reliably when movie and TV search are scored separately.
+      // Running the two small searches in parallel keeps this from becoming a
+      // serial source of UI latency.
+      await Future.wait([collect('movie'), collect('tv')]);
       final threshold = item.sourceId.startsWith('tpdb:') ? 0.88 : 0.62;
       if (best == null || bestScore < threshold) return null;
       id = (best['id'] as num?)?.toInt();

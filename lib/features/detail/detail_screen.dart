@@ -305,6 +305,7 @@ class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
   static const double _expandedHeight = 350;
   bool _showAppBarTitle = false;
+  final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0);
   String? _titleLogoUrl;
   String? _titleLogoKey;
 
@@ -423,6 +424,7 @@ class _DetailViewState extends State<_DetailView>
     if (sl.isRegistered<DiscordRpc>()) sl<DiscordRpc>().setBrowsing();
     _trailerDelayTimer?.cancel();
     _scrollController.dispose();
+    _heroStretch.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -473,6 +475,7 @@ class _DetailViewState extends State<_DetailView>
           title: detail.title,
           tmdbId: tmdbId,
           isTv: isTv,
+          year: detail.year,
           sourceId: widget.item.sourceId,
         )
         .then((url) {
@@ -1803,8 +1806,9 @@ class _DetailViewState extends State<_DetailView>
                 : (_isInCinema(detail) ? 'In Cinema' : 'Play')));
 
     final coverUrl = detail.cover ?? item.cover ?? '';
+    final heroCoverUrl = item.heroImage ?? coverUrl;
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
-    final hasCover = coverUrl.isNotEmpty;
+    final hasCover = heroCoverUrl.isNotEmpty;
 
     _resolveTrailer(detail);
 
@@ -1862,12 +1866,27 @@ class _DetailViewState extends State<_DetailView>
 
     final sourceName = _sourceLabel(item.sourceId);
 
-    return NestedScrollView(
+    return NotificationListener<OverscrollNotification>(
+      onNotification: (notification) {
+        if (notification.depth == 0 &&
+                  notification.overscroll > 0 &&
+                  notification.metrics.pixels <= 0) {
+          _heroStretch.value =
+              (_heroStretch.value + notification.overscroll).clamp(0.0, 140.0);
+        }
+        return false;
+      },
+      child: NotificationListener<ScrollEndNotification>(
+        onNotification: (_) {
+          _heroStretch.value = 0;
+          return false;
+        },
+        child: NestedScrollView(
           controller: _scrollController,
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
-      headerSliverBuilder: (context, _) => [
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          headerSliverBuilder: (context, _) => [
         SliverAppBar(
           expandedHeight: _expandedHeight,
           pinned: true,
@@ -1897,7 +1916,7 @@ class _DetailViewState extends State<_DetailView>
             ],
             background: RepaintBoundary(
               child: _Hero(
-                coverUrl: coverUrl,
+                coverUrl: heroCoverUrl,
                 coverHeaders: coverHeaders,
                 hasCover: hasCover,
                 trailer: _trailerSource,
@@ -1905,6 +1924,7 @@ class _DetailViewState extends State<_DetailView>
                 onTapFullscreen: _trailerSource != null
                     ? () => _openTrailer(_trailerSource!)
                     : null,
+                stretch: _heroStretch,
               ),
             ),
           ),
@@ -2266,6 +2286,8 @@ class _DetailViewState extends State<_DetailView>
             description: detail.description,
           ),
         ],
+      ),
+        ),
       ),
     );
   }

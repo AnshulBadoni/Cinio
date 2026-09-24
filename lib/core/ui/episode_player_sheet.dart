@@ -175,6 +175,19 @@ class _EpisodeQuickActions extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
+          if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: 0.16,
+                  child: Image(
+                    image: nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.low,
+                  ),
+                ),
+              ),
+            ),
           Positioned.fill(
             child: AnimatedBuilder(
               animation: ModalRoute.of(context)?.animation ?? kAlwaysCompleteAnimation,
@@ -186,11 +199,11 @@ class _EpisodeQuickActions extends StatelessWidget {
                   onTap: () => Navigator.of(context).pop(),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(
-                      sigmaX: 14 * progress,
-                      sigmaY: 14 * progress,
+                      sigmaX: 26 * progress,
+                      sigmaY: 26 * progress,
                     ),
                     child: ColoredBox(
-                      color: Colors.black.withValues(alpha: 0.64 * progress),
+                      color: AppColors.bg.withValues(alpha: 0.34 * progress),
                     ),
                   ),
                 );

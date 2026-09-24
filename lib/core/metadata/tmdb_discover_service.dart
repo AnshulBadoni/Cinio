@@ -725,6 +725,7 @@ class TmdbDiscoverService {
     final title = (isTv ? row['name'] : row['title'])?.toString().trim();
     if (title == null || title.isEmpty) return;
     final coverPath = row['poster_path']?.toString();
+    final backdropPath = row['backdrop_path']?.toString();
     final genreNames = <String>[];
     final ids = (row['genre_ids'] as List?)?.whereType<num>().map((e) => e.toInt()) ?? const <int>[];
     final map = isTv ? _tvGenres : _movieGenres;
@@ -736,6 +737,9 @@ class TmdbDiscoverService {
       id: 'tmdb:${isTv ? 'tv' : 'movie'}:$id',
       title: title,
       cover: coverPath == null ? null : '${Tmdb.img}/w500$coverPath',
+      heroImage: backdropPath == null || backdropPath.isEmpty
+          ? null
+          : '${Tmdb.img}/w1280$backdropPath',
       url: 'tmdb://${isTv ? 'tv' : 'movie'}/$id',
       type: ProviderType.movie,
       sourceId: 'tmdb:catalog',

@@ -71,6 +71,7 @@ class _RootShellState extends State<RootShell>
   /// within 2s exits the app; the first just shows the "press back again" toast.
   DateTime? _lastBackPress;
   bool _dockCompact = false;
+  late final AnimationController _dockCtrl;
 
   /// Tab-switch entrance: the visible page swaps immediately and the INCOMING
   /// tab fades + slides up into place (200ms, ease-out). We never fade the old
@@ -88,6 +89,11 @@ class _RootShellState extends State<RootShell>
   @override
   void initState() {
     super.initState();
+    _dockCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+      value: 0,
+    );
     _switchCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 200),
@@ -121,6 +127,7 @@ class _RootShellState extends State<RootShell>
   void dispose() {
     _navPrefs.removeListener(_onTabsChanged);
     _switchCtrl.dispose();
+    _dockCtrl.dispose();
     _searchFocusSignal.dispose();
     super.dispose();
   }
@@ -235,8 +242,10 @@ class _RootShellState extends State<RootShell>
               onNotification: (notification) {
                 if (notification.direction == ScrollDirection.reverse && !_dockCompact) {
                   setState(() => _dockCompact = true);
+                  _dockCtrl.animateTo(1.0, curve: Curves.easeInOutCubic);
                 } else if (notification.direction == ScrollDirection.forward && _dockCompact) {
                   setState(() => _dockCompact = false);
+                  _dockCtrl.animateTo(0.0, curve: Curves.easeInOutCubic);
                 }
                 return false;
               },
@@ -283,6 +292,7 @@ class _RootShellState extends State<RootShell>
                     tabs: _visibleTabs(),
                     active: _tab,
                     compact: _dockCompact,
+                    collapse: _dockCtrl,
                     onSelected: _onTabSelected,
                   ),
                 ),
@@ -304,6 +314,7 @@ class _FloatingDock extends StatelessWidget {
     required this.tabs,
     required this.active,
     required this.compact,
+    required this.collapse,
     required this.onSelected,
   });
 
@@ -312,68 +323,116 @@ class _FloatingDock extends StatelessWidget {
   final List<DockTab> tabs;
   final DockTab active;
   final bool compact;
+  final Animation<double> collapse;
   final ValueChanged<DockTab> onSelected;
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, bottomInset + 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(26),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 6, vertical: compact ? 5 : 9),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.accent.withValues(alpha: compact ? 0.11 : 0.16),
-                  Colors.white.withValues(alpha: compact ? 0.045 : 0.065),
-                  AppColors.surface.withValues(alpha: compact ? 0.68 : 0.58),
-                ],
-                stops: const [0.0, 0.34, 1.0],
-              ),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: AppColors.accent.withValues(alpha: compact ? 0.16 : 0.22),
-              ),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.30), blurRadius: compact ? 22 : 30, offset: const Offset(0, 10)),
-                BoxShadow(color: AppColors.accent.withValues(alpha: compact ? 0.08 : 0.12), blurRadius: 26, offset: const Offset(0, -2)),
-              ],
-            ),
-            child: Row(
-              children: [
-                for (final t in tabs)
-                  if (t == DockTab.profile)
-                    _ProfileDockItem(
-                      selected: active == t,
-                      onTap: () => onSelected(t),
-                      compact: compact,
-                    )
-                  else
-                    _DockItem(
-                      label: t.label,
-                      glyph: dockGlyphFor(t),
-                      icon: _iconFor(t),
-                      selected: active == t,
-                      onTap: () => onSelected(t),
-                      compact: compact,
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    return AnimatedBuilder(
+      animation: collapse,
+      builder: (context, _) {
+        final t = Curves.easeInOutCubic.transform(collapse.value);
+        final width = screenWidth * (0.94 - (0.08 * t));
+        final verticalPadding = 8.0 - (3.0 * t);
+        final radius = 30.0 - (4.0 * t);
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: bottomInset + 12),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(radius),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                child: Container(
+                  width: width,
+                  padding: EdgeInsets.symmetric(horizontal: 7, vertical: verticalPadding),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.13),
+                        AppColors.accent.withValues(alpha: 0.08),
+                        AppColors.surface.withValues(alpha: 0.72),
+                      ],
+                      stops: const [0.0, 0.32, 1.0],
                     ),
-              ],
+                    borderRadius: BorderRadius.circular(radius),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.16),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.34),
+                        blurRadius: 28,
+                        offset: const Offset(0, 12),
+                      ),
+                      BoxShadow(
+                        color: AppColors.accent.withValues(alpha: 0.13),
+                        blurRadius: 34,
+                        spreadRadius: -8,
+                        offset: const Offset(0, -3),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.08),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          for (final tab in tabs)
+                            if (tab == DockTab.profile)
+                              _ProfileDockItem(
+                                selected: active == tab,
+                                onTap: () => onSelected(tab),
+                                compact: compact,
+                              )
+                            else
+                              _DockItem(
+                                label: tab.label,
+                                glyph: null,
+                                icon: _iconFor(tab),
+                                selected: active == tab,
+                                onTap: () => onSelected(tab),
+                                compact: compact,
+                              ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
 /// (outline, filled) Material icons for tabs with no hand-drawn glyph.
 (IconData, IconData)? _iconFor(DockTab t) => switch (t) {
+  DockTab.home => (Icons.home_outlined, Icons.home_rounded),
+  DockTab.search => (Icons.search_rounded, Icons.search_rounded),
+  DockTab.myList => (Icons.bookmark_outline_rounded, Icons.bookmark_rounded),
+  DockTab.schedule => (Icons.calendar_month_outlined, Icons.calendar_month_rounded),
   DockTab.downloads => (
     Icons.download_outlined,
     Icons.download_rounded,
@@ -469,13 +528,21 @@ class _DockItem extends StatelessWidget {
                 ),
               ),
               SizedBox(height: compact ? 1 : 3),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: compact ? 9 : 10,
-                  letterSpacing: 0.1,
-                  color: color,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              SizedBox(
+                height: 14,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: TextStyle(
+                      fontSize: compact ? 9.5 : 10.5,
+                      letterSpacing: 0.05,
+                      color: color,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -587,13 +654,21 @@ class _ProfileDockItem extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 3),
-              Text(
-                'Profile',
-                style: TextStyle(
-                  fontSize: 10,
-                  letterSpacing: 0.1,
-                  color: color,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              SizedBox(
+                height: 14,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Profile',
+                    maxLines: 1,
+                    softWrap: false,
+                    style: TextStyle(
+                      fontSize: compact ? 9.5 : 10.5,
+                      letterSpacing: 0.05,
+                      color: color,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
                 ),
               ),
             ],

@@ -150,6 +150,7 @@ class _HomeViewState extends State<_HomeView>
   final LinkedHashMap<String, Future<HeroMeta?>> _metaCache =
       LinkedHashMap<String, Future<HeroMeta?>>();
   bool _heroPrewarmed = false;
+  final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0);
 
   /// Pagination state — cleared when source switches.
   final Map<String, int> _sectionPages = {};
@@ -201,6 +202,7 @@ class _HomeViewState extends State<_HomeView>
   @override
   void dispose() {
     _slashCtrl.dispose();
+    _heroStretch.dispose();
     super.dispose();
   }
 
@@ -1208,7 +1210,7 @@ class _HomeViewState extends State<_HomeView>
             RefreshIndicator(
               color: AppColors.accent,
               onRefresh: () => context.read<HomeCubit>().load(),
-              child: const _HomeScrollView(),
+              child: _HomeScrollView(stretch: _heroStretch),
             ),
             if (_slashing) _SlashOverlay(controller: _slashCtrl),
           ],
@@ -1223,7 +1225,9 @@ class _HomeViewState extends State<_HomeView>
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _HomeScrollView extends StatelessWidget {
-  const _HomeScrollView();
+  const _HomeScrollView({required this.stretch});
+
+  final ValueNotifier<double> stretch;
 
   @override
   Widget build(BuildContext context) {
@@ -1266,7 +1270,21 @@ class _HomeScrollView extends StatelessWidget {
 
         return ScrollConfiguration(
           behavior: const CinioBounceOnlyScrollBehavior(),
-          child: CustomScrollView(
+          child: NotificationListener<OverscrollNotification>(
+            onNotification: (notification) {
+              if (notification.depth == 0 &&
+                  notification.overscroll > 0 &&
+                  notification.metrics.pixels <= 0) {
+                stretch.value = (stretch.value + notification.overscroll).clamp(0.0, 150.0);
+              }
+              return false;
+            },
+            child: NotificationListener<ScrollEndNotification>(
+              onNotification: (_) {
+                stretch.value = 0;
+                return false;
+              },
+              child: CustomScrollView(
             slivers: [
             _HomeHeroSliver(
               heroItems: homeState.heroItems,
@@ -1365,8 +1383,10 @@ class _HomeScrollView extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      );
+              ),
+            ),
+          ),
+        );
       },
     );
   }
@@ -1434,6 +1454,7 @@ class _HomeHeroSliver extends StatelessWidget {
                 style: HeroTransition.cinematic,
                 fullBleed: true,
                 height: kHeroHeight,
+                stretch: view._heroStretch,
               ),
               Positioned(
                 top: MediaQuery.paddingOf(context).top + 10,

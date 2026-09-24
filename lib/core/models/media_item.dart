@@ -18,6 +18,12 @@ class MediaItem extends Equatable {
   final String? englishTitle;
   final String? cover;
   final Map<String, String>? coverHeaders;
+
+  /// Optional landscape artwork for hero surfaces. Browse cards continue to
+  /// use [cover]; when available this is a text-free/backdrop image so the
+  /// hero does not duplicate a title already printed into a poster.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? heroImage;
   final String url;
   final ProviderType type;
   final String sourceId;
@@ -86,6 +92,7 @@ class MediaItem extends Equatable {
     this.englishTitle,
     this.cover,
     this.coverHeaders,
+    this.heroImage,
     required this.url,
     required this.type,
     required this.sourceId,
@@ -122,6 +129,7 @@ class MediaItem extends Equatable {
     englishTitle: englishTitle,
     cover: cover,
     coverHeaders: coverHeaders,
+    heroImage: heroImage,
     url: url,
     type: type,
     sourceId: sourceId ?? this.sourceId,
@@ -147,6 +155,7 @@ class MediaItem extends Equatable {
     englishTitle,
     cover,
     coverHeaders,
+    heroImage,
     url,
     type,
     sourceId,

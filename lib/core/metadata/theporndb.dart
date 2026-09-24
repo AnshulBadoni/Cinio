@@ -413,11 +413,13 @@ class ThePornDb {
       id: 'tpdb:movie:$id',
       title: title,
       cover: _firstImage(row),
+      heroImage: _firstHeroImage(row),
       url: 'tpdb://movie/$id',
       type: ProviderType.movie,
       sourceId: 'tpdb:catalog',
       genres: _names(row['tags']),
       rating: (row['rating'] as num?)?.toDouble(),
+      year: _year(row['date'] ?? row['release_date']),
     );
   }
 
@@ -450,6 +452,40 @@ class ThePornDb {
   String? _year(Object? value) {
     final s = value?.toString() ?? '';
     return s.length >= 4 ? s.substring(0, 4) : null;
+  }
+
+  String? _firstHeroImage(Map row) {
+    for (final key in [
+      'background',
+      'backdrop',
+      'backdrop_image',
+      'background_image',
+      'banner',
+      'landscape',
+      'fanart',
+    ]) {
+      final value = row[key]?.toString();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    final backgrounds = row['backgrounds'] ?? row['backdrops'] ?? row['fanart'];
+    if (backgrounds is Map) {
+      for (final key in ['large', 'medium', 'full', 'original']) {
+        final value = backgrounds[key]?.toString();
+        if (value != null && value.isNotEmpty) return value;
+      }
+    }
+    if (backgrounds is List) {
+      for (final value in backgrounds) {
+        if (value is String && value.isNotEmpty) return value;
+        if (value is Map) {
+          for (final key in ['url', 'image', 'src', 'large', 'full']) {
+            final v = value[key]?.toString();
+            if (v != null && v.isNotEmpty) return v;
+          }
+        }
+      }
+    }
+    return null;
   }
 
   String? _firstImage(Map row) {

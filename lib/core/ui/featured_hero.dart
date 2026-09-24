@@ -104,7 +104,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   @override
   void didUpdateWidget(FeaturedHero old) {
     super.didUpdateWidget(old);
-    if (old.item.cover != widget.item.cover) {
+    if (old.item.cover != widget.item.cover || old.item.heroImage != widget.item.heroImage) {
       _artColor = null;
       _logoUrl = null;
       _loadPalette();
@@ -126,7 +126,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   }
 
   Future<void> _loadPalette() async {
-    final cover = widget.item.cover;
+    final cover = widget.item.heroImage ?? widget.item.cover;
     if (cover == null || cover.isEmpty) return;
     final cached = _paletteCache[cover];
     if (cached != null) {
@@ -163,7 +163,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final cover = item.cover;
+    final cover = item.heroImage ?? item.cover;
     final hasCover = cover != null && cover.isNotEmpty;
     final tint = _artColor ?? AppColors.surface2;
 
@@ -287,32 +287,33 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onTap: widget.onInfo,
-                      child: SizedBox(
-                      height: 78,
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        child: _logoUrl != null
-                            ? KeyedSubtree(
-                                key: ValueKey(_logoUrl),
-                                child: CachedNetworkImage(
-                                  imageUrl: _logoUrl!,
-                                  fit: BoxFit.contain,
-                                  fadeInDuration: const Duration(milliseconds: 140),
-                                  errorWidget: (_, _, _) => _titleText(),
-                                ),
-                              )
-                            : KeyedSubtree(
-                                key: const ValueKey('hero-title-fallback'),
-                                child: _titleText(),
-                              ),
+                    if (!widget.item.sourceId.startsWith('tpdb:'))
+                      GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: widget.onInfo,
+                        child: SizedBox(
+                          height: 78,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 180),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            child: _logoUrl != null
+                                ? KeyedSubtree(
+                                    key: ValueKey(_logoUrl),
+                                    child: CachedNetworkImage(
+                                      imageUrl: _logoUrl!,
+                                      fit: BoxFit.contain,
+                                      fadeInDuration: const Duration(milliseconds: 140),
+                                      errorWidget: (_, _, _) => _titleText(),
+                                    ),
+                                  )
+                                : KeyedSubtree(
+                                    key: const ValueKey('hero-title-fallback'),
+                                    child: _titleText(),
+                                  ),
+                          ),
+                        ),
                       ),
-                    ),
-                    ),
                     const SizedBox(height: 12),
                     SizedBox(height: 18, child: Center(child: _metaLine())),
                     const SizedBox(height: 18),

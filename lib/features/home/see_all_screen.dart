@@ -125,7 +125,7 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
         onLoadMore: widget.onLoadMore,
       );
     }
-    final cellW = (MediaQuery.sizeOf(context).width - 32 - 24) / 3;
+    final cellW = (MediaQuery.sizeOf(context).width - 32 - 20) / 3;
     final paginating = widget.onLoadMore != null;
     // A trailing spinner cell spanning the full row while a page is loading.
     final showSpinner = paginating && _loading;
@@ -141,9 +141,9 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
         cacheExtent: 800,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
-          childAspectRatio: 0.62,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 16,
+          childAspectRatio: 0.66,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 14,
         ),
         itemCount: _items.length,
         itemBuilder: (context, i) {

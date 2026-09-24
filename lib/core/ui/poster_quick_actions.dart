@@ -123,7 +123,8 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final maxPosterHeight = size.height * 0.43;
+    final maxPosterHeight = (size.height * 0.47).clamp(300.0, 760.0);
+
     final posterWidth = maxPosterHeight * 0.675;
 
     return Material(
@@ -131,6 +132,19 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
       child: Stack(
         fit: StackFit.expand,
         children: [
+          if (widget.item.cover?.isNotEmpty == true)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: 0.18,
+                  child: Image(
+                    image: nativeCoverProvider(widget.item.cover!, widget.item.coverHeaders),
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.low,
+                  ),
+                ),
+              ),
+            ),
           Positioned.fill(
             child: AnimatedBuilder(
               animation: ModalRoute.of(context)?.animation ?? kAlwaysCompleteAnimation,
@@ -142,11 +156,11 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                   onTap: () => Navigator.of(context).pop(),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(
-                      sigmaX: 14 * progress,
-                      sigmaY: 14 * progress,
+                      sigmaX: 26 * progress,
+                      sigmaY: 26 * progress,
                     ),
                     child: ColoredBox(
-                      color: Colors.black.withValues(alpha: 0.62 * progress),
+                      color: AppColors.bg.withValues(alpha: 0.34 * progress),
                     ),
                   ),
                 );
