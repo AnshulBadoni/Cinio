@@ -2,6 +2,7 @@
 part of 'detail_screen.dart';
 
 
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Hero — full-width backdrop with a portrait poster overlapping the bottom-right
 // and a back arrow over the top-left.

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -1840,7 +1841,7 @@ class _DetailViewState extends State<_DetailView>
     final sourceName = _sourceLabel(item.sourceId);
 
     return ScrollConfiguration(
-      behavior: const CinioBounceOnlyScrollBehavior(),
+      behavior: CinioBounceOnlyScrollBehavior(),
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
           if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) return false;

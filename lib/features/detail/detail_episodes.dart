@@ -924,14 +924,7 @@ class _EpisodeGridTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        onLongPress: onLongPress == null
-          ? null
-          : () {
-              if (thumbUrl.isNotEmpty) {
-                unawaited(precacheImage(nativeCoverProvider(thumbUrl, coverHeaders), context));
-              }
-              onLongPress!();
-            },
+        onLongPress: onLongPress,
         child: Stack(
           children: [
             Center(

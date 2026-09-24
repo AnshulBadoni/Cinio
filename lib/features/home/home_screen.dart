@@ -1268,7 +1268,7 @@ class _HomeScrollView extends StatelessWidget {
         final cardStyle = view._prefs.homeCardStyle;
 
         return ScrollConfiguration(
-          behavior: const CinioBounceOnlyScrollBehavior(),
+          behavior: CinioBounceOnlyScrollBehavior(),
           child: NotificationListener<ScrollNotification>(
             onNotification: (notification) {
               if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) return false;
