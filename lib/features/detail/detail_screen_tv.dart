@@ -99,7 +99,6 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   final FocusScopeNode _rightScope = FocusScopeNode(debugLabel: 'tv-detail-right');
 
   String? _prefetchedEpUrl;
-  bool _prefetchedCatalog = false;
   bool _actionInFlight = false;
 
   void _maybePrefetch(String epUrl, String sourceId) {
@@ -112,28 +111,8 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   }
 
   void _maybePrefetchCatalog({String category = 'sub'}) {
-    final catalog = widget.item;
-    if (_prefetchedCatalog) return;
-    if (catalog.sourceId != 'tmdb:catalog' && !catalog.sourceId.startsWith('tpdb:')) return;
-    _prefetchedCatalog = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future.delayed(const Duration(milliseconds: 300));
-      if (!mounted || !sl.isRegistered<SourceRepository>()) return;
-      try {
-        final resolved = await sl<SourceRepository>().resolveCatalogTitle(
-          catalog,
-          category: category,
-        );
-        if (!mounted || resolved == null) return;
-        final eps = resolved.detail.episodes;
-        if (eps.isNotEmpty) {
-          final resume = _resumeTarget(eps);
-          final resumeIdx = resume.index.clamp(0, eps.length - 1);
-          _maybePrefetch(eps[resumeIdx].url, resolved.item.sourceId);
-        }
-      } catch (_) {}
-    });
+    // Background catalog prefetching is disabled to prevent UI freezing.
+    // Provider resolution is performed on-demand when starting playback.
   }
 
   @override

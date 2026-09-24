@@ -264,9 +264,9 @@ class _DetailView extends StatefulWidget {
 class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
   double _expandedHeightFor({required bool isReading, required bool hasDownload}) {
-    if (isReading) return 430.0;
-    if (hasDownload) return 500.0;
-    return 440.0;
+    if (isReading) return 475.0;
+    if (hasDownload) return 555.0;
+    return 485.0;
   }
 
   bool _showAppBarTitle = false;
@@ -278,7 +278,6 @@ class _DetailViewState extends State<_DetailView>
   static final Map<String, Color> _paletteCache = {};
 
   String? _prefetchedEpUrl;
-  bool _prefetchedCatalog = false;
   bool _actionInFlight = false;
 
   Set<int> _fillerEps = const {};
@@ -422,28 +421,9 @@ class _DetailViewState extends State<_DetailView>
   }
 
   void _maybePrefetchCatalog({String category = 'sub'}) {
-    final catalog = widget.item;
-    if (_prefetchedCatalog) return;
-    if (catalog.sourceId != 'tmdb:catalog' && !catalog.sourceId.startsWith('tpdb:')) return;
-    _prefetchedCatalog = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future.delayed(const Duration(milliseconds: 1500));
-      if (!mounted) return;
-      try {
-        final resolved = await sl<SourceRepository>().resolveCatalogTitle(
-          catalog,
-          category: category,
-        );
-        if (!mounted || resolved == null) return;
-        final eps = resolved.detail.episodes;
-        if (eps.isNotEmpty) {
-          final resume = _resumeTarget(eps);
-          final resumeIdx = resume.index.clamp(0, eps.length - 1);
-          _maybePrefetch(eps[resumeIdx].url, resolved.item.sourceId);
-        }
-      } catch (_) {}
-    });
+    // Background catalog prefetching is disabled because fanning out searches
+    // across all providers in the background freezes the UI isolate on mobile.
+    // Provider resolution is performed on-demand when the user presses Play.
   }
 
   void _loadTitleLogo(MediaDetail detail) {
