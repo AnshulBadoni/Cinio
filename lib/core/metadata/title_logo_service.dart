@@ -176,9 +176,10 @@ class TitleLogoService {
       // serial source of UI latency.
       await Future.wait([collect('movie'), collect('tv')]);
       final threshold = item.sourceId.startsWith('tpdb:') ? 0.88 : 0.62;
-      if (best == null || bestScore < threshold) return null;
-      id = (best['id'] as num?)?.toInt();
-      isTv = best['media_type'] == 'tv';
+      final match = best;
+      if (match == null || bestScore < threshold) return null;
+      id = (match['id'] as num?)?.toInt();
+      isTv = match['media_type'] == 'tv';
       if (id == null) return null;
     }
     final kind = isTv ? 'tv' : 'movie';
