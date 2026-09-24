@@ -157,6 +157,7 @@ class DetailCubit extends Cubit<DetailState> {
   /// active source. Set from `DetailScreen(item:).sourceId` so a title
   /// opened from My List / cross-source rows queries its OWN provider.
   final String? _sourceId;
+  Timer? _enrichTimer;
 
   /// Stable key component for per-title prefs. Falls back to '' when the
   /// owning source is unknown (active-source title) — robust, never throws.
@@ -214,10 +215,12 @@ class DetailCubit extends Cubit<DetailState> {
         clearError: true,
       ));
       unawaited(selectSeason(state.selectedSeason));
-      unawaited(() async {
-        await Future<void>.delayed(const Duration(milliseconds: 1200));
-        if (!isClosed) await _enrich(detail!);
-      }());
+      _enrichTimer?.cancel();
+      _enrichTimer = Timer(const Duration(milliseconds: 1200), () {
+        if (!isClosed) {
+          unawaited(_enrich(detail!));
+        }
+      });
     } else {
       if (state.detail != null) {
         emit(state.copyWith(status: DetailStatus.success, extrasLoading: false, error: 'load_failed'));
@@ -225,6 +228,12 @@ class DetailCubit extends Cubit<DetailState> {
         emit(state.copyWith(status: DetailStatus.error, error: 'load_failed'));
       }
     }
+  }
+
+  @override
+  Future<void> close() {
+    _enrichTimer?.cancel();
+    return super.close();
   }
 
   Future<void> retry() async {
@@ -240,7 +249,8 @@ class DetailCubit extends Cubit<DetailState> {
       try {
         return await _repo.detail(_url, category: category, sourceId: _sourceId);
       } catch (_) {
-        if (_catalogDetail != null) return _catalogDetail!;
+        final catDetail = _catalogDetail;
+        if (catDetail != null) return catDetail;
         if (_catalogItem != null) {
           final shell = _shellDetail(_catalogItem, _sourceId, _url);
           if (shell != null) return shell;
@@ -260,7 +270,8 @@ class DetailCubit extends Cubit<DetailState> {
       tmdbId: _catalogDetail?.tmdbId,
       tmdbIsTv: _catalogDetail?.tmdbIsTv ?? false,
     );
-    if (_catalogDetail != null) return _catalogDetail!;
+    final catDetail = _catalogDetail;
+    if (catDetail != null) return catDetail;
 
     if (_sourceId == 'tmdb:catalog') {
       return sl<TmdbDiscoverService>().movieDetail(catalogItem);

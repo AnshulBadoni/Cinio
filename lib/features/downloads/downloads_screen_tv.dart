@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:background_downloader/background_downloader.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';

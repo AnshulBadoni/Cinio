@@ -57,7 +57,6 @@ import '../../core/ui/settings_widgets.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/dock_visibility.dart';
 import '../../core/ui/team_section.dart';
-import 'contributors_screen.dart';
 import 'donate_screen.dart';
 import '../auth/auth_cubit.dart';
 import '../backup/backup_screen.dart';

@@ -17,7 +17,6 @@ class _Hero extends StatelessWidget {
     this.trailer,
     this.collapsed = false,
     this.onTapFullscreen,
-    this.bottomContent,
   });
 
   final String coverUrl;
@@ -32,10 +31,6 @@ class _Hero extends StatelessWidget {
 
   /// Opens the fullscreen trailer when the banner is tapped. Null disables it.
   final VoidCallback? onTapFullscreen;
-
-  /// Title/metadata content rendered inside the hero fade so the artwork
-  /// dissolves naturally into the page instead of ending at a hard edge.
-  final Widget? bottomContent;
 
   /// The static cover backdrop — used as the base layer when there's no
   /// trailer, and as the placeholder/fallback underneath the player.
@@ -121,13 +116,6 @@ class _Hero extends StatelessWidget {
             ),
           ),
         ),
-        if (bottomContent != null)
-          Positioned(
-            left: 20,
-            right: 20,
-            bottom: 22,
-            child: bottomContent!,
-          ),
       ],
     );
   }
@@ -307,25 +295,6 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
     }
   }
 
-  /// Watchdog for the opt-in HD banner: if playback hasn't progressed within a
-  /// few seconds (YouTube throttled the 1080p stream), re-open with the light
-  /// 360p muxed stream. No-op if HD started fine.
-  Future<void> _fallBackIfHdStalls(Player player, String videoId) async {
-    try {
-      await player.stream.position
-          .firstWhere((p) => p > Duration.zero)
-          .timeout(const Duration(seconds: 7));
-    } catch (_) {
-      if (!mounted || player != _player) return;
-      final low = await sl<TrailerService>().streamUrl(videoId, low: true);
-      if (!mounted || player != _player || low == null || low.isEmpty) return;
-      try {
-        final autostart = !_paused && !widget.collapsed && !_covered;
-        await player.open(Media(low), play: autostart);
-        if (autostart) await player.play();
-      } catch (_) {/* leave the cover as the backdrop */}
-    }
-  }
 
   @override
   void didUpdateWidget(covariant _HeroTrailer old) {

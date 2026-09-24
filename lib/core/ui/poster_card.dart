@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -10,7 +8,6 @@ import '../playback/playback_prefs.dart';
 import 'image_fade.dart';
 import '../aniyomi/aniyomi_image_provider.dart';
 import '../mihon/mihon_image_provider.dart';
-import 'native_cover_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 

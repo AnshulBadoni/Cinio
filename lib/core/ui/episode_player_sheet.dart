@@ -55,15 +55,15 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   double? rating,
   String? heroTag,
 }) async {
-  if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty) {
+  if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
     unawaited(precacheImage(
-      nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
+      nativeCoverProvider(thumbnailUrl, thumbnailHeaders),
       context,
     ).catchError((_) {}));
   }
-  if (fallbackThumbnailUrl != null && fallbackThumbnailUrl!.isNotEmpty) {
+  if (fallbackThumbnailUrl != null && fallbackThumbnailUrl.isNotEmpty) {
     unawaited(precacheImage(
-      nativeCoverProvider(fallbackThumbnailUrl!, fallbackThumbnailHeaders),
+      nativeCoverProvider(fallbackThumbnailUrl, fallbackThumbnailHeaders),
       context,
     ).catchError((_) {}));
   }
@@ -127,7 +127,7 @@ class _EpisodeQuickActions extends StatelessWidget {
 
   Widget _thumbnail(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final width = (size.width * 0.72).clamp(260.0, 460.0);
+    final width = (size.width * 0.79).clamp(286.0, 480.0);
     final height = width * 9 / 16;
     final effectiveUrl = (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
         ? thumbnailUrl!

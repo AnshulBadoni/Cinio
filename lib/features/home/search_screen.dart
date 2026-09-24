@@ -2,8 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
@@ -12,8 +10,6 @@ import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/person.dart';
 import '../../core/models/provider_info.dart';
-import '../../core/metadata/tmdb_discover_service.dart';
-import '../../core/metadata/theporndb.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
@@ -1968,17 +1964,6 @@ class _SearchViewState extends State<_SearchView>
         );
       },
     );
-  }
-
-  String? _discoverMetadata(MediaItem item) {
-    final parts = <String>[];
-    if (item.year != null && item.year!.isNotEmpty) parts.add(item.year!);
-    if (item.genres.isNotEmpty) {
-      parts.addAll(item.genres.take(2));
-    } else {
-      parts.add(item.tmdbIsTv ? 'Series' : 'Movie');
-    }
-    return parts.isEmpty ? null : parts.join('  ·  ');
   }
 
   // ── Idle view: endless Discover feed ───────────────────────────────────────

@@ -6,9 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/announce/announcement.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
@@ -53,7 +51,6 @@ import '../../core/ui/poster_card.dart';
 import '../../core/ui/poster_quick_actions.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
-import '../../core/ui/states.dart';
 import '../../core/update/extension_auto_updater.dart';
 import '../announce/announcement_sheet.dart';
 import '../auth/auth_cubit.dart';
@@ -61,7 +58,6 @@ import '../auth/reconnect.dart';
 import '../community/community_sheet.dart';
 import '../detail/detail_screen.dart';
 import '../history/history_screen.dart';
-import '../notify/subscriptions_screen.dart';
 import '../people/person_page.dart';
 import '../player/player_screen.dart';
 import '../reader/manga_reader_screen.dart';
@@ -168,6 +164,10 @@ class _HomeViewState extends State<_HomeView>
   ContentMode? _slashTarget;
 
   static bool _updateChecked = false;
+
+  void rebuild() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
@@ -462,6 +462,46 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
+  Future<void> _showContinueReadingInfo(ReadEntry entry) async {
+    final item = MediaItem(
+      id: entry.showId,
+      title: entry.title,
+      cover: entry.cover,
+      url: entry.showId,
+      type: entry.type,
+      sourceId: entry.sourceId,
+    );
+    final heroTag =
+        'continue-reading-poster:${entry.sourceId}:${entry.showId}:${entry.chapterId}';
+    final inLibrary = _myList.contains(item) || _listStatus.statusOf(item) != null;
+    final pct = entry.total > 0 ? ((entry.pos / entry.total) * 100).round() : 0;
+    final playLabel = pct > 0 ? 'Resume $pct%' : 'Read';
+
+    if (!mounted) return;
+    await showPosterQuickActions(
+      context,
+      item: item,
+      heroTag: heroTag,
+      playLabel: playLabel,
+      inLibrary: inLibrary,
+      watched: false,
+      onPlay: () => _resumeReading(entry),
+      onInfo: () => _openDetail(item),
+      onMarkWatched: () async {
+        if (!_myList.contains(item)) await _myList.add(item);
+        await _listStatus.setStatus(item, WatchStatus.completed);
+        await _myList.pushStatus(item);
+        if (mounted) setState(() {});
+      },
+      onToggleLibrary: () async {
+        await _myList.toggle(item);
+        if (!_myList.contains(item)) await _listStatus.remove(item);
+        if (mounted) setState(() {});
+        return _myList.contains(item);
+      },
+    );
+  }
+
   void _showInfo(MediaItem item) {
     showMediaInfoSheet(
       context,
@@ -489,88 +529,6 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  void _showContinueInfo(HistoryEntry e) {
-    final stub = MediaItem(
-      id: e.showId,
-      title: e.showTitle,
-      cover: e.cover,
-      coverHeaders: e.coverHeaders,
-      url: e.showUrl,
-      type: ProviderType.anime,
-      sourceId: e.sourceId,
-    );
-    final pct = (e.progress * 100).round();
-    showMediaInfoSheet(
-      context,
-      title: e.showTitle,
-      cover: e.cover,
-      headers: e.coverHeaders,
-      detail: _detailOf(e.showUrl, e.sourceId),
-      inMyList: _myList.contains(stub),
-      playLabel: 'Resume',
-      progress: e.progress,
-      progressLabel: e.episodeNumber != null
-          ? 'Episode ${e.episodeNumber!.toInt()} · $pct% watched'
-          : '$pct% watched',
-      onPlay: () => _resume(e),
-      onOpenDetail: () => _openDetail(stub),
-      onToggleMyList: () async {
-        await showListStatusSheet(
-          context,
-          item: stub,
-          onChanged: () {
-            if (mounted) setState(() {});
-          },
-        );
-        return _myList.contains(stub);
-      },
-      onRemoveFromContinue: () async {
-        await sl<WatchHistory>().remove(e.sourceId, e.showId);
-        if (mounted) setState(() {});
-      },
-    );
-  }
-
-  void _showContinueReadingInfo(ReadEntry e) {
-    final stub = MediaItem(
-      id: e.showId,
-      title: e.title,
-      cover: e.cover,
-      url: e.showId,
-      type: e.type,
-      sourceId: e.sourceId,
-    );
-    final pct = e.total > 0 ? ((e.pos / e.total) * 100).round() : 0;
-    final progress = e.total > 0 ? (e.pos / e.total).clamp(0.0, 1.0) : 0.0;
-    showMediaInfoSheet(
-      context,
-      title: e.title,
-      cover: e.cover,
-      detail: _detailOf(e.showId, e.sourceId),
-      inMyList: _myList.contains(stub),
-      playLabel: 'Read',
-      progress: progress,
-      progressLabel: e.chapterNumber != null
-          ? 'Chapter ${e.chapterNumber!.toInt()} · $pct% read'
-          : '$pct% read',
-      onPlay: () => _resumeReading(e),
-      onOpenDetail: () => _openDetail(stub),
-      onToggleMyList: () async {
-        await showListStatusSheet(
-          context,
-          item: stub,
-          onChanged: () {
-            if (mounted) setState(() {});
-          },
-        );
-        return _myList.contains(stub);
-      },
-      onRemoveFromContinue: () async {
-        await sl<ReadHistory>().remove(e.sourceId, e.showId);
-        if (mounted) setState(() {});
-      },
-    );
-  }
 
   // ── Playback / resume ─────────────────────────────────────────────────────
 
@@ -1459,7 +1417,7 @@ class _HomeHeroSliver extends StatelessWidget {
                   context,
                   item: item,
                   onChanged: () {
-                    if (view.mounted) view.setState(() {});
+                    view.rebuild();
                   },
                 ),
                 meta: view._heroMeta,

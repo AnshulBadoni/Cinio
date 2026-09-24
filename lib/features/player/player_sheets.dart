@@ -1409,17 +1409,6 @@ class _SheetColumn extends StatelessWidget {
   }
 }
 
-/// Source-picker row label: the provider's per-source name with its resolution
-/// appended (e.g. "MovieBox (Hindi Audio) · 1080p"), so the quality shows even
-/// when the source carries its own name. Skips a non-resolution quality
-/// ("auto"/empty) and never doubles up a resolution the name already contains.
-String _sourceLabelWithQuality(String label, String? quality) {
-  final q = (quality ?? '').trim();
-  if (q.isEmpty || q.toLowerCase() == 'auto') return label;
-  if (label.toLowerCase().contains(q.toLowerCase())) return label;
-  return '$label · $q';
-}
-
 class _SheetRow extends StatelessWidget {
   const _SheetRow({
     required this.label,

@@ -10,7 +10,6 @@ import '../di/injector.dart';
 import 'native_cover_provider.dart';
 import 'cinio_title_style.dart';
 import '../metadata/title_logo_service.dart';
-import '../metadata/tmdb_discover_service.dart';
 import '../models/media_item.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -396,7 +395,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
             children: [
               const Icon(Icons.star_rounded, color: Color(0xFFFFC107), size: 15),
               const SizedBox(width: 4),
-              Text(rating!.toStringAsFixed(1)),
+              Text(rating.toStringAsFixed(1)),
             ],
           ));
         }

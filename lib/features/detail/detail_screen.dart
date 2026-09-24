@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 
 import 'package:palette_generator/palette_generator.dart';
 
@@ -181,49 +180,6 @@ Episode _matchTargetEpisode(MediaDetail targetDetail, MediaItem targetItem, Epis
   );
 }
 
-Future<List<VideoSource>> _fetchVideoSources(String url, String sourceId) async {
-  var s = await sl<SourceRepository>().sources(
-    url,
-    sourceId: sourceId,
-    fast: true,
-  );
-  if (s.isNotEmpty) return s;
-
-  var done = false;
-  var pollTries = 0;
-  final knownUrls = s.map((e) => e.url).toSet();
-
-  while (!done && pollTries < 15) {
-    await Future.delayed(const Duration(milliseconds: 750));
-    pollTries++;
-    final polled = await sl<SourceRepository>().polledSources(
-      url,
-      sourceId: sourceId,
-    );
-    done = polled.done;
-    final newSources = polled.sources.where((e) => !knownUrls.contains(e.url)).toList();
-    if (newSources.isNotEmpty) {
-      for (final ns in newSources) {
-        knownUrls.add(ns.url);
-      }
-      s = [...s, ...newSources];
-      return s;
-    }
-  }
-
-  if (s.isEmpty) {
-    final fallbackSources = await sl<SourceRepository>().sources(
-      url,
-      sourceId: sourceId,
-      fast: false,
-    );
-    if (fallbackSources.isNotEmpty) {
-      s = fallbackSources;
-    }
-  }
-  return s;
-}
-
 enum DetailTrailerContext { model, studio }
 
 class DetailScreen extends StatelessWidget {
@@ -305,7 +261,7 @@ class _DetailView extends StatefulWidget {
 
 class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
-  static const double _expandedHeight = 450;
+  static const double _expandedHeight = 310;
   bool _showAppBarTitle = false;
   String? _titleLogoUrl;
   String? _titleLogoKey;
@@ -314,7 +270,6 @@ class _DetailViewState extends State<_DetailView>
 
   String? _prefetchedEpUrl;
   bool _prefetchedCatalog = false;
-  bool _myListActionInFlight = false;
   bool _actionInFlight = false;
 
   Set<int> _fillerEps = const {};
@@ -1926,19 +1881,6 @@ class _DetailViewState extends State<_DetailView>
       episodesBySeason[1] = eps;
     }
 
-    final statusStr = statusLabel(detail.status);
-
-    final metaParts = <String>[];
-    if ((detail.year ?? '').isNotEmpty) metaParts.add(detail.year!);
-    if (hasMultipleSeasons) {
-      metaParts.add('${seasonSet.length} Seasons');
-    } else if (eps.isNotEmpty && (isReading || detail.isSeries)) {
-      final unit = isReading ? 'Chapter' : 'Episode';
-      metaParts.add('${eps.length} $unit${eps.length == 1 ? '' : 's'}');
-    }
-    if (statusStr.isNotEmpty) metaParts.add(statusStr);
-    final metaLine = metaParts.join('  ·  ');
-
     final downloadLabel = _downloadLabel(
       detail,
       seasonEps,
@@ -1968,76 +1910,32 @@ class _DetailViewState extends State<_DetailView>
           headerSliverBuilder: (context, _) => [
         SliverAppBar(
           expandedHeight: _expandedHeight,
-          pinned: true,
+          pinned: false,
+          floating: false,
+          snap: false,
           backgroundColor: AppColors.bg,
           surfaceTintColor: Colors.transparent,
           shadowColor: Colors.transparent,
-          centerTitle: true,
-          titleSpacing: 0,
-          title: AnimatedOpacity(
-            opacity: _showAppBarTitle ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            child: Text(
-              detail.title,
-              style: AppText.headline,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+          elevation: 0,
           stretch: true,
-          stretchTriggerOffset: 90,
+          stretchTriggerOffset: 80,
           flexibleSpace: FlexibleSpaceBar(
             collapseMode: CollapseMode.parallax,
             stretchModes: const [
               StretchMode.zoomBackground,
-              StretchMode.fadeTitle,
             ],
-            background: LayoutBuilder(
-              builder: (context, constraints) {
-                final stretch = ((constraints.maxHeight - _expandedHeight) / 180.0)
-                    .clamp(0.0, 0.22);
-                return Transform.scale(
-                  alignment: Alignment.topCenter,
-                  scale: 1.0 + stretch,
-                  child: RepaintBoundary(
-                    child: _Hero(
-                      coverUrl: heroCoverUrl,
-                      coverHeaders: coverHeaders,
-                      hasCover: hasCover,
-                      trailer: _trailerSource,
-                      collapsed: _showAppBarTitle,
-                      onTapFullscreen: _trailerSource != null
-                          ? () => _openTrailer(_trailerSource!)
-                          : null,
-                      bottomContent: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => SearchScreen(initialQuery: detail.title),
-                          ),
-                        ),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 390),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              _titleHeader(detail),
-                              const SizedBox(height: 10),
-                              _heroMetaLine(detail),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
+            background: _Hero(
+              coverUrl: heroCoverUrl,
+              coverHeaders: coverHeaders,
+              hasCover: hasCover,
+              trailer: _trailerSource,
+              collapsed: _showAppBarTitle,
+              onTapFullscreen: _trailerSource != null
+                  ? () => _openTrailer(_trailerSource!)
+                  : null,
             ),
           ),
         ),
-
 
         if (state.error == 'load_failed')
           SliverToBoxAdapter(
@@ -2077,61 +1975,79 @@ class _DetailViewState extends State<_DetailView>
 
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-            child: _isFutureRelease(detail)
-                ? const _ComingSoonButton()
-                : Column(
-                    children: [
-                      _PlayButton(
-                        label: buttonLabel,
-                        icon: isReading
-                            ? Icons.menu_book_rounded
-                            : Icons.play_arrow_rounded,
-                        onPressed: (eps.isNotEmpty ||
-                                widget.item.sourceId == 'tmdb:catalog' ||
-                                widget.item.sourceId.startsWith('tpdb:'))
-                            ? () => _openPlayer(eps, resumeIdx, detail, category)
-                            : null,
-                        onLongPress: (widget.item.sourceId == 'tmdb:catalog' ||
-                                widget.item.sourceId.startsWith('tpdb:'))
-                            ? () async {
-                                final picked = await _showProviderPickerSheet(detail, category: category);
-                                if (picked != null && mounted) {
-                                  _openPlayer(picked.detail.episodes, 0, picked.detail, category);
-                                }
-                              }
-                            : null,
-                      ),
-                      if (!isReading) ...[
-                        const SizedBox(height: 10),
-                        _DownloadButton(
-                          label: downloadLabel,
-                          onPressed: () => _openDownloadSheet(
-                            detail: detail,
-                            category: category,
-                            episodesBySeason: episodesBySeason,
-                            initialSeason: currentSeason,
-                          ),
-                          onLongPress: (widget.item.sourceId == 'tmdb:catalog' ||
-                                  widget.item.sourceId.startsWith('tpdb:'))
-                              ? () async {
-                                  final picked = await _showProviderPickerSheet(detail, category: category);
-                                  if (picked != null && mounted) {
-                                    _openDownloadSheet(
-                                      detail: picked.detail,
-                                      category: category,
-                                      episodesBySeason: {
-                                        1: picked.detail.episodes,
-                                      },
-                                      initialSeason: 1,
-                                    );
-                                  }
-                                }
-                              : null,
-                        ),
-                      ],
-                    ],
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => SearchScreen(initialQuery: detail.title),
+                    ),
                   ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 390),
+                    child: _titleHeader(detail),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _heroMetaLine(detail),
+                const SizedBox(height: 18),
+                if (_isFutureRelease(detail))
+                  const _ComingSoonButton()
+                else ...[
+                  _PlayButton(
+                    label: buttonLabel,
+                    icon: isReading
+                        ? Icons.menu_book_rounded
+                        : Icons.play_arrow_rounded,
+                    onPressed: (eps.isNotEmpty ||
+                            widget.item.sourceId == 'tmdb:catalog' ||
+                            widget.item.sourceId.startsWith('tpdb:'))
+                        ? () => _openPlayer(eps, resumeIdx, detail, category)
+                        : null,
+                    onLongPress: (widget.item.sourceId == 'tmdb:catalog' ||
+                            widget.item.sourceId.startsWith('tpdb:'))
+                        ? () async {
+                            final picked = await _showProviderPickerSheet(detail, category: category);
+                            if (picked != null && mounted) {
+                              _openPlayer(picked.detail.episodes, 0, picked.detail, category);
+                            }
+                          }
+                        : null,
+                  ),
+                  if (!isReading) ...[
+                    const SizedBox(height: 10),
+                    _DownloadButton(
+                      label: downloadLabel,
+                      onPressed: () => _openDownloadSheet(
+                        detail: detail,
+                        category: category,
+                        episodesBySeason: episodesBySeason,
+                        initialSeason: currentSeason,
+                      ),
+                      onLongPress: (widget.item.sourceId == 'tmdb:catalog' ||
+                              widget.item.sourceId.startsWith('tpdb:'))
+                          ? () async {
+                              final picked = await _showProviderPickerSheet(detail, category: category);
+                              if (picked != null && mounted) {
+                                _openDownloadSheet(
+                                  detail: picked.detail,
+                                  category: category,
+                                  episodesBySeason: {
+                                    1: picked.detail.episodes,
+                                  },
+                                  initialSeason: 1,
+                                );
+                              }
+                            }
+                          : null,
+                    ),
+                  ],
+                ],
+              ],
+            ),
           ),
         ),
 
@@ -2350,7 +2266,7 @@ class _DetailViewState extends State<_DetailView>
               : _RelationsTab(relations: state.relations.isNotEmpty ? state.relations : detail.relations, onOpen: _openRelation),
           _DetailsTab(
             sourceName: sourceName,
-            statusStr: statusStr,
+            statusStr: statusLabel(detail.status),
             reading: isReading,
             genres: detail.genres,
             studios: detail.studios,

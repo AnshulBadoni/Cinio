@@ -1,9 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
-import 'package:flutter/foundation.dart';
-
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -23,7 +20,6 @@ import '../home/my_list_screen.dart';
 import '../home/search_screen.dart';
 import '../schedule/schedule_screen.dart';
 import '../settings/settings_screen.dart';
-import 'dock_icons.dart';
 import '../../core/ui/dock_visibility.dart';
 import 'root_shell_tv.dart';
 

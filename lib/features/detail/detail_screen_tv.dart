@@ -106,7 +106,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     if (_prefetchedEpUrl == epUrl) return;
     _prefetchedEpUrl = epUrl;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || !sl.isRegistered<SourceRepository>()) return;
       sl<SourceRepository>().prefetch(epUrl, sourceId: sourceId);
     });
   }
@@ -119,7 +119,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await Future.delayed(const Duration(milliseconds: 300));
-      if (!mounted) return;
+      if (!mounted || !sl.isRegistered<SourceRepository>()) return;
       try {
         final resolved = await sl<SourceRepository>().resolveCatalogTitle(
           catalog,
