@@ -667,7 +667,7 @@ class _SearchViewState extends State<_SearchView>
   // ── Discover header ───────────────────────────────────────────────────────
   Widget _discoverHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -686,7 +686,7 @@ class _SearchViewState extends State<_SearchView>
                         height: 1.05,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 5),
                     Text(
                       'Movies, shows and more for you',
                       style: AppText.body.copyWith(
@@ -701,7 +701,7 @@ class _SearchViewState extends State<_SearchView>
               _discoverFilterButton(),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           _discoverSearchField(),
           const SizedBox(height: 12),
           _discoverFilterChips(),

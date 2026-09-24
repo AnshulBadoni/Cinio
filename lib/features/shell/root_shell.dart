@@ -567,10 +567,10 @@ class _DockItem extends StatelessWidget {
                     ),
                   ),
                   SizedBox(
-                    height: 14,
+                    height: 14.0 * (1.0 - t),
                     child: ClipRect(
                       child: Opacity(
-                        opacity: labelOpacity,
+                        opacity: labelOpacity.clamp(0.0, 1.0),
                         child: Center(
                           child: Text(
                             label,

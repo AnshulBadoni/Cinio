@@ -305,7 +305,7 @@ class _DetailView extends StatefulWidget {
 
 class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
-  static const double _expandedHeight = 500;
+  static const double _expandedHeight = 450;
   bool _showAppBarTitle = false;
   String? _titleLogoUrl;
   String? _titleLogoKey;

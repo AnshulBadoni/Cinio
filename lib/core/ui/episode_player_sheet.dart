@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import '../models/video_source.dart';
 import '../playback/external_player.dart';
@@ -156,16 +155,12 @@ class _EpisodeQuickActions extends StatelessWidget {
           children: [
             _fallbackImage(),
             if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
-              CachedNetworkImage(
-                imageUrl: thumbnailUrl!,
-                httpHeaders: resolveEffectiveCoverHeaders(
-                  thumbnailUrl!,
-                  thumbnailHeaders,
-                ),
+              Image(
+                image: nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
                 fit: BoxFit.cover,
-                fadeInDuration: const Duration(milliseconds: 120),
-                placeholder: (context, url) => const SizedBox.shrink(),
-                errorWidget: (context, url, error) => const SizedBox.shrink(),
+                gaplessPlayback: true,
+                filterQuality: FilterQuality.high,
+                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
               ),
           ],
         ),

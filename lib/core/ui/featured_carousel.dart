@@ -9,7 +9,7 @@ import 'featured_hero.dart';
 
 /// Fixed hero height — the carousel pins this so the container never resizes
 /// between slides and the hero fills it edge-to-edge (Prime-style).
-const double kHeroHeight = 540;
+const double kHeroHeight = 594;
 
 /// Banner transition styles (A/B).
 enum HeroTransition {

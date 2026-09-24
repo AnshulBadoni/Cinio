@@ -125,7 +125,7 @@ class _Hero extends StatelessWidget {
           Positioned(
             left: 20,
             right: 20,
-            bottom: 38,
+            bottom: 22,
             child: bottomContent!,
           ),
       ],
