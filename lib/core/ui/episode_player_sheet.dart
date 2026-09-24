@@ -55,12 +55,16 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   String? heroTag,
 }) async {
   if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty) {
-    try {
-      await precacheImage(
-        nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
-        context,
-      ).timeout(const Duration(seconds: 2));
-    } catch (_) {}
+    unawaited(precacheImage(
+      nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
+      context,
+    ).catchError((_) {}));
+  }
+  if (fallbackThumbnailUrl != null && fallbackThumbnailUrl!.isNotEmpty) {
+    unawaited(precacheImage(
+      nativeCoverProvider(fallbackThumbnailUrl!, fallbackThumbnailHeaders),
+      context,
+    ).catchError((_) {}));
   }
   if (!context.mounted) return null;
   return Navigator.of(context).push<EpisodeAction>(
@@ -196,16 +200,12 @@ class _EpisodeQuickActions extends StatelessWidget {
         ],
       );
     }
-    if (heroTag == null) return image;
-    return Hero(
-      tag: heroTag!,
-      createRectTween: (begin, end) => MaterialRectArcTween(
-        begin: begin,
-        end: end,
-      ),
-      flightShuttleBuilder: (context, animation, direction, fromHero, toHero) => direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
-      child: image,
-    );
+    // Do not rely on a Hero flight for the destination image. On nested
+    // sliver lists the source Hero can be removed from the tree as the
+    // transparent route settles, which previously left a perfectly blurred
+    // screen with no focused thumbnail. The focused image is rendered as a
+    // normal widget here; the poster/episode itself is the source of truth.
+    return image;
   }
 
   void _close(BuildContext context, EpisodeAction action) {

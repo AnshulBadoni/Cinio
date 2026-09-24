@@ -423,6 +423,7 @@ class _SearchViewState extends State<_SearchView>
       inLibrary: inLibrary,
       watched: watched,
       onPlay: () => _play(item, resumeEntry: matchingHistory),
+      onInfo: () => _openDetail(item),
       onMarkWatched: () async {
         if (!_myList.contains(item)) await _myList.add(item);
         await statusStore.setStatus(item, WatchStatus.completed);

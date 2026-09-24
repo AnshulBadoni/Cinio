@@ -307,11 +307,21 @@ class _HomeViewState extends State<_HomeView>
 
   Future<HeroMeta?> _loadHeroMeta(MediaItem m) async {
     final d = await _detailOf(m.url, m.sourceId);
-    if (d == null) return null;
+    if (d == null) {
+      // Catalog items already carry browse-time metadata. Do not make the hero
+      // blank simply because resolving a full detail object would be expensive.
+      if (m.genres.isEmpty && m.year == null && m.rating == null) return null;
+      return HeroMeta(
+        genres: m.genres,
+        year: m.year,
+        rating: m.rating,
+      );
+    }
     return HeroMeta(
       genres: d.genres,
       episodeCount: d.episodes.length,
-      year: d.year,
+      year: d.year ?? m.year,
+      rating: d.rating ?? m.rating,
     );
   }
 
@@ -382,6 +392,7 @@ class _HomeViewState extends State<_HomeView>
       inLibrary: inLibrary,
       watched: watched,
       onPlay: () => _playFeatured(item),
+      onInfo: () => _openDetail(item),
       onMarkWatched: () async {
         if (!_myList.contains(item)) await _myList.add(item);
         await _listStatus.setStatus(item, WatchStatus.completed);
@@ -435,6 +446,7 @@ class _HomeViewState extends State<_HomeView>
       inLibrary: inLibrary,
       watched: watched,
       onPlay: () => _resume(entry),
+      onInfo: () => _openDetail(item),
       onMarkWatched: () async {
         if (!_myList.contains(item)) await _myList.add(item);
         await _listStatus.setStatus(item, WatchStatus.completed);

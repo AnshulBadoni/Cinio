@@ -17,10 +17,16 @@ import '../theme/app_text.dart';
 /// Lightweight metadata shown under the hero title: a few genres + episode
 /// count (or year for movies). Lazily fetched, so it never blocks the banner.
 class HeroMeta {
-  const HeroMeta({this.genres = const [], this.episodeCount = 0, this.year});
+  const HeroMeta({
+    this.genres = const [],
+    this.episodeCount = 0,
+    this.year,
+    this.rating,
+  });
   final List<String> genres;
   final int episodeCount;
   final String? year;
+  final double? rating;
 }
 
 /// Apple-TV+-style cinematic hero: a rounded inset artwork card floating on the
@@ -356,18 +362,24 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   }
 
   Widget _titleText() {
+    final seed = (widget.item.tmdbId ?? widget.item.id.hashCode).abs();
+    final styleIndex = seed % 3;
+    const families = ['Poppins', 'Rubik', 'Lato'];
+    final accent = _artColor ?? Colors.white;
+    final color = Color.lerp(Colors.white, accent, 0.72) ?? accent;
     return Text(
       widget.item.title,
       textAlign: TextAlign.center,
       style: AppText.display.copyWith(
-        fontFamily: 'Montserrat',
-        fontSize: 30,
-        fontWeight: FontWeight.w800,
-        height: 1.0,
-        letterSpacing: -0.8,
+        fontFamily: families[styleIndex],
+        fontSize: styleIndex == 1 ? 31 : 30,
+        fontWeight: styleIndex == 1 ? FontWeight.w700 : FontWeight.w800,
+        height: 0.98,
+        letterSpacing: styleIndex == 2 ? -0.45 : -1.0,
+        color: color,
       ),
       maxLines: 2,
-      overflow: TextOverflow.ellipsis,
+      overflow: TextOverflow.visible,
     );
   }
 
@@ -384,26 +396,58 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       builder: (context, snap) {
         final m = snap.data;
         if (m == null) return const SizedBox.shrink();
-        final parts = <String>[...m.genres.take(3)];
-        if (m.episodeCount > 1) {
-          // Reading modes count chapters, not episodes (same shared
-          // Episode model underneath — display wording only).
-          parts.add(
-            '${m.episodeCount} ${widget.reading ? 'Chapters' : 'Episodes'}',
-          );
-        } else if (m.year != null && m.year!.isNotEmpty) {
-          parts.add(m.year!);
+        final children = <Widget>[];
+        if (m.rating != null && m.rating! > 0) {
+          children.add(Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.star_rounded, color: Color(0xFFFFC107), size: 15),
+              const SizedBox(width: 4),
+              Text(m.rating!.toStringAsFixed(1)),
+            ],
+          ));
         }
-        if (parts.isEmpty) return const SizedBox.shrink();
-        return Text(
-          parts.join('   ·   ').toUpperCase(),
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppText.caption.copyWith(
-            color: Colors.white.withValues(alpha: 0.92),
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.8,
+        if (m.year != null && m.year!.isNotEmpty) {
+          children.add(Text(m.year!));
+        }
+        for (final genre in m.genres.take(3)) {
+          children.add(Text(genre));
+        }
+        if (m.episodeCount > 1) {
+          children.add(Text(
+            '${m.episodeCount} ${widget.reading ? 'Chapters' : 'Episodes'}',
+          ));
+        }
+        if (children.isEmpty) return const SizedBox.shrink();
+        return SizedBox(
+          height: 20,
+          child: Center(
+            child: DefaultTextStyle(
+              style: AppText.caption.copyWith(
+                color: Colors.white.withValues(alpha: 0.90),
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.15,
+              ),
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 9,
+                children: [
+                  for (var i = 0; i < children.length; i++) ...[
+                    if (i > 0)
+                      Container(
+                        width: 3,
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.48),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    children[i],
+                  ],
+                ],
+              ),
+            ),
           ),
         );
       },

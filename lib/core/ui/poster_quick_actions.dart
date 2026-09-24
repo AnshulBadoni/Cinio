@@ -21,6 +21,7 @@ Future<void> showPosterQuickActions(
   required VoidCallback onPlay,
   required Future<void> Function() onMarkWatched,
   required Future<bool> Function() onToggleLibrary,
+  required VoidCallback onInfo,
   String? playLabel,
   bool inLibrary = false,
   bool watched = false,
@@ -41,6 +42,7 @@ Future<void> showPosterQuickActions(
         onPlay: onPlay,
         onMarkWatched: onMarkWatched,
         onToggleLibrary: onToggleLibrary,
+        onInfo: onInfo,
         playLabel: playLabel,
         initialInLibrary: inLibrary,
         initialWatched: watched,
@@ -67,6 +69,7 @@ class _PosterQuickActions extends StatefulWidget {
     required this.onPlay,
     required this.onMarkWatched,
     required this.onToggleLibrary,
+    required this.onInfo,
     required this.initialInLibrary,
     required this.initialWatched,
     this.playLabel,
@@ -77,6 +80,7 @@ class _PosterQuickActions extends StatefulWidget {
   final VoidCallback onPlay;
   final Future<void> Function() onMarkWatched;
   final Future<bool> Function() onToggleLibrary;
+  final VoidCallback onInfo;
   final bool initialInLibrary;
   final bool initialWatched;
   final String? playLabel;
@@ -118,6 +122,14 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
     if (_busy) return;
     Navigator.of(context).pop();
     WidgetsBinding.instance.addPostFrameCallback((_) => widget.onPlay());
+  }
+
+  void _info() {
+    if (_busy) return;
+    Navigator.of(context).pop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onInfo();
+    });
   }
 
   @override
@@ -235,6 +247,12 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                         label: _playText,
                         primary: true,
                         onTap: _play,
+                      ),
+                      const SizedBox(height: 8),
+                      _QuickActionButton(
+                        icon: Icons.info_outline_rounded,
+                        label: 'Info',
+                        onTap: _info,
                       ),
                       const SizedBox(height: 8),
                       _QuickActionButton(

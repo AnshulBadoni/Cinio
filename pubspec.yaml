@@ -283,3 +283,12 @@ flutter:
     - family: Montserrat
       fonts:
         - asset: assets/fonts/Montserrat-Regular.ttf
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+    - family: Rubik
+      fonts:
+        - asset: assets/fonts/Rubik-Regular.ttf
+    - family: Lato
+      fonts:
+        - asset: assets/fonts/Lato-Regular.ttf

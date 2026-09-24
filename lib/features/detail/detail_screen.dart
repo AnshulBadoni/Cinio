@@ -305,7 +305,7 @@ class _DetailView extends StatefulWidget {
 
 class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
-  static const double _expandedHeight = 350;
+  static const double _expandedHeight = 430;
   bool _showAppBarTitle = false;
   String? _titleLogoUrl;
   String? _titleLogoKey;
@@ -867,7 +867,10 @@ class _DetailViewState extends State<_DetailView>
       thumbnailUrl: (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
           ? ep.thumbnail
           : (detail.cover ?? widget.item.cover),
-      thumbnailHeaders: (detail.coverHeaders ?? widget.item.coverHeaders),
+      // Episode thumbnails are their own URLs. Never pass the show's native
+      // x-ani-src/x-mihon-src marker to them — that routes the thumbnail through
+      // the wrong image client and was the cause of the blank focused sheet.
+      thumbnailHeaders: null,
       fallbackThumbnailUrl: detail.cover ?? widget.item.cover,
       fallbackThumbnailHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
       rating: ep.rating,
@@ -1809,51 +1812,45 @@ class _DetailViewState extends State<_DetailView>
 
   Widget _titleHeader(MediaDetail detail) {
     final logo = _titleLogoUrl;
-    final fallbackStyle = AppText.display.copyWith(
-      fontFamily: 'Montserrat',
-      fontSize: 31,
-      fontWeight: FontWeight.w800,
-      height: 1.0,
-      letterSpacing: -0.9,
-      color: _titleAccent == null
-          ? AppColors.textPrimary
-          : Color.lerp(_titleAccent, Colors.white, 0.38),
-    );
-    if (logo == null || logo.isEmpty) {
-      return Text(
-        detail.title,
-        style: fallbackStyle,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.center,
+    if (logo != null && logo.isNotEmpty) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 330, maxHeight: 92),
+        child: CachedNetworkImage(
+          imageUrl: logo,
+          fit: BoxFit.contain,
+          alignment: Alignment.center,
+          fadeInDuration: const Duration(milliseconds: 220),
+          placeholder: (_, _) => _styledFallbackTitle(detail),
+          errorWidget: (_, _, _) => _styledFallbackTitle(detail),
+        ),
       );
     }
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 310, maxHeight: 82),
-      child: CachedNetworkImage(
-        imageUrl: logo,
-        fit: BoxFit.contain,
-        alignment: Alignment.center,
-        fadeInDuration: const Duration(milliseconds: 220),
-        placeholder: (_, _) => SizedBox(
-          height: 48,
-          child: Align(
-            alignment: Alignment.center,
-            child: Text(
-              detail.title,
-              style: fallbackStyle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ),
-        errorWidget: (_, _, _) => Text(
-          detail.title,
-          style: fallbackStyle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
+    return _styledFallbackTitle(detail);
+  }
+
+  Widget _styledFallbackTitle(MediaDetail detail) {
+    final seed = (detail.tmdbId ?? widget.item.tmdbId ?? detail.title.hashCode).abs();
+    final styleIndex = seed % 3;
+    final families = const ['Poppins', 'Rubik', 'Lato'];
+    final family = families[styleIndex];
+    final accent = _titleAccent ?? AppColors.textPrimary;
+    final titleColor = Color.lerp(Colors.white, accent, 0.72) ?? accent;
+    final fontSize = styleIndex == 1 ? 34.0 : 32.0;
+    final letterSpacing = styleIndex == 2 ? -0.55 : -1.05;
+    final weight = styleIndex == 1 ? FontWeight.w700 : FontWeight.w800;
+    return Text(
+      detail.title,
+      style: AppText.display.copyWith(
+        fontFamily: family,
+        fontSize: fontSize,
+        fontWeight: weight,
+        height: 0.98,
+        letterSpacing: letterSpacing,
+        color: titleColor,
       ),
+      maxLines: 2,
+      overflow: TextOverflow.visible,
+      textAlign: TextAlign.center,
     );
   }
 
@@ -2039,7 +2036,7 @@ class _DetailViewState extends State<_DetailView>
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             _titleHeader(detail),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 10),
                             _heroMetaLine(detail),
                           ],
                         ),

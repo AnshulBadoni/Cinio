@@ -69,7 +69,6 @@ class _RootShellState extends State<RootShell>
   /// Double-back-to-exit: timestamp of the last root Back press. A second Back
   /// within 2s exits the app; the first just shows the "press back again" toast.
   DateTime? _lastBackPress;
-  bool _dockCompact = false;
   late final AnimationController _dockCtrl;
 
   /// Tab-switch entrance: the visible page swaps immediately and the INCOMING
@@ -239,18 +238,16 @@ class _RootShellState extends State<RootShell>
             final active = visible.indexOf(_tab);
             return NotificationListener<ScrollNotification>(
               onNotification: (notification) {
-                if (notification.depth != 0) return false;
-
-                // The dock follows the user's finger instead of running its
-                // own timed expand/collapse animation. A positive scroll delta
-                // (moving down the page) compresses it; a negative delta
-                // (pulling back up) expands it immediately.
-                if (notification is ScrollUpdateNotification) {
+                // Listen to the actual vertical scroll stream, including
+                // NestedScrollView/sliver notifications. Horizontal rails do
+                // not affect the dock. The controller follows the finger
+                // directly — there is no timer-driven hide/show.
+                if (notification.metrics.axis == Axis.vertical &&
+                    notification is ScrollUpdateNotification) {
                   final delta = notification.scrollDelta ?? 0.0;
                   if (delta.abs() > 0.01) {
-                    final next = (_dockCtrl.value + delta / 140.0).clamp(0.0, 1.0);
+                    final next = (_dockCtrl.value + delta / 110.0).clamp(0.0, 1.0);
                     _dockCtrl.value = next;
-                    _dockCompact = next > 0.5;
                   }
                 }
                 return false;
@@ -335,13 +332,16 @@ class _FloatingDock extends StatelessWidget {
     return AnimatedBuilder(
       animation: collapse,
       builder: (context, _) {
-        // Keep the surface geometry stable. The gesture only makes the dock
-        // slightly shorter; its columns never resize independently.
+        // The dock morphs as one coherent object: it gets narrower and
+        // shorter while labels disappear. Every item keeps an equal column,
+        // so the glass never becomes a collection of unrelated buttons.
         final t = Curves.easeOutCubic.transform(
           collapse.value.clamp(0.0, 1.0),
         );
-        final width = (screenWidth * 0.90).clamp(300.0, 520.0);
-        final height = 74.0 - (5.0 * t);
+        final expandedWidth = (screenWidth * 0.90).clamp(300.0, 520.0);
+        final compactWidth = (screenWidth * 0.64).clamp(250.0, 380.0);
+        final width = expandedWidth + (compactWidth - expandedWidth) * t;
+        final height = 74.0 - (16.0 * t);
         final radius = height / 2;
 
         return Align(
@@ -355,7 +355,7 @@ class _FloatingDock extends StatelessWidget {
                 child: Container(
                   width: width,
                   height: height,
-                  padding: const EdgeInsets.all(5),
+                  padding: EdgeInsets.all(5.0 - (1.0 * t)),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(radius),
                     color: Colors.white.withValues(alpha: 0.045),
