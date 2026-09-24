@@ -190,22 +190,18 @@ class DetailCubit extends Cubit<DetailState> {
     );
   }
 
-  /// Initial fetch with automatic progressive retries. Catalog detail is always
+  /// Initial fetch is bounded so a stalled provider cannot lock navigation. Catalog detail is always
   /// owned by its metadata catalog; streaming providers are resolved lazily only by Play/Download.
   Future<void> load() async {
     if (state.detail == null) {
       emit(state.copyWith(status: DetailStatus.loading, clearError: true));
     }
     MediaDetail? detail;
-    for (var attempt = 0; attempt < 3; attempt++) {
-      try {
-        detail = await _loadDetailForCurrentSource(state.category);
-        break;
-      } catch (_) {
-        if (attempt < 2) {
-          await Future.delayed(Duration(milliseconds: 400 * (attempt + 1)));
-        }
-      }
+    try {
+      detail = await _loadDetailForCurrentSource(state.category)
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      detail = null;
     }
 
     if (detail != null) {
@@ -217,7 +213,10 @@ class DetailCubit extends Cubit<DetailState> {
         extrasLoading: _sourceId == 'tmdb:catalog' || _sourceId == 'tpdb:catalog',
         clearError: true,
       ));
-      unawaited(_enrich(detail));
+      unawaited(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        if (!isClosed) await _enrich(detail!);
+      }());
     } else {
       if (state.detail != null) {
         emit(state.copyWith(status: DetailStatus.success, extrasLoading: false, error: 'load_failed'));
@@ -447,9 +446,34 @@ class DetailCubit extends Cubit<DetailState> {
     }
   }
 
-  void selectSeason(int s) {
+  final Set<int> _seasonLoads = <int>{};
+
+  Future<void> selectSeason(int s) async {
     if (s == state.selectedSeason) return;
     emit(state.copyWith(selectedSeason: s));
+    final d = state.detail;
+    if (d == null || !d.tmdbIsTv || d.tmdbId == null || d.sourceId != 'tmdb:catalog') {
+      return;
+    }
+    if (_seasonLoads.contains(s) || d.episodes.any((e) => e.season == s)) return;
+    _seasonLoads.add(s);
+    try {
+      final loaded = await sl<TmdbDiscoverService>()
+          .seasonEpisodes(d.tmdbId!, s)
+          .timeout(const Duration(seconds: 10));
+      if (isClosed || loaded.isEmpty) return;
+      final merged = <Episode>[...d.episodes, ...loaded]
+        ..sort((a, b) {
+          final sa = a.season ?? 1, sb = b.season ?? 1;
+          final bySeason = sa.compareTo(sb);
+          return bySeason != 0 ? bySeason : (a.number ?? 0).compareTo(b.number ?? 0);
+        });
+      emit(state.copyWith(detail: d.copyWith(episodes: merged)));
+    } catch (_) {
+      // Keep the season selector responsive if a season request fails.
+    } finally {
+      _seasonLoads.remove(s);
+    }
   }
 
   void toggleDesc() => emit(state.copyWith(descExpanded: !state.descExpanded));

@@ -29,6 +29,9 @@ class ThePornDb {
       options: Options(
         headers: {'Authorization': 'Bearer $apiKey'},
         listFormat: ListFormat.multi,
+        receiveTimeout: const Duration(seconds: 10),
+        sendTimeout: const Duration(seconds: 10),
+        connectTimeout: const Duration(seconds: 8),
       ),
     );
     if (response.data is! Map) return const {};

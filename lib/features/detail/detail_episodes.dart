@@ -1268,17 +1268,11 @@ class _EpisodeRow extends StatelessWidget {
                         fit: StackFit.expand,
                         children: [
                           thumbUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: thumbUrl,
-                                  cacheManager:
-                                      AppImageCache.cacheManagerOrDefault,
-                                  httpHeaders: coverHeaders,
+                              ? Image(
+                                  image: nativeCoverProvider(thumbUrl, coverHeaders),
                                   fit: BoxFit.cover,
-                                  memCacheWidth: 232,
-                                  placeholder: (c, u) =>
-                                      ColoredBox(color: AppColors.surface2),
-                                  errorWidget: (c, u, e) =>
-                                      ColoredBox(color: AppColors.surface2),
+                                  gaplessPlayback: true,
+                                  filterQuality: FilterQuality.medium,
                                 )
                               : ColoredBox(color: AppColors.surface2),
                           if (isWatched)

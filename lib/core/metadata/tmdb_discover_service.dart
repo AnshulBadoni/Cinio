@@ -314,21 +314,11 @@ class TmdbDiscoverService {
             if (season is Map) (season['season_number'] as num?)?.toInt(),
         ].whereType<int>().where((n) => n > 0).toList();
 
-        // Keep metadata loading bounded. A series with many seasons used to
-        // fan out large groups of 12s requests and retry each failed season 3x,
-        // which could make the detail screen look frozen for minutes.
-        final seasonResults = <List<Episode>>[];
-        for (var i = 0; i < seasonNumbers.length; i += 2) {
-          final chunk = seasonNumbers.sublist(i, math.min(i + 2, seasonNumbers.length));
-          final chunkRes = await Future.wait([
-            for (final seasonNumber in chunk) _loadTmdbSeason(id, seasonNumber),
-          ]);
-          seasonResults.addAll(chunkRes);
-        }
-
-        for (final result in seasonResults) {
-          episodes.addAll(result);
-        }
+        // Load only the first season during initial navigation. Other seasons
+        // are fetched lazily when selected, so a long series cannot keep the
+        // detail page waiting through dozens of network requests.
+        final firstSeason = seasonNumbers.isNotEmpty ? seasonNumbers.first : 1;
+        episodes.addAll(await _loadTmdbSeason(id, firstSeason));
         episodes.sort((a, b) {
           final sa = a.season ?? 1, sb = b.season ?? 1;
           final sn = sa.compareTo(sb);
@@ -391,6 +381,8 @@ class TmdbDiscoverService {
       return path == null || path.isEmpty ? null : '${Tmdb.img}/w780$path';
     } catch (_) { return null; }
   }
+
+  Future<List<Episode>> seasonEpisodes(int id, int seasonNumber) => _loadTmdbSeason(id, seasonNumber);
 
   Future<List<Episode>> _loadTmdbSeason(int id, int seasonNumber) async {
     try {

@@ -13,8 +13,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/ui/jump_prompt.dart';
 import '../../core/ui/native_cover_provider.dart';
+import '../../core/ui/jump_prompt.dart';
 import '../../core/util/title_matcher.dart';
 import '../../core/app_mode.dart';
 import '../../core/cache/app_image_cache.dart';
@@ -528,6 +528,7 @@ class _DetailViewState extends State<_DetailView>
   int? _nextAiringEpisode;
   DateTime? _nextAiringAt;
   bool _trackerFetchStarted = false;
+  String? _postFrameForDetailKey;
 
   void _maybeFetchTrackerProgress(MediaDetail detail) {
     if (_trackerFetchStarted) return;
@@ -1773,8 +1774,15 @@ class _DetailViewState extends State<_DetailView>
         if (mounted) setState(() => _configureTabController(showEpisodesTab));
       });
     }
-    _ensureFiller(detail.malId ?? item.malId);
-    _maybeFetchTrackerProgress(detail);
+    final detailKey = '${detail.sourceId}:${detail.id}';
+    if (_postFrameForDetailKey != detailKey) {
+      _postFrameForDetailKey = detailKey;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _ensureFiller(detail.malId ?? item.malId);
+        _maybeFetchTrackerProgress(detail);
+      });
+    }
 
     final resume = _resumeTarget(eps);
     final readResume = isReading ? _readResumeIndex(eps) : null;
@@ -1863,7 +1871,8 @@ class _DetailViewState extends State<_DetailView>
 
     return NotificationListener<OverscrollNotification>(
       onNotification: (notification) {
-        if (notification.metrics.axis == Axis.vertical &&
+        if (notification.depth == 0 &&
+            notification.metrics.axis == Axis.vertical &&
             notification.overscroll < 0 &&
             notification.metrics.pixels <= 0) {
           _heroStretch.value =
@@ -1932,15 +1941,17 @@ class _DetailViewState extends State<_DetailView>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            SearchScreen(initialQuery: detail.title),
+                  if (!(item.sourceId.startsWith('tpdb:') &&
+                      item.heroImage?.isNotEmpty == true))
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              SearchScreen(initialQuery: detail.title),
+                        ),
                       ),
+                      child: Center(child: _titleHeader(detail)),
                     ),
-                    child: Center(child: _titleHeader(detail)),
-                  ),
                   if (metaLine.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Center(

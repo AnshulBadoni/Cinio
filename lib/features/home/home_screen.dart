@@ -1255,7 +1255,7 @@ class _HomeScrollView extends StatelessWidget {
         final rowSections = (sections.length > 1 && !firstIsNativeCatalog)
             ? sections.sublist(1)
             : sections;
-        final showSkeletons = homeState.loading && sections.isEmpty;
+        final showSkeletons = homeState.loading;
         final loadedEmpty =
             !homeState.loading &&
             homeState.sections != null &&
@@ -1379,7 +1379,7 @@ class _HomeScrollView extends StatelessWidget {
               ),
             SliverToBoxAdapter(
               child: SizedBox(
-                height: 12 + MediaQuery.paddingOf(context).bottom,
+                height: 18,
               ),
             ),
           ],

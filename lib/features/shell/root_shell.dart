@@ -242,14 +242,14 @@ class _RootShellState extends State<RootShell>
               onNotification: (notification) {
                 if (notification.depth != 0) return false;
                 if (notification.direction == ScrollDirection.reverse &&
-                    notification.metrics.pixels > 8 &&
-                    _dockCtrl.value < 0.98) {
+                    notification.metrics.pixels > 10 &&
+                    _dockCtrl.value < 0.995) {
                   _dockCompact = true;
-                  _dockCtrl.animateTo(1.0, duration: const Duration(milliseconds: 420), curve: Curves.easeOutCubic);
+                  _dockCtrl.animateTo(1.0, duration: const Duration(milliseconds: 520), curve: Curves.easeInOutCubic);
                 } else if (notification.direction == ScrollDirection.forward &&
-                    _dockCtrl.value > 0.02) {
+                    _dockCtrl.value > 0.005) {
                   _dockCompact = false;
-                  _dockCtrl.animateTo(0.0, duration: const Duration(milliseconds: 460), curve: Curves.easeOutCubic);
+                  _dockCtrl.animateTo(0.0, duration: const Duration(milliseconds: 560), curve: Curves.easeInOutCubic);
                 }
                 return false;
               },
@@ -314,16 +314,8 @@ class _RootShellState extends State<RootShell>
 /// state change lives in the icon itself (deliberately not the Material
 /// pill/indicator look).
 class _FloatingDock extends StatelessWidget {
-  const _FloatingDock({
-    required this.tabs,
-    required this.active,
-    required this.compact,
-    required this.collapse,
-    required this.onSelected,
-  });
+  const _FloatingDock({required this.tabs, required this.active, required this.compact, required this.collapse, required this.onSelected});
 
-  /// Exactly what to draw, already ordered and already filtered for the
-  /// content mode — the dock does no picking of its own any more.
   final List<DockTab> tabs;
   final DockTab active;
   final bool compact;
@@ -337,83 +329,37 @@ class _FloatingDock extends StatelessWidget {
     return AnimatedBuilder(
       animation: collapse,
       builder: (context, _) {
-        final t = Curves.easeInOutCubic.transform(collapse.value);
-        final width = screenWidth * (0.94 - (0.12 * t));
-        final verticalPadding = 8.0 - (3.5 * t);
-        final radius = 30.0 - (5.0 * t);
+        final t = Curves.easeInOutCubic.transform(collapse.value.clamp(0.0, 1.0));
+        final width = screenWidth * (0.90 - (0.30 * t));
+        final height = 72.0 - (14.0 * t);
+        final radius = height / 2;
         return Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
-            padding: EdgeInsets.only(bottom: bottomInset + 12),
+            padding: EdgeInsets.only(bottom: bottomInset + 10),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(radius),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
                 child: Container(
                   width: width,
-                  padding: EdgeInsets.symmetric(horizontal: 7, vertical: verticalPadding),
+                  height: height,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.white.withValues(alpha: 0.13),
-                        Colors.white.withValues(alpha: 0.035),
-                        AppColors.surface.withValues(alpha: 0.78),
-                      ],
-                      stops: const [0.0, 0.32, 1.0],
-                    ),
+                    color: const Color(0xD9151518),
                     borderRadius: BorderRadius.circular(radius),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.16),
-                    ),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
                     boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.34),
-                        blurRadius: 28,
-                        offset: const Offset(0, 12),
-                      ),
-
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.42), blurRadius: 30, spreadRadius: 1, offset: const Offset(0, 10)),
                     ],
                   ),
-                  child: Stack(
+                  child: Row(
                     children: [
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.white.withValues(alpha: 0.08),
-                                  Colors.transparent,
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          for (final tab in tabs)
-                            if (tab == DockTab.profile)
-                              _ProfileDockItem(
-                                selected: active == tab,
-                                onTap: () => onSelected(tab),
-                                compact: t > 0.52,
-                              )
-                            else
-                              _DockItem(
-                                label: tab.label,
-                                glyph: null,
-                                icon: _iconFor(tab),
-                                selected: active == tab,
-                                onTap: () => onSelected(tab),
-                                compact: t > 0.52,
-                              ),
-                        ],
-                      ),
+                      for (final tab in tabs)
+                        if (tab == DockTab.profile)
+                          _ProfileDockItem(selected: active == tab, onTap: () => onSelected(tab), collapse: collapse)
+                        else
+                          _DockItem(label: tab.label, glyph: null, icon: _iconFor(tab), selected: active == tab, onTap: () => onSelected(tab), collapse: collapse),
                     ],
                   ),
                 ),
@@ -466,95 +412,59 @@ class _DockPop extends StatelessWidget {
 }
 
 class _DockItem extends StatelessWidget {
-  const _DockItem({
-    required this.label,
-    required this.glyph,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-    required this.compact,
-  });
+  const _DockItem({required this.label, required this.glyph, required this.icon, required this.selected, required this.onTap, required this.collapse});
 
   final String label;
-
-  /// Hand-drawn glyph; null when [icon] carries the tab instead.
   final DockGlyph? glyph;
-
-  /// (outline, filled) Material pair, used when [glyph] is null.
   final (IconData, IconData)? icon;
   final bool selected;
   final VoidCallback onTap;
-  final bool compact;
+  final Animation<double> collapse;
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? AppColors.accent : AppColors.textSecondary;
     return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 5 : 8,
-            vertical: compact ? 3 : 4,
-          ),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white.withValues(alpha: 0.075) : Colors.transparent,
-            borderRadius: BorderRadius.circular(21),
-            border: selected
-                ? Border.all(color: Colors.white.withValues(alpha: 0.10))
-                : null,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                height: compact ? 21 : 25,
-                child: Center(
-                  child: _DockPop(
-                    selected: selected,
-                    child: glyph != null
-                        ? DockIcon(glyph!, color: color, filled: selected)
-                        : Icon(
-                            selected ? icon!.$2 : icon!.$1,
-                            color: color,
-                            size: compact ? 20 : 23,
-                          ),
-                  ),
-                ),
+      child: AnimatedBuilder(
+        animation: collapse,
+        builder: (context, _) {
+          final t = Curves.easeInOutCubic.transform(collapse.value.clamp(0.0, 1.0));
+          final labelOpacity = 1.0 - t;
+          final color = selected ? AppColors.accent : AppColors.textSecondary;
+          return InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(24),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2 + (2 * (1 - t))),
+              decoration: BoxDecoration(
+                color: selected ? Colors.white.withValues(alpha: 0.085 - (0.025 * t)) : Colors.transparent,
+                borderRadius: BorderRadius.circular(24),
+                border: selected ? Border.all(color: Colors.white.withValues(alpha: 0.12)) : null,
               ),
-              SizedBox(height: compact ? 1 : 3),
-              ClipRect(
-                child: Align(
-                  heightFactor: compact ? 0.0 : 1.0,
-                  child: Opacity(
-                    opacity: compact ? 0.0 : 1.0,
-                    child: SizedBox(
-                      height: 14,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          label,
-                          maxLines: 1,
-                          softWrap: false,
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            letterSpacing: 0.05,
-                            color: color,
-                            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(height: 25, child: Center(child: _DockPop(selected: selected, child: glyph != null ? DockIcon(glyph!, color: color, filled: selected) : Icon(selected ? icon!.$2 : icon!.$1, color: color, size: 23)))),
+                  ClipRect(
+                    child: Align(
+                      heightFactor: labelOpacity,
+                      child: Opacity(
+                        opacity: labelOpacity,
+                        child: SizedBox(
+                          height: 14,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(label, maxLines: 1, softWrap: false, style: TextStyle(fontSize: 10.5, color: color, fontWeight: selected ? FontWeight.w600 : FontWeight.w400)),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -564,130 +474,77 @@ class _DockItem extends StatelessWidget {
 /// active), a plain person glyph otherwise. Opens the same Settings screen
 /// the gear used to.
 class _ProfileDockItem extends StatelessWidget {
-  const _ProfileDockItem({required this.selected, required this.onTap, required this.compact});
+  const _ProfileDockItem({required this.selected, required this.onTap, required this.collapse});
 
   final bool selected;
   final VoidCallback onTap;
-  final bool compact;
+  final Animation<double> collapse;
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? AppColors.accent : AppColors.textSecondary;
     return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 5 : 8,
-            vertical: compact ? 3 : 4,
-          ),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white.withValues(alpha: 0.075) : Colors.transparent,
-            borderRadius: BorderRadius.circular(21),
-            border: selected
-                ? Border.all(color: Colors.white.withValues(alpha: 0.10))
-                : null,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                height: compact ? 21 : 25,
-                child: Center(
-                  child: _DockPop(
-                    selected: selected,
-                    child: BlocBuilder<AuthCubit, AuthState>(
-                      builder: (context, auth) {
-                        final ring = selected
-                            ? Border.all(color: AppColors.accent, width: 1.8)
-                            : null;
-                        if (auth.isLoggedIn) {
-                          final initial = auth.displayName.isNotEmpty
-                              ? auth.displayName[0].toUpperCase()
-                              : '?';
-                          return Container(
-                            width: compact ? 22 : 24,
-                            height: compact ? 22 : 24,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: ring,
-                              color: AppColors.surface2,
-                              image: auth.avatarUrl != null
-                                  ? DecorationImage(
-                                      image: CachedNetworkImageProvider(
-                                        auth.avatarUrl!,
-                                      ),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : null,
-                            ),
-                            alignment: Alignment.center,
-                            child: auth.avatarUrl == null
-                                ? Text(
-                                    initial,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      color: selected
-                                          ? AppColors.accent
-                                          : AppColors.textPrimary,
-                                    ),
-                                  )
-                                : null,
-                          );
-                        }
-                        // Signed out — quiet person glyph in a hairline circle.
-                        return Container(
-                          width: compact ? 22 : 24,
-                          height: compact ? 22 : 24,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border:
-                                ring ?? Border.all(color: color, width: 1.4),
-                          ),
-                          child: Icon(
-                            Icons.person_outline,
-                            size: 15,
-                            color: color,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
+      child: AnimatedBuilder(
+        animation: collapse,
+        builder: (context, _) {
+          final t = Curves.easeInOutCubic.transform(collapse.value.clamp(0.0, 1.0));
+          final labelOpacity = 1.0 - t;
+          final color = selected ? AppColors.accent : AppColors.textSecondary;
+          return InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(24),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2 + (2 * (1 - t))),
+              decoration: BoxDecoration(
+                color: selected ? Colors.white.withValues(alpha: 0.085 - (0.025 * t)) : Colors.transparent,
+                borderRadius: BorderRadius.circular(24),
+                border: selected ? Border.all(color: Colors.white.withValues(alpha: 0.12)) : null,
               ),
-              ClipRect(
-                child: Align(
-                  heightFactor: compact ? 0.0 : 1.0,
-                  child: Opacity(
-                    opacity: compact ? 0.0 : 1.0,
-                    child: SizedBox(
-                      height: 14,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          'Profile',
-                          maxLines: 1,
-                          softWrap: false,
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            letterSpacing: 0.05,
-                            color: color,
-                            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                          ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: 25,
+                    child: Center(
+                      child: _DockPop(
+                        selected: selected,
+                        child: BlocBuilder<AuthCubit, AuthState>(
+                          builder: (context, auth) {
+                            if (auth.isLoggedIn) {
+                              return Container(
+                                width: 24, height: 24,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: selected ? Border.all(color: AppColors.accent, width: 1.6) : null,
+                                  image: auth.avatarUrl != null ? DecorationImage(image: NetworkImage(auth.avatarUrl!), fit: BoxFit.cover) : null,
+                                  color: AppColors.surface2,
+                                ),
+                                child: auth.avatarUrl == null ? Center(child: Text(auth.displayName.isNotEmpty ? auth.displayName[0].toUpperCase() : '?', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))) : null,
+                              );
+                            }
+                            return Icon(selected ? Icons.person_rounded : Icons.person_outline_rounded, color: color, size: 23);
+                          },
                         ),
                       ),
                     ),
                   ),
-                ),
+                  ClipRect(
+                    child: Align(
+                      heightFactor: labelOpacity,
+                      child: Opacity(
+                        opacity: labelOpacity,
+                        child: const SizedBox(
+                          height: 14,
+                          child: FittedBox(fit: BoxFit.scaleDown, child: Text('Profile', maxLines: 1, softWrap: false)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }

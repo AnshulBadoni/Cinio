@@ -84,8 +84,8 @@ class TitleLogoService {
 
   Future<String?> logoFor(MediaItem item) async {
     final key = item.tmdbId != null
-        ? 'v5:id:${item.tmdbId}:${item.tmdbIsTv}'
-        : 'v5:q:${item.sourceId}:${(item.englishTitle ?? item.title).toLowerCase()}:${item.year ?? ''}';
+        ? 'v6:id:${item.tmdbId}:${item.tmdbIsTv}'
+        : 'v6:q:${item.sourceId}:${(item.englishTitle ?? item.title).toLowerCase()}:${item.year ?? ''}';
 
     final cached = _mem[key] ?? _box.get(key);
     if (cached != null) {
@@ -94,11 +94,13 @@ class TitleLogoService {
     }
 
     try {
-      final url = await _resolve(item).timeout(const Duration(seconds: 5));
-      // Cache the resolved result (a URL, or '' for a genuine "no logo").
-      final value = url ?? '';
-      _mem[key] = value;
-      await _box.put(key, value);
+      final url = await _resolve(item).timeout(const Duration(seconds: 10));
+      // Never cache a miss. A title logo can be added later and an empty
+      // cache entry would permanently force the generic fallback font.
+      if (url != null && url.isNotEmpty) {
+        _mem[key] = url;
+        await _box.put(key, url);
+      }
       return url;
     } catch (_) {
       // Network error (e.g. a TMDB reset) — do NOT cache, so a later attempt
@@ -186,6 +188,7 @@ class TitleLogoService {
       try {
         final imgs = await _dio.get<dynamic>(
           '${Tmdb.base}/$type/$tmdbId/images',
+          queryParameters: {'include_image_language': 'en,null'},
           options: Options(validateStatus: (c) => c != null && c < 500),
         );
         final logos = (imgs.data is Map) ? imgs.data['logos'] : null;

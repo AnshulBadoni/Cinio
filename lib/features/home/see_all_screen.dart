@@ -141,7 +141,7 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
         cacheExtent: 800,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
-          childAspectRatio: 0.66,
+          childAspectRatio: 0.56,
           crossAxisSpacing: 10,
           mainAxisSpacing: 14,
         ),

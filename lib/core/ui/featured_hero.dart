@@ -287,7 +287,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    if (widget.item.heroImage?.isNotEmpty == true)
+                    if ((_logoUrl != null && _logoUrl!.isNotEmpty) || widget.item.heroImage?.isEmpty != false)
                       GestureDetector(
                         behavior: HitTestBehavior.translucent,
                         onTap: widget.onInfo,
@@ -297,20 +297,14 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                             duration: const Duration(milliseconds: 180),
                             switchInCurve: Curves.easeOutCubic,
                             switchOutCurve: Curves.easeInCubic,
-                            child: _logoUrl != null
-                                ? KeyedSubtree(
-                                    key: ValueKey(_logoUrl),
-                                    child: CachedNetworkImage(
-                                      imageUrl: _logoUrl!,
-                                      fit: BoxFit.contain,
-                                      fadeInDuration: const Duration(milliseconds: 140),
-                                      errorWidget: (_, _, _) => _titleText(),
-                                    ),
-                                  )
-                                : KeyedSubtree(
-                                    key: const ValueKey('hero-title-fallback'),
-                                    child: _titleText(),
-                                  ),
+                            child: KeyedSubtree(
+                              key: ValueKey(_logoUrl),
+                              child: CachedNetworkImage(
+                                imageUrl: _logoUrl!,
+                                fit: BoxFit.contain,
+                                fadeInDuration: const Duration(milliseconds: 140),
+                              ),
+                            ),
                           ),
                         ),
                       ),
