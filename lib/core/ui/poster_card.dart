@@ -124,6 +124,10 @@ class _PosterCardState extends State<PosterCard> {
   void _handleTapUp(TapUpDetails _) => setState(() => _pressed = false);
   void _handleTapCancel() => setState(() => _pressed = false);
 
+  void _handleLongPress() {
+    widget.onLongPress?.call();
+  }
+
   /// The Aniyomi source id for this cover, or null when the header is absent
   /// or malformed. Parsing here (instead of inline with `!`/`int.parse`) keeps
   /// a bad `x-ani-src` value or a null cover from throwing during build — an
