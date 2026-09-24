@@ -31,7 +31,6 @@ Future<void> showPosterQuickActions(
       barrierDismissible: true,
       barrierColor: Colors.transparent,
       transitionDuration: const Duration(milliseconds: 320),
-      reverseTransitionDuration: const Duration(milliseconds: 240),
       pageBuilder: (context, animation, secondaryAnimation) =>
           _PosterQuickActions(
         item: item,
@@ -130,15 +129,25 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
         fit: StackFit.expand,
         children: [
           Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).pop(),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                child: ColoredBox(
-                  color: Colors.black.withValues(alpha: 0.62),
-                ),
-              ),
+            child: AnimatedBuilder(
+              animation: ModalRoute.of(context)?.animation ?? kAlwaysCompleteAnimation,
+              builder: (context, _) {
+                final progress = (ModalRoute.of(context)?.animation?.value ?? 1.0)
+                    .clamp(0.0, 1.0);
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).pop(),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: 14 * progress,
+                      sigmaY: 14 * progress,
+                    ),
+                    child: ColoredBox(
+                      color: Colors.black.withValues(alpha: 0.62 * progress),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
           SafeArea(
@@ -152,6 +161,10 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                 children: [
                   Hero(
                     tag: widget.heroTag,
+                    createRectTween: (begin, end) => MaterialRectArcTween(
+                      begin: begin,
+                      end: end,
+                    ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(18),
                       child: SizedBox(

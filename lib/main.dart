@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+
+import 'core/ui/elastic_scroll_behavior.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -533,6 +535,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
               title: kAppName,
               theme: buildAppTheme(),
               debugShowCheckedModeBanner: false,
+      scrollBehavior: const CinioScrollBehavior(),
       scaffoldMessengerKey: shellFeatures ? rootMessengerKey : null,
               navigatorKey: rootNavigatorKey,
       navigatorObservers: shellFeatures

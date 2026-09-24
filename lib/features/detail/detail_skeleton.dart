@@ -54,7 +54,9 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
     // The skeleton shapes, painted in the flat base colour. A moving highlight
     // is swept across them by the ShaderMask below.
     final shapes = SingleChildScrollView(
-      physics: const NeverScrollableScrollPhysics(),
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

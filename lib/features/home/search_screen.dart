@@ -578,64 +578,339 @@ class _SearchViewState extends State<_SearchView>
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      // bottom: false — the shell's floating dock overlays the content
-      // (extendBody); a full SafeArea would clip results at the dock's edge.
       body: SafeArea(
         bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _searchBar(),
-            const SizedBox(height: 12),
-            // Source line — what's being searched, one line of text, tap to
-            // open the source picker. Shown idle too, so scope is always known.
-            // Control row — ecosystem tabs (or a result count once scoped to a
-            // single source) on the left, sort + filter actions on the right.
-            _controlRow(modeSources),
-            // Per-source result pills — direct jump to one source's results.
-            _sourcePillsRow(),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Divider(
-                height: 1,
-                thickness: 1,
-                color: AppColors.hairline,
+        child: BlocBuilder<SearchBloc, SearchState>(
+          buildWhen: (previous, current) =>
+              previous.query.trim().isEmpty != current.query.trim().isEmpty,
+          builder: (context, shellState) {
+            final discover = shellState.query.trim().isEmpty;
+            if (discover) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _discoverHeader(),
+                  const SizedBox(height: 4),
+                  Expanded(
+                    child: BlocBuilder<SearchBloc, SearchState>(
+                      builder: (context, state) {
+                        if (state.status != SearchStatus.success &&
+                            state.suggestions.isNotEmpty) {
+                          return _suggestionList(state.suggestions);
+                        }
+                        switch (state.status) {
+                          case SearchStatus.idle:
+                          case SearchStatus.success:
+                            return _idleView(state);
+                          case SearchStatus.loading:
+                            return const Padding(
+                              padding: EdgeInsets.all(20),
+                              child: SkeletonGrid(),
+                            );
+                          case SearchStatus.error:
+                            return _errorView(state);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _searchBar(),
+                const SizedBox(height: 12),
+                _controlRow(modeSources),
+                _sourcePillsRow(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: AppColors.hairline,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: BlocBuilder<SearchBloc, SearchState>(
+                    builder: (context, state) {
+                      if (state.status != SearchStatus.success &&
+                          state.suggestions.isNotEmpty) {
+                        return _suggestionList(state.suggestions);
+                      }
+                      switch (state.status) {
+                        case SearchStatus.idle:
+                          return _idleView(state);
+                        case SearchStatus.loading:
+                          return const Padding(
+                            padding: EdgeInsets.all(20),
+                            child: SkeletonGrid(),
+                          );
+                        case SearchStatus.error:
+                          return _errorView(state);
+                        case SearchStatus.success:
+                          return _resultsBody(state, cellW, modeSources);
+                      }
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // ── Discover header ───────────────────────────────────────────────────────
+  Widget _discoverHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 14, 32, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Discover',
+                      style: AppText.display.copyWith(
+                        fontSize: 40,
+                        fontWeight: FontWeight.w800,
+                        height: 1.0,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Movies, shows and more for you',
+                      style: AppText.body.copyWith(
+                        fontSize: 17,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              _discoverFilterButton(),
+            ],
+          ),
+          const SizedBox(height: 28),
+          _discoverSearchField(),
+          const SizedBox(height: 18),
+          _discoverFilterChips(),
+        ],
+      ),
+    );
+  }
+
+  Widget _discoverFilterButton() {
+    return BlocBuilder<SearchBloc, SearchState>(
+      buildWhen: (p, c) =>
+          p.sort != c.sort ||
+          p.contentFilter != c.contentFilter ||
+          p.audioFilter != c.audioFilter ||
+          p.genreFilter != c.genreFilter ||
+          p.statusFilter != c.statusFilter ||
+          p.currentSourceOnly != c.currentSourceOnly,
+      builder: (context, state) => ListenableBuilder(
+        listenable: sl<SearchSourcePrefs>(),
+        builder: (context, _) {
+          final excluded = !state.currentSourceOnly &&
+              sl<SearchSourcePrefs>().excluded.isNotEmpty;
+          final count = state.activeFilterCount + (excluded ? 1 : 0);
+          return SizedBox(
+            width: 58,
+            height: 58,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Material(
+                  color: AppColors.surface2,
+                  shape: const CircleBorder(
+                    side: BorderSide(color: AppColors.hairline),
+                  ),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => _openFilterSheet(context),
+                    child: const SizedBox(
+                      width: 58,
+                      height: 58,
+                      child: Icon(Icons.tune_rounded, size: 25),
+                    ),
+                  ),
+                ),
+                if (count > 0)
+                  Positioned(
+                    top: -3,
+                    right: -3,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.accent,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.bg, width: 2),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(5),
+                        child: Text(
+                          '$count',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _discoverSearchField() {
+    return Container(
+      height: 58,
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: AppColors.hairline),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 18),
+          const Icon(Icons.search_rounded, size: 25, color: AppColors.textSecondary),
+          const SizedBox(width: 14),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              textInputAction: TextInputAction.search,
+              onChanged: (text) => context.read<SearchBloc>().add(
+                SearchQueryChanged(text),
+              ),
+              onSubmitted: (text) {
+                FocusScope.of(context).unfocus();
+                context.read<SearchBloc>().add(SearchRunRequested(text));
+              },
+              style: AppText.body.copyWith(fontSize: 16),
+              cursorColor: AppColors.accent,
+              decoration: const InputDecoration(
+                hintText: 'Search movies, shows, people...',
+                hintStyle: AppText.body,
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
               ),
             ),
-            const SizedBox(height: 6),
-            Expanded(
-              child: BlocBuilder<SearchBloc, SearchState>(
-                builder: (context, state) {
-                  // While typing (before a search runs), show the live
-                  // suggestion list instead of the idle/results body.
-                  if (state.status != SearchStatus.success &&
-                      state.suggestions.isNotEmpty) {
-                    return _suggestionList(state.suggestions);
-                  }
-                  switch (state.status) {
-                    case SearchStatus.idle:
-                      return _idleView(state);
-                    case SearchStatus.loading:
-                      return const Padding(
-                        padding: EdgeInsets.all(20),
-                        child: SkeletonGrid(),
-                      );
-                    case SearchStatus.error:
-                      return _errorView(state);
-                    case SearchStatus.success:
-                      // An empty query is Discover mode, not a provider-search
-                      // result set. TMDB discovery stores its items in
-                      // [discoverItems], so sending this state through
-                      // [_resultsBody] made a successful Discover request look
-                      // like "0 results for \"\"".
-                      return state.query.trim().isEmpty
-                          ? _idleView(state)
-                          : _resultsBody(state, cellW, modeSources);
-                  }
-                },
-              ),
+          ),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _controller,
+            builder: (context, value, _) => value.text.isEmpty
+                ? const SizedBox.shrink()
+                : IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 19),
+                    color: AppColors.textTertiary,
+                    onPressed: _clear,
+                  ),
+          ),
+          const SizedBox(width: 6),
+        ],
+      ),
+    );
+  }
+
+  Widget _discoverFilterChips() {
+    return BlocBuilder<SearchBloc, SearchState>(
+      buildWhen: (p, c) =>
+          p.discoverType != c.discoverType ||
+          p.currentSourceOnly != c.currentSourceOnly,
+      builder: (context, state) {
+        final chips = <Widget>[
+          _discoverChip(
+            'All',
+            selected: state.discoverType == SearchDiscoverType.all,
+            onTap: () => context.read<SearchBloc>().add(
+              const SearchDiscoverTypeChanged(SearchDiscoverType.all),
             ),
-          ],
+          ),
+          _discoverChip(
+            'Movies',
+            selected: state.discoverType == SearchDiscoverType.movies,
+            onTap: () => context.read<SearchBloc>().add(
+              const SearchDiscoverTypeChanged(SearchDiscoverType.movies),
+            ),
+          ),
+          _discoverChip(
+            'Series',
+            selected: state.discoverType == SearchDiscoverType.series,
+            onTap: () => context.read<SearchBloc>().add(
+              const SearchDiscoverTypeChanged(SearchDiscoverType.series),
+            ),
+          ),
+          _discoverChip(
+            'Providers',
+            onTap: () => _openFilterSheet(context),
+          ),
+          _discoverChip(
+            'Genres',
+            onTap: () => _openFilterSheet(context),
+          ),
+          _discoverChip(
+            'Years',
+            onTap: () => _openFilterSheet(context),
+          ),
+        ];
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          clipBehavior: Clip.none,
+          child: Row(
+            children: [
+              for (var i = 0; i < chips.length; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
+                chips[i],
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _discoverChip(
+    String label, {
+    bool selected = false,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected ? AppColors.accent : AppColors.surface2,
+      shape: const StadiumBorder(
+        side: BorderSide(color: AppColors.hairline),
+      ),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: Text(
+            label,
+            style: AppText.body.copyWith(
+              fontSize: 14.5,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
         ),
       ),
     );
@@ -1665,8 +1940,8 @@ class _SearchViewState extends State<_SearchView>
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _searchGridColumns,
         childAspectRatio: 0.62,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 16,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 18,
       ),
       itemCount: items.length + (loadingMore ? _searchGridColumns : 0),
       itemBuilder: (context, i) {
@@ -1688,6 +1963,17 @@ class _SearchViewState extends State<_SearchView>
         );
       },
     );
+  }
+
+  String? _discoverMetadata(MediaItem item) {
+    final parts = <String>[];
+    if (item.year != null && item.year!.isNotEmpty) parts.add(item.year!);
+    if (item.genres.isNotEmpty) {
+      parts.addAll(item.genres.take(2));
+    } else {
+      parts.add(item.tmdbIsTv ? 'Series' : 'Movie');
+    }
+    return parts.isEmpty ? null : parts.join('  ·  ');
   }
 
   // ── Idle view: endless Discover feed ───────────────────────────────────────
@@ -1712,17 +1998,17 @@ class _SearchViewState extends State<_SearchView>
     return GridView.builder(
       controller: _discoverScrollController,
       padding: EdgeInsets.fromLTRB(
-        16,
-        4,
-        16,
+        32,
+        14,
+        32,
         24 + MediaQuery.paddingOf(context).bottom,
       ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _searchGridColumns,
-        childAspectRatio: 0.62,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 16,
+        childAspectRatio: 0.60,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 18,
       ),
       itemCount: items.length +
           (state.discoverLoadingMore ? _searchGridColumns : 0),
@@ -1739,6 +2025,7 @@ class _SearchViewState extends State<_SearchView>
           qualityBadge: item.quality,
           dubBadge: item.dubBadge,
           completed: sl<ListStatusStore>().statusOf(item) == WatchStatus.completed,
+          subtitle: _discoverMetadata(item),
           cellWidth: cellW,
           heroTag: _posterHeroTag(item),
           onTap: () => _openDetail(item),

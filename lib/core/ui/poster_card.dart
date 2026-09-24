@@ -23,6 +23,7 @@ class PosterCard extends StatefulWidget {
     this.tags = const [],
     this.cellWidth = 180,
     this.showTitle = true,
+    this.subtitle,
     this.qualityBadge,
     this.dubBadge,
     this.completed = false,
@@ -66,6 +67,10 @@ class PosterCard extends StatefulWidget {
   /// D-pad focus highlight wraps just the thumbnail; the caller draws the title
   /// separately. Defaults to true — every phone call site is unchanged.
   final bool showTitle;
+
+  /// Optional secondary line rendered below the title (for example year and
+  /// genres on Discover). Existing cards leave it null.
+  final String? subtitle;
 
   @override
   State<PosterCard> createState() => _PosterCardState();
@@ -268,8 +273,23 @@ class _PosterCardState extends State<PosterCard> {
                   widget.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppText.caption.copyWith(color: AppColors.textPrimary),
+                  style: AppText.caption.copyWith(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                  ),
                 ),
+                if (widget.subtitle != null && widget.subtitle!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textSecondary,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ],
               ],
             ],
           ),

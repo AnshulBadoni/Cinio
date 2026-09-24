@@ -1835,9 +1835,7 @@ class _DetailViewState extends State<_DetailView>
 
     final sourceName = _sourceLabel(item.sourceId);
 
-    return StretchingOverscrollIndicator(
-      axisDirection: AxisDirection.down,
-      child: NestedScrollView(
+    return NestedScrollView(
         controller: _scrollController,
         physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
@@ -1849,7 +1847,7 @@ class _DetailViewState extends State<_DetailView>
           backgroundColor: AppColors.bg,
           surfaceTintColor: Colors.transparent,
           shadowColor: Colors.transparent,
-          centerTitle: false,
+          centerTitle: true,
           titleSpacing: 0,
           title: AnimatedOpacity(
             opacity: _showAppBarTitle ? 1.0 : 0.0,
@@ -2241,7 +2239,6 @@ class _DetailViewState extends State<_DetailView>
             description: detail.description,
           ),
         ],
-      ),
       ),
     );
   }

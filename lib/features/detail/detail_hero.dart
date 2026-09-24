@@ -66,30 +66,6 @@ class _Hero extends StatelessWidget {
     );
   }
 
-  Widget _heroPoster() {
-    final aniId = int.tryParse(coverHeaders?['x-ani-src'] ?? '');
-    final mihonId = int.tryParse(coverHeaders?['x-mihon-src'] ?? '');
-    if (aniId != null || mihonId != null) {
-      return Image(
-        image: ResizeImage(
-          aniId != null
-              ? AniyomiImage(aniId, coverUrl)
-              : MihonImage(mihonId!, coverUrl),
-          width: 360,
-        ),
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => ColoredBox(color: AppColors.surface2),
-      );
-    }
-    return CachedNetworkImage(
-      imageUrl: coverUrl,
-      httpHeaders: coverHeaders,
-      fit: BoxFit.cover,
-      memCacheWidth: 360,
-      placeholder: (_, _) => ColoredBox(color: AppColors.surface2),
-      errorWidget: (_, _, _) => ColoredBox(color: AppColors.surface2),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,21 +113,6 @@ class _Hero extends StatelessWidget {
             ),
           ),
         ),
-        if (hasCover)
-          Positioned(
-            left: 18,
-            bottom: 14,
-            child: RepaintBoundary(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: SizedBox(
-                  width: 120,
-                  height: 178,
-                  child: _heroPoster(),
-                ),
-              ),
-            ),
-          ),
       ],
     );
   }

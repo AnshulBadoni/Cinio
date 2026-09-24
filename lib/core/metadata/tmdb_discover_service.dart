@@ -719,6 +719,10 @@ class TmdbDiscoverService {
       tmdbIsAnime: type == 'anime',
       genres: genreNames,
       rating: (row['vote_average'] as num?)?.toDouble(),
+      year: ((isTv ? row['first_air_date'] : row['release_date'])?.toString() ?? '')
+          .trim()
+          .split('-')
+          .firstWhere((value) => value.isNotEmpty, orElse: () => ''),
     );
   }
 }

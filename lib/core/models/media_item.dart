@@ -35,6 +35,11 @@ class MediaItem extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final double? rating;
 
+  /// Browse-time release/first-air year for catalog cards. It is intentionally
+  /// not persisted with My List data.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? year;
+
   /// "SUB", "DUB" or "SUB DUB" — what an anime listing offers, for the poster
   /// badge. CloudStream anime sources only; null everywhere else, which is the
   /// normal case rather than a failure.
@@ -86,6 +91,7 @@ class MediaItem extends Equatable {
     required this.sourceId,
     this.quality,
     this.rating,
+    this.year,
     this.dubBadge,
     this.subCount,
     this.dubCount,
@@ -109,6 +115,7 @@ class MediaItem extends Equatable {
     int? malId,
     int? tmdbId,
     String? imdbId,
+    String? year,
   }) => MediaItem(
     id: id,
     title: title,
@@ -120,6 +127,7 @@ class MediaItem extends Equatable {
     sourceId: sourceId ?? this.sourceId,
     quality: quality,
     rating: rating,
+    year: year ?? this.year,
     dubBadge: dubBadge,
     subCount: subCount ?? this.subCount,
     dubCount: dubCount ?? this.dubCount,
@@ -128,6 +136,8 @@ class MediaItem extends Equatable {
     tmdbIsTv: tmdbIsTv,
     tmdbIsAnime: tmdbIsAnime,
     imdbId: imdbId ?? this.imdbId,
+    genres: genres,
+    status: status,
   );
 
   @override
@@ -142,6 +152,7 @@ class MediaItem extends Equatable {
     sourceId,
     quality,
     rating,
+    year,
     subCount,
     dubCount,
     malId,
