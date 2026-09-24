@@ -197,9 +197,9 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                                     gaplessPlayback: true,
                                     filterQuality: FilterQuality.high,
                                     errorBuilder: (context, error, stackTrace) =>
-                                        ColoredBox(color: AppColors.surface2),
+                                        const ColoredBox(color: AppColors.surface2),
                                   )
-                                : ColoredBox(color: AppColors.surface2),
+                                : const ColoredBox(color: AppColors.surface2),
                           ),
                         ),
                       ),
@@ -228,42 +228,27 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _QuickActionButton(
-                              icon: _watched
-                                  ? Icons.replay_rounded
-                                  : Icons.play_arrow_rounded,
-                              label: _playText,
-                              primary: true,
-                              compact: true,
-                              onTap: _play,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _QuickActionButton(
-                              icon: _watched
-                                  ? Icons.check_rounded
-                                  : Icons.done_all_rounded,
-                              label: 'Watched',
-                              compact: true,
-                              onTap: _markWatched,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _QuickActionButton(
-                              icon: _inLibrary
-                                  ? Icons.check_rounded
-                                  : Icons.add_rounded,
-                              label: _inLibrary ? 'In Library' : 'Library',
-                              compact: true,
-                              onTap: _toggleLibrary,
-                            ),
-                          ),
-                        ],
+                      _QuickActionButton(
+                        icon: _watched
+                            ? Icons.replay_rounded
+                            : Icons.play_arrow_rounded,
+                        label: _playText,
+                        primary: true,
+                        onTap: _play,
+                      ),
+                      const SizedBox(height: 8),
+                      _QuickActionButton(
+                        icon: _watched
+                            ? Icons.check_rounded
+                            : Icons.done_all_rounded,
+                        label: _watched ? 'Watched' : 'Mark as watched',
+                        onTap: _markWatched,
+                      ),
+                      const SizedBox(height: 8),
+                      _QuickActionButton(
+                        icon: _inLibrary ? Icons.check_rounded : Icons.add_rounded,
+                        label: _inLibrary ? 'In Library' : 'Add to Library',
+                        onTap: _toggleLibrary,
                       ),
                       if (_busy) ...[
                         const SizedBox(height: 12),
@@ -303,38 +288,69 @@ class _QuickActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: compact ? 54 : (primary ? 84 : 72),
-      child: Material(
-        color: primary ? Colors.white : AppColors.surface,
-        borderRadius: BorderRadius.circular(primary ? 18 : 16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(primary ? 18 : 16),
-          onTap: onTap,
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 22),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  color: primary ? Colors.black : Colors.white,
-                  size: compact ? 18 : (primary ? 25 : 23),
+    final radius = BorderRadius.circular(16);
+    return ClipRRect(
+      borderRadius: radius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Material(
+          color: primary
+              ? Colors.white.withValues(alpha: 0.92)
+              : Colors.white.withValues(alpha: 0.075),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: radius,
+            child: Container(
+              height: compact ? 54 : 58,
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              decoration: BoxDecoration(
+                borderRadius: radius,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: primary ? 0.30 : 0.14),
                 ),
-                SizedBox(width: compact ? 6 : 18),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.button.copyWith(
-                      color: primary ? Colors.black : Colors.white,
-                      fontSize: compact ? 11.5 : (primary ? 18 : 17),
-                      fontWeight: FontWeight.w600,
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: primary
+                      ? [
+                          Colors.white.withValues(alpha: 0.98),
+                          Colors.white.withValues(alpha: 0.82),
+                        ]
+                      : [
+                          Colors.white.withValues(alpha: 0.10),
+                          Colors.white.withValues(alpha: 0.045),
+                        ],
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    icon,
+                    color: primary ? Colors.black : Colors.white,
+                    size: 21,
+                  ),
+                  const SizedBox(width: 13),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.button.copyWith(
+                        color: primary ? Colors.black : Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: primary
+                        ? Colors.black.withValues(alpha: 0.55)
+                        : Colors.white.withValues(alpha: 0.45),
+                    size: 20,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

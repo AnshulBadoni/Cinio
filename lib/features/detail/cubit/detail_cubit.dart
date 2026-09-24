@@ -215,7 +215,7 @@ class DetailCubit extends Cubit<DetailState> {
       ));
       unawaited(selectSeason(state.selectedSeason));
       unawaited(() async {
-        await Future<void>.delayed(const Duration(milliseconds: 350));
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
         if (!isClosed) await _enrich(detail!);
       }());
     } else {

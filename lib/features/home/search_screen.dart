@@ -296,14 +296,13 @@ class _SearchViewState extends State<_SearchView>
       ));
       return;
     }
-    MediaDetail? catalogDetail;
-    if (item.sourceId == 'tmdb:catalog') {
-      try { catalogDetail = await sl<TmdbDiscoverService>().movieDetail(item); } catch (_) {}
-    } else if (item.sourceId == 'tpdb:catalog' && item.id.startsWith('tpdb:movie:')) {
-      try { catalogDetail = await sl<ThePornDb>().movieDetail(item); } catch (_) {}
-    }
+    // Never resolve catalog detail before navigation. That network request used
+    // to sit in the tap handler and made Detail feel frozen on slow TMDB/TPDB
+    // responses. DetailCubit owns the same fetch and can render its shell first.
     if (!mounted) return;
-    Navigator.push(context, DetailScreen.route(item, catalogDetail: catalogDetail)).then((_) { if (mounted) setState(() {}); });
+    Navigator.push(context, DetailScreen.route(item)).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   /// Opens the full-grid view of ONE source's complete results for the current
@@ -970,9 +969,14 @@ class _SearchViewState extends State<_SearchView>
                       textInputAction: TextInputAction.search,
                       // Typing only updates suggestions — it never starts the
                       // heavy multi-source search.
-                      onChanged: (text) => context.read<SearchBloc>().add(
-                        SearchQueryChanged(text),
-                      ),
+                      onChanged: (text) {
+                        context.read<SearchBloc>().add(SearchQueryChanged(text));
+                        if (!_focusNode.hasFocus && mounted) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted && !_focusNode.hasFocus) _focusNode.requestFocus();
+                          });
+                        }
+                      },
                       // Enter / keyboard "search" runs the full search.
                       onSubmitted: (text) {
                         FocusScope.of(context).unfocus();

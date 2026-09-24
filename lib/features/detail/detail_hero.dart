@@ -222,22 +222,19 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
 
     final String? url;
     final Map<String, String>? headers;
-    final String? hdUrl;
 
     if (t.isDirect) {
       url = t.directUrl;
       headers = t.headers;
-      hdUrl = null;
     } else if (t.isYoutube) {
-      hdUrl = sl<PlaybackPrefs>().trailerHd
-          ? (await svc.streamUrlHd(t.youtubeId!))?.video
-          : null;
-      url = hdUrl ?? await svc.streamUrl(t.youtubeId!, low: true);
+      // The hero is a muted background, so always use the lightweight muxed
+      // stream. Fullscreen trailer playback owns the optional HD path. This
+      // keeps opening a detail page from triggering a heavy adaptive manifest.
+      url = await svc.streamUrl(t.youtubeId!, low: true);
       headers = null;
     } else {
       url = null;
       headers = null;
-      hdUrl = null;
     }
 
     if (!mounted) return;
@@ -291,9 +288,7 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
         // Best-effort HD: 1080p is a throttled adaptive stream that can stall.
         // If it doesn't actually start rolling, swap to the reliable 360p muxed
         // stream so the banner never sits frozen on a single frame.
-        if (hdUrl != null && t.isYoutube) {
-          unawaited(_fallBackIfHdStalls(player, t.youtubeId!));
-        }
+
       }
     } catch (_) {
       if (!mounted) return;

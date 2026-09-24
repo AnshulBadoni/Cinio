@@ -297,7 +297,6 @@ class _RootShellState extends State<RootShell>
                   child: _FloatingDock(
                     tabs: _visibleTabs(),
                     active: _tab,
-                    compact: _dockCompact,
                     collapse: _dockCtrl,
                     onSelected: _onTabSelected,
                   ),
@@ -319,14 +318,12 @@ class _FloatingDock extends StatelessWidget {
   const _FloatingDock({
     required this.tabs,
     required this.active,
-    required this.compact,
     required this.collapse,
     required this.onSelected,
   });
 
   final List<DockTab> tabs;
   final DockTab active;
-  final bool compact;
   final Animation<double> collapse;
   final ValueChanged<DockTab> onSelected;
 
@@ -341,8 +338,11 @@ class _FloatingDock extends StatelessWidget {
         // deliberately no duration/settling animation here: the glass dock
         // should feel attached to the gesture, like a system surface.
         final t = Curves.easeOutCubic.transform(collapse.value.clamp(0.0, 1.0));
-        final width = screenWidth * (0.92 - (0.30 * t));
-        final height = 72.0 - (12.0 * t);
+        // Keep the dock visually close to the reference: a wide glass tray with
+        // one selected inner capsule. It only compresses modestly with the
+        // user's scroll gesture instead of turning into a cramped pill.
+        final width = screenWidth * (0.90 - (0.12 * t));
+        final height = 76.0 - (6.0 * t);
         final radius = height / 2;
         return Align(
           alignment: Alignment.bottomCenter,
@@ -363,8 +363,8 @@ class _FloatingDock extends StatelessWidget {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.white.withValues(alpha: 0.105),
-                        const Color(0xE00E0E10).withValues(alpha: 0.92),
+                        Colors.white.withValues(alpha: 0.12),
+                        const Color(0xCC17181A).withValues(alpha: 0.82),
                       ],
                     ),
                     border: Border.all(
@@ -413,25 +413,37 @@ class _FloatingDock extends StatelessWidget {
                           ),
                         ),
                       ),
-                      Row(
-                        children: [
-                          for (final tab in tabs)
-                            if (tab == DockTab.profile)
-                              _ProfileDockItem(
-                                selected: active == tab,
-                                onTap: () => onSelected(tab),
-                                collapse: collapse,
-                              )
-                            else
-                              _DockItem(
-                                label: tab.label,
-                                glyph: null,
-                                icon: _iconFor(tab),
-                                selected: active == tab,
-                                onTap: () => onSelected(tab),
-                                collapse: collapse,
-                              ),
-                        ],
+                      Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.08),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              for (final tab in tabs)
+                                if (tab == DockTab.profile)
+                                  _ProfileDockItem(
+                                    selected: active == tab,
+                                    onTap: () => onSelected(tab),
+                                    collapse: collapse,
+                                  )
+                                else
+                                  _DockItem(
+                                    label: tab.label,
+                                    glyph: null,
+                                    icon: _iconFor(tab),
+                                    selected: active == tab,
+                                    onTap: () => onSelected(tab),
+                                    collapse: collapse,
+                                  ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -510,9 +522,22 @@ class _DockItem extends StatelessWidget {
               margin: const EdgeInsets.symmetric(horizontal: 2),
               padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2 + (2 * (1 - t))),
               decoration: BoxDecoration(
-                color: selected ? Colors.white.withValues(alpha: 0.085 - (0.025 * t)) : Colors.transparent,
-                borderRadius: BorderRadius.circular(24),
-                border: selected ? Border.all(color: Colors.white.withValues(alpha: 0.12)) : null,
+                color: selected
+                    ? Colors.white.withValues(alpha: 0.16 - (0.035 * t))
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+                border: selected
+                    ? Border.all(color: Colors.white.withValues(alpha: 0.16))
+                    : null,
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.18),
+                          blurRadius: 12,
+                          offset: const Offset(0, 3),
+                        ),
+                      ]
+                    : null,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -523,18 +548,20 @@ class _DockItem extends StatelessWidget {
                   // from escaping the capsule while the dock is being pinched
                   // down by a scroll gesture.
                   SizedBox(
-                    height: 14,
+                    height: 15,
                     child: ClipRect(
-                      child: Opacity(
-                        opacity: labelOpacity,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: Opacity(
+                          opacity: labelOpacity,
                           child: Text(
                             label,
                             maxLines: 1,
                             softWrap: false,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 10.5,
+                              fontSize: 11,
+                              height: 1,
                               color: color,
                               fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                             ),
@@ -579,9 +606,22 @@ class _ProfileDockItem extends StatelessWidget {
               margin: const EdgeInsets.symmetric(horizontal: 2),
               padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2 + (2 * (1 - t))),
               decoration: BoxDecoration(
-                color: selected ? Colors.white.withValues(alpha: 0.085 - (0.025 * t)) : Colors.transparent,
-                borderRadius: BorderRadius.circular(24),
-                border: selected ? Border.all(color: Colors.white.withValues(alpha: 0.12)) : null,
+                color: selected
+                    ? Colors.white.withValues(alpha: 0.16 - (0.035 * t))
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+                border: selected
+                    ? Border.all(color: Colors.white.withValues(alpha: 0.16))
+                    : null,
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.18),
+                          blurRadius: 12,
+                          offset: const Offset(0, 3),
+                        ),
+                      ]
+                    : null,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -612,13 +652,19 @@ class _ProfileDockItem extends StatelessWidget {
                     ),
                   ),
                   SizedBox(
-                    height: 14,
+                    height: 15,
                     child: ClipRect(
-                      child: Opacity(
-                        opacity: labelOpacity,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: const Text('Profile', maxLines: 1, softWrap: false),
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: Opacity(
+                          opacity: labelOpacity,
+                          child: const Text(
+                            'Profile',
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, height: 1),
+                          ),
                         ),
                       ),
                     ),

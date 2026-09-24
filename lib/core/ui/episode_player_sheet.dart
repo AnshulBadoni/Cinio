@@ -121,7 +121,7 @@ class _EpisodeQuickActions extends StatelessWidget {
 
   Widget _fallbackImage() {
     if (fallbackThumbnailUrl == null || fallbackThumbnailUrl!.isEmpty) {
-      return ColoredBox(color: AppColors.surface2);
+      return const ColoredBox(color: AppColors.surface2);
     }
     return Image(
       image: nativeCoverProvider(
@@ -132,7 +132,7 @@ class _EpisodeQuickActions extends StatelessWidget {
       gaplessPlayback: true,
       filterQuality: FilterQuality.high,
       errorBuilder: (context, error, stackTrace) =>
-          ColoredBox(color: AppColors.surface2),
+          const ColoredBox(color: AppColors.surface2),
     );
   }
 
@@ -145,15 +145,26 @@ class _EpisodeQuickActions extends StatelessWidget {
       child: SizedBox(
         width: width,
         height: height,
-        child: thumbnailUrl == null || thumbnailUrl!.isEmpty
-            ? _fallbackImage()
-            : Image(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _fallbackImage(),
+            if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
+              Image(
                 image: nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
                 filterQuality: FilterQuality.high,
-                errorBuilder: (context, error, stackTrace) => _fallbackImage(),
+                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
+                    AnimatedOpacity(
+                      opacity: frame == null && !wasSynchronouslyLoaded ? 0 : 1,
+                      duration: const Duration(milliseconds: 140),
+                      child: child,
+                    ),
+                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
               ),
+          ],
+        ),
       ),
     );
     if (rating != null) {
@@ -227,7 +238,7 @@ class _EpisodeQuickActions extends StatelessWidget {
                     fit: BoxFit.cover,
                     filterQuality: FilterQuality.low,
                     errorBuilder: (context, error, stackTrace) =>
-                        ColoredBox(color: AppColors.bg),
+                        const ColoredBox(color: AppColors.bg),
                   ),
                 ),
               ),

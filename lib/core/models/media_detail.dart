@@ -57,6 +57,10 @@ class MediaDetail extends Equatable {
   /// line omits the segment rather than inventing a value.
   final String? year;
 
+  /// Catalog/metadata rating when available. Runtime-only and not persisted.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final double? rating;
+
   final ProviderType type;
   final String sourceId;
   final int? subCount;
@@ -128,6 +132,7 @@ class MediaDetail extends Equatable {
     this.episodes = const [],
     this.cast = const [],
     this.year,
+    this.rating,
     required this.type,
     required this.sourceId,
     this.subCount,
@@ -163,6 +168,7 @@ class MediaDetail extends Equatable {
     List<Episode>? episodes,
     List<String>? cast,
     String? year,
+    double? rating,
     ProviderType? type,
     String? sourceId,
     int? subCount,
@@ -192,6 +198,7 @@ class MediaDetail extends Equatable {
     episodes: episodes ?? this.episodes,
     cast: cast ?? this.cast,
     year: year ?? this.year,
+    rating: rating ?? this.rating,
     type: type ?? this.type,
     sourceId: sourceId ?? this.sourceId,
     subCount: subCount ?? this.subCount,
@@ -224,6 +231,7 @@ class MediaDetail extends Equatable {
     episodes,
     cast,
     year,
+    rating,
     type,
     sourceId,
     subCount,

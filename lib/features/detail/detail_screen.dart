@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:palette_generator/palette_generator.dart';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPicker;
 import 'package:flutter/material.dart';
@@ -307,6 +309,8 @@ class _DetailViewState extends State<_DetailView>
   bool _showAppBarTitle = false;
   String? _titleLogoUrl;
   String? _titleLogoKey;
+  Color? _titleAccent;
+  String? _titleAccentKey;
 
   String? _prefetchedEpUrl;
   bool _prefetchedCatalog = false;
@@ -356,7 +360,7 @@ class _DetailViewState extends State<_DetailView>
     if (_trailerDetailKey == key || _trailerResolving) return;
     _trailerDetailKey = key;
     _trailerDelayTimer?.cancel();
-    _trailerDelayTimer = Timer(const Duration(milliseconds: 350), () {
+    _trailerDelayTimer = Timer(const Duration(milliseconds: 1800), () {
       if (!mounted) return;
       _resolveTrailer(detail);
     });
@@ -460,7 +464,7 @@ class _DetailViewState extends State<_DetailView>
     _prefetchedCatalog = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(const Duration(milliseconds: 1500));
       if (!mounted) return;
       try {
         final resolved = await sl<SourceRepository>().resolveCatalogTitle(
@@ -498,6 +502,37 @@ class _DetailViewState extends State<_DetailView>
       if (url != null && url.isNotEmpty) {
         setState(() => _titleLogoUrl = url);
       }
+    });
+  }
+
+  void _loadTitleAccent(MediaDetail detail) {
+    final cover = widget.item.cover ?? detail.cover;
+    if (cover == null || cover.isEmpty) return;
+    final key = cover;
+    if (_titleAccentKey == key) return;
+    _titleAccentKey = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      try {
+        final palette = await PaletteGenerator.fromImageProvider(
+          ResizeImage(
+            nativeCoverProvider(
+              cover,
+              widget.item.coverHeaders ?? detail.coverHeaders,
+            ),
+            width: 160,
+          ),
+          size: const Size(160, 240),
+          maximumColorCount: 8,
+        );
+        final color = palette.vibrantColor?.color ??
+            palette.darkVibrantColor?.color ??
+            palette.dominantColor?.color ??
+            palette.mutedColor?.color;
+        if (mounted && color != null) {
+          setState(() => _titleAccent = color);
+        }
+      } catch (_) {}
     });
   }
 
@@ -1725,14 +1760,64 @@ class _DetailViewState extends State<_DetailView>
     );
   }
 
+  Widget _heroMetaLine(MediaDetail detail) {
+    final parts = <String>[];
+    final year = detail.year ?? widget.item.year;
+    final rating = detail.rating ?? widget.item.rating;
+    if (year != null && year.trim().isNotEmpty) parts.add(year.trim());
+    if (rating != null && rating > 0) parts.add(rating.toStringAsFixed(1));
+    if (detail.genres.isNotEmpty) {
+      parts.addAll(detail.genres.take(3));
+    } else if (widget.item.genres.isNotEmpty) {
+      parts.addAll(widget.item.genres.take(3));
+    }
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        for (var i = 0; i < parts.length; i++) ...[
+          if (i > 0)
+            Container(
+              width: 3,
+              height: 3,
+              decoration: const BoxDecoration(
+                color: AppColors.textTertiary,
+                shape: BoxShape.circle,
+              ),
+            ),
+          if (i == 1 && rating != null)
+            const Icon(
+              Icons.star_rounded,
+              color: Color(0xFFFFC107),
+              size: 14,
+            ),
+          Text(
+            parts[i],
+            style: AppText.caption.copyWith(
+              color: AppColors.textSecondary,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _titleHeader(MediaDetail detail) {
     final logo = _titleLogoUrl;
     final fallbackStyle = AppText.display.copyWith(
       fontFamily: 'Montserrat',
-      fontSize: 30,
+      fontSize: 31,
       fontWeight: FontWeight.w800,
       height: 1.0,
-      letterSpacing: -0.8,
+      letterSpacing: -0.9,
+      color: _titleAccent == null
+          ? AppColors.textPrimary
+          : Color.lerp(_titleAccent, Colors.white, 0.38),
     );
     if (logo == null || logo.isEmpty) {
       return Text(
@@ -1802,6 +1887,7 @@ class _DetailViewState extends State<_DetailView>
         if (!mounted) return;
         _ensureFiller(detail.malId ?? item.malId);
         _maybeFetchTrackerProgress(detail);
+        _loadTitleAccent(detail);
         _scheduleTrailerResolution(detail);
       });
     }
@@ -1919,22 +2005,32 @@ class _DetailViewState extends State<_DetailView>
           stretch: true,
           stretchTriggerOffset: 90,
           flexibleSpace: FlexibleSpaceBar(
-            collapseMode: CollapseMode.pin,
+            collapseMode: CollapseMode.parallax,
             stretchModes: const [
               StretchMode.zoomBackground,
               StretchMode.fadeTitle,
             ],
-            background: RepaintBoundary(
-              child: _Hero(
-                coverUrl: heroCoverUrl,
-                coverHeaders: coverHeaders,
-                hasCover: hasCover,
-                trailer: _trailerSource,
-                collapsed: _showAppBarTitle,
-                onTapFullscreen: _trailerSource != null
-                    ? () => _openTrailer(_trailerSource!)
-                    : null,
-              ),
+            background: LayoutBuilder(
+              builder: (context, constraints) {
+                final stretch = ((constraints.maxHeight - _expandedHeight) / 180.0)
+                    .clamp(0.0, 0.22);
+                return Transform.scale(
+                  alignment: Alignment.topCenter,
+                  scale: 1.0 + stretch,
+                  child: RepaintBoundary(
+                    child: _Hero(
+                      coverUrl: heroCoverUrl,
+                      coverHeaders: coverHeaders,
+                      hasCover: hasCover,
+                      trailer: _trailerSource,
+                      collapsed: _showAppBarTitle,
+                      onTapFullscreen: _trailerSource != null
+                          ? () => _openTrailer(_trailerSource!)
+                          : null,
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),
@@ -1946,31 +2042,16 @@ class _DetailViewState extends State<_DetailView>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  if (!(item.sourceId.startsWith('tpdb:') &&
-                      item.heroImage?.isNotEmpty == true))
-                    GestureDetector(
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) =>
-                              SearchScreen(initialQuery: detail.title),
-                        ),
-                      ),
-                      child: Center(child: _titleHeader(detail)),
-                    ),
-                  if (metaLine.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Center(
-                      child: Text(
-                        metaLine,
-                      style: AppText.body.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => SearchScreen(initialQuery: detail.title),
                       ),
                     ),
-                  ],
+                    child: Center(child: _titleHeader(detail)),
+                  ),
+                  const SizedBox(height: 8),
+                  _heroMetaLine(detail),
                 ],
               ),
             ),
