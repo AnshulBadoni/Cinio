@@ -560,8 +560,8 @@ class _SearchViewState extends State<_SearchView>
 
   double _searchGridCellWidth() {
     final width = MediaQuery.sizeOf(context).width;
-    const horizontal = 32.0;
-    const gap = 12.0;
+    const horizontal = 24.0;
+    const gap = 8.0;
     return (width - horizontal - (gap * (_searchGridColumns - 1))) /
         _searchGridColumns;
   }
@@ -667,7 +667,7 @@ class _SearchViewState extends State<_SearchView>
   // ── Discover header ───────────────────────────────────────────────────────
   Widget _discoverHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -681,16 +681,16 @@ class _SearchViewState extends State<_SearchView>
                     Text(
                       'Discover',
                       style: AppText.display.copyWith(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        height: 1.0,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        height: 1.05,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Movies, shows and more for you',
                       style: AppText.body.copyWith(
-                        fontSize: 14,
+                        fontSize: 12.5,
                         color: AppColors.textSecondary,
                       ),
                     ),
@@ -701,9 +701,9 @@ class _SearchViewState extends State<_SearchView>
               _discoverFilterButton(),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
           _discoverSearchField(),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
           _discoverFilterChips(),
         ],
       ),
@@ -726,8 +726,8 @@ class _SearchViewState extends State<_SearchView>
               sl<SearchSourcePrefs>().excluded.isNotEmpty;
           final count = state.activeFilterCount + (excluded ? 1 : 0);
           return SizedBox(
-            width: 48,
-            height: 48,
+            width: 42,
+            height: 42,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -740,9 +740,9 @@ class _SearchViewState extends State<_SearchView>
                     customBorder: const CircleBorder(),
                     onTap: () => _openFilterSheet(context),
                     child: const SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: Icon(Icons.tune_rounded, size: 22),
+                      width: 42,
+                      height: 42,
+                      child: Icon(Icons.tune_rounded, size: 20),
                     ),
                   ),
                 ),
@@ -780,10 +780,10 @@ class _SearchViewState extends State<_SearchView>
 
   Widget _discoverSearchField() {
     return Container(
-      height: 54,
+      height: 48,
       decoration: BoxDecoration(
         color: AppColors.surface2,
-        borderRadius: BorderRadius.circular(27),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: AppColors.hairline),
       ),
       child: Row(
@@ -878,7 +878,7 @@ class _SearchViewState extends State<_SearchView>
           child: Row(
             children: [
               for (var i = 0; i < chips.length; i++) ...[
-                if (i > 0) const SizedBox(width: 8),
+                if (i > 0) const SizedBox(width: 6),
                 chips[i],
               ],
             ],
@@ -902,11 +902,11 @@ class _SearchViewState extends State<_SearchView>
         customBorder: const StadiumBorder(),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
           child: Text(
             label,
             style: AppText.body.copyWith(
-              fontSize: 13.5,
+              fontSize: 12.5,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
               color: selected ? Colors.white : AppColors.textSecondary,
             ),
@@ -1940,8 +1940,8 @@ class _SearchViewState extends State<_SearchView>
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _searchGridColumns,
         childAspectRatio: 0.62,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 18,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 20,
       ),
       itemCount: items.length + (loadingMore ? _searchGridColumns : 0),
       itemBuilder: (context, i) {
@@ -1999,16 +1999,16 @@ class _SearchViewState extends State<_SearchView>
       controller: _discoverScrollController,
       padding: EdgeInsets.fromLTRB(
         16,
-        10,
+        8,
         16,
         24 + MediaQuery.paddingOf(context).bottom,
       ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _searchGridColumns,
-        childAspectRatio: 0.67,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 16,
+        childAspectRatio: 0.62,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 18,
       ),
       itemCount: items.length +
           (state.discoverLoadingMore ? _searchGridColumns : 0),
@@ -2025,7 +2025,6 @@ class _SearchViewState extends State<_SearchView>
           qualityBadge: item.quality,
           dubBadge: item.dubBadge,
           completed: sl<ListStatusStore>().statusOf(item) == WatchStatus.completed,
-          subtitle: _discoverMetadata(item),
           cellWidth: cellW,
           heroTag: _posterHeroTag(item),
           onTap: () => _openDetail(item),

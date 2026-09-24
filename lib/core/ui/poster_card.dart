@@ -179,12 +179,19 @@ class _PosterCardState extends State<PosterCard> {
       );
     }
     if (widget.heroTag == null) return image;
+    // Keep the card's corner treatment inside the Hero itself. Previously the
+    // Hero flight carried only the raw image, while the normal card clipped it
+    // from the outside. During the long-press flight that outer ClipRRect was
+    // left behind, so the moving poster briefly became a square.
     return Hero(
       tag: widget.heroTag!,
       createRectTween: (begin, end) => MaterialRectArcTween(begin: begin, end: end),
       flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
           direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
-      child: image,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: image,
+      ),
     );
   }
 

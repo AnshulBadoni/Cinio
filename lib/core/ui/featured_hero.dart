@@ -93,14 +93,12 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   static final Map<String, Color> _paletteCache = {};
   Color? _artColor;
   String? _logoUrl;
-  String? _heroPosterUrl;
 
   @override
   void initState() {
     super.initState();
     _loadPalette();
     _loadLogo();
-    _loadHeroPoster();
   }
 
   @override
@@ -111,23 +109,12 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       _logoUrl = null;
       _loadPalette();
       _loadLogo();
-      _loadHeroPoster();
-    }
+      }
   }
 
-  /// Best-effort TMDB title-logo lookup; on a hit, swap the text title for the
-  /// logo image. Stays as text until (and unless) a logo resolves.
-  Future<void> _loadHeroPoster() async {
-    final item = widget.item;
-    if (item.sourceId != 'tmdb:catalog' || item.tmdbId == null) return;
-    try {
-      final url = await sl<TmdbDiscoverService>().alternatePosterFor(item);
-      if (!mounted || url == null || url.isEmpty || url == item.cover) return;
-      setState(() => _heroPosterUrl = url);
-      try { await precacheImage(NetworkImage(url), context); } catch (_) {}
-    } catch (_) {}
-  }
-
+  /// Resolve the title logo independently of the hero artwork. The artwork
+  /// itself stays on the catalog poster for the whole lifetime of the hero,
+  /// avoiding a visible poster-to-poster swap while metadata loads.
   Future<void> _loadLogo() async {
     if (!sl.isRegistered<TitleLogoService>()) return;
     try {
@@ -176,7 +163,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final cover = _heroPosterUrl ?? item.cover;
+    final cover = item.cover;
     final hasCover = cover != null && cover.isNotEmpty;
     final tint = _artColor ?? AppColors.surface2;
 
@@ -303,17 +290,28 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                     GestureDetector(
                       behavior: HitTestBehavior.translucent,
                       onTap: widget.onInfo,
-                      child: _logoUrl != null
-                          ? ConstrainedBox(
-                              constraints: const BoxConstraints(maxHeight: 96),
-                              child: CachedNetworkImage(
-                                imageUrl: _logoUrl!,
-                                fit: BoxFit.contain,
-                                fadeInDuration: const Duration(milliseconds: 250),
-                                errorWidget: (_, _, _) => _titleText(),
+                      child: SizedBox(
+                      height: 78,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        child: _logoUrl != null
+                            ? KeyedSubtree(
+                                key: ValueKey(_logoUrl),
+                                child: CachedNetworkImage(
+                                  imageUrl: _logoUrl!,
+                                  fit: BoxFit.contain,
+                                  fadeInDuration: const Duration(milliseconds: 140),
+                                  errorWidget: (_, _, _) => _titleText(),
+                                ),
+                              )
+                            : KeyedSubtree(
+                                key: const ValueKey('hero-title-fallback'),
+                                child: _titleText(),
                               ),
-                            )
-                          : _titleText(),
+                      ),
+                    ),
                     ),
                     const SizedBox(height: 12),
                     SizedBox(height: 18, child: Center(child: _metaLine())),

@@ -81,8 +81,8 @@ class TitleLogoService {
 
   Future<String?> logoFor(MediaItem item) async {
     final key = item.tmdbId != null
-        ? 'id:${item.tmdbId}:${item.tmdbIsTv}'
-        : 'q:${(item.englishTitle ?? item.title).toLowerCase()}';
+        ? 'v2:id:${item.tmdbId}:${item.tmdbIsTv}'
+        : 'v2:q:${(item.englishTitle ?? item.title).toLowerCase()}';
 
     final cached = _mem[key] ?? _box.get(key);
     if (cached != null) {
@@ -129,25 +129,39 @@ class TitleLogoService {
       if (id == null) return null;
     }
     final kind = isTv ? 'tv' : 'movie';
+    // Ask TMDB for the complete logo set instead of filtering to en/null at
+    // request time. A surprising number of titles only have a logo tagged in
+    // their original language, and filtering those out made the hero silently
+    // fall back to plain text. We still rank English first when it exists.
     final imgs = await _dio.get<dynamic>(
       '${Tmdb.base}/$kind/$id/images',
-      queryParameters: {'include_image_language': 'en,null'},
       options: Options(validateStatus: (c) => c != null && c < 500),
     );
     final logos = (imgs.data is Map) ? imgs.data['logos'] : null;
     if (logos is! List || logos.isEmpty) return null;
     final candidates = [for (final l in logos) if (l is Map) l];
     candidates.sort((a, b) {
-      int languageScore(Map m) => m['iso_639_1'] == 'en' ? 3 : (m['iso_639_1'] == null ? 2 : 1);
+      int languageScore(Map m) {
+        final language = m['iso_639_1']?.toString();
+        if (language == 'en') return 4;
+        if (language == null || language.isEmpty) return 3;
+        return 2;
+      }
       final language = languageScore(b).compareTo(languageScore(a));
       if (language != 0) return language;
       final av = (a['vote_average'] as num?)?.toDouble() ?? 0;
       final bv = (b['vote_average'] as num?)?.toDouble() ?? 0;
       if (av != bv) return bv.compareTo(av);
-      return ((b['width'] as num?)?.toInt() ?? 0).compareTo((a['width'] as num?)?.toInt() ?? 0);
+      final aw = (a['width'] as num?)?.toInt() ?? 0;
+      final bw = (b['width'] as num?)?.toInt() ?? 0;
+      return bw.compareTo(aw);
     });
-    final path = candidates.isEmpty ? null : candidates.first['file_path'] as String?;
-    if (path == null || path.isEmpty) return null;
-    return '${Tmdb.img}/w780$path';
+    for (final candidate in candidates) {
+      final path = candidate['file_path']?.toString();
+      if (path != null && path.isNotEmpty) {
+        return '${Tmdb.img}/w1280$path';
+      }
+    }
+    return null;
   }
 }

@@ -327,18 +327,22 @@ class _FloatingDock extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 6, vertical: compact ? 5 : 9),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
                 colors: [
-                  Colors.white.withValues(alpha: compact ? 0.055 : 0.085),
-                  AppColors.surface.withValues(alpha: compact ? 0.60 : 0.52),
+                  AppColors.accent.withValues(alpha: compact ? 0.11 : 0.16),
+                  Colors.white.withValues(alpha: compact ? 0.045 : 0.065),
+                  AppColors.surface.withValues(alpha: compact ? 0.68 : 0.58),
                 ],
+                stops: const [0.0, 0.34, 1.0],
               ),
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: Colors.white.withValues(alpha: compact ? 0.08 : 0.11)),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: AppColors.accent.withValues(alpha: compact ? 0.16 : 0.22),
+              ),
               boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.28), blurRadius: compact ? 22 : 30, offset: const Offset(0, 10)),
-                BoxShadow(color: Colors.white.withValues(alpha: 0.02), blurRadius: 12, offset: const Offset(0, -1)),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.30), blurRadius: compact ? 22 : 30, offset: const Offset(0, 10)),
+                BoxShadow(color: AppColors.accent.withValues(alpha: compact ? 0.08 : 0.12), blurRadius: 26, offset: const Offset(0, -2)),
               ],
             ),
             child: Row(
@@ -431,8 +435,21 @@ class _DockItem extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 5 : 8,
+            vertical: compact ? 3 : 4,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.accent.withValues(alpha: 0.18) : Colors.transparent,
+            borderRadius: BorderRadius.circular(21),
+            border: selected
+                ? Border.all(color: AppColors.accent.withValues(alpha: 0.16))
+                : null,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -486,8 +503,21 @@ class _ProfileDockItem extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 5 : 8,
+            vertical: compact ? 3 : 4,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.accent.withValues(alpha: 0.18) : Colors.transparent,
+            borderRadius: BorderRadius.circular(21),
+            border: selected
+                ? Border.all(color: AppColors.accent.withValues(alpha: 0.16))
+                : null,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

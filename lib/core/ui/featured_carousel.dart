@@ -42,6 +42,7 @@ class FeaturedCarousel extends StatefulWidget {
     this.reading = false,
     this.fullBleed = false,
     this.stretch,
+    this.height,
   });
 
   final List<MediaItem> items;
@@ -66,6 +67,10 @@ class FeaturedCarousel extends StatefulWidget {
   /// retain their existing presentation.
   final bool fullBleed;
   final ValueListenable<double>? stretch;
+
+  /// Optional outer height. Used by a stretching sliver so the actual hero
+  /// artwork can grow into the overscroll area instead of leaving a black gap.
+  final double? height;
 
   @override
   State<FeaturedCarousel> createState() => _FeaturedCarouselState();
@@ -226,18 +231,19 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
   @override
   Widget build(BuildContext context) {
     // Empty state — reserve the height so layout doesn't jump.
-    if (_count == 0) return const SizedBox(height: kHeroHeight);
+    final heroHeight = widget.height ?? kHeroHeight;
+    if (_count == 0) return SizedBox(height: heroHeight);
 
     // Single item — no dots, no timer. Still pinned to the hero height.
     if (_count == 1) {
       return RepaintBoundary(
-        child: SizedBox(height: kHeroHeight, child: _hero(_pages.first)),
+        child: SizedBox(height: heroHeight, child: _hero(_pages.first)),
       );
     }
 
     return RepaintBoundary(
       child: SizedBox(
-        height: kHeroHeight,
+        height: heroHeight,
         child: Stack(
           children: [
             // ── Pager (cinematic cross-fade or parallax slide) ─────────────

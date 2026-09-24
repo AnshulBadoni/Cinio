@@ -14,7 +14,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/ui/jump_prompt.dart';
-import '../../core/ui/elastic_scroll_behavior.dart';
 import '../../core/ui/native_cover_provider.dart';
 import '../../core/util/title_matcher.dart';
 import '../../core/app_mode.dart';
@@ -326,7 +325,6 @@ class _DetailViewState extends State<_DetailView>
 
   late final ScrollController _scrollController = ScrollController()
     ..addListener(_onScroll);
-  final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0);
 
   late TabController _tabController;
   bool _tabShowsEpisodes = true;
@@ -350,9 +348,11 @@ class _DetailViewState extends State<_DetailView>
 
   Future<TrailerSource?>? _trailerFuture;
   TrailerSource? _trailerSource;
+  Timer? _trailerDelayTimer;
+  bool _heroTrailerReady = false;
 
   void _resolveTrailer(MediaDetail detail) {
-    if (_trailerFuture != null) return;
+    if (!_heroTrailerReady || _trailerFuture != null) return;
 
     var nsfwEnabled = false;
     try {
@@ -403,6 +403,13 @@ class _DetailViewState extends State<_DetailView>
       length: _tabShowsEpisodes ? 4 : 3,
       vsync: this,
     );
+    // Keep the detail page fully interactive while metadata settles. The
+    // trailer path creates a native media player and may resolve a YouTube
+    // stream; doing that during the first layout was a major source of
+    // startup stalls on lower-end Android devices.
+    _trailerDelayTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (mounted) setState(() => _heroTrailerReady = true);
+    });
     if (sl.isRegistered<DiscordRpc>()) {
       sl<DiscordRpc>().setBrowsing(
         title: widget.item.title,
@@ -414,7 +421,7 @@ class _DetailViewState extends State<_DetailView>
   @override
   void dispose() {
     if (sl.isRegistered<DiscordRpc>()) sl<DiscordRpc>().setBrowsing();
-    _heroStretch.dispose();
+    _trailerDelayTimer?.cancel();
     _scrollController.dispose();
     _tabController.dispose();
     super.dispose();
@@ -1841,18 +1848,7 @@ class _DetailViewState extends State<_DetailView>
 
     final sourceName = _sourceLabel(item.sourceId);
 
-    return ScrollConfiguration(
-      behavior: CinioBounceOnlyScrollBehavior(),
-      child: NotificationListener<ScrollNotification>(
-        onNotification: (notification) {
-          if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) return false;
-          final overscroll = notification.metrics.pixels < notification.metrics.minScrollExtent
-              ? notification.metrics.minScrollExtent - notification.metrics.pixels
-              : (notification is OverscrollNotification && notification.overscroll < 0 ? -notification.overscroll : 0.0);
-          _heroStretch.value = overscroll.clamp(0.0, 140.0);
-          return false;
-        },
-        child: NestedScrollView(
+    return NestedScrollView(
           controller: _scrollController,
         physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
@@ -1882,6 +1878,7 @@ class _DetailViewState extends State<_DetailView>
           flexibleSpace: FlexibleSpaceBar(
             collapseMode: CollapseMode.parallax,
             stretchModes: const [
+              StretchMode.zoomBackground,
               StretchMode.fadeTitle,
             ],
             background: RepaintBoundary(
@@ -1891,7 +1888,6 @@ class _DetailViewState extends State<_DetailView>
                 hasCover: hasCover,
                 trailer: _trailerSource,
                 collapsed: _showAppBarTitle,
-                stretch: _heroStretch,
                 onTapFullscreen: _trailerSource != null
                     ? () => _openTrailer(_trailerSource!)
                     : null,
@@ -2258,8 +2254,7 @@ class _DetailViewState extends State<_DetailView>
         ],
           ),
         ),
-      ),
-    );
+      );
   }
 }
 

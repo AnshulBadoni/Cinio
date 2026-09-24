@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderSliver;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -139,7 +140,6 @@ class _HomeView extends StatefulWidget {
 
 class _HomeViewState extends State<_HomeView>
     with SingleTickerProviderStateMixin {
-  final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0);
   // Cached services (avoid repeated SL lookups on hot paths).
   final SourceRepository _repo = sl<SourceRepository>();
   final MyListStore _myList = sl<MyListStore>();
@@ -201,7 +201,6 @@ class _HomeViewState extends State<_HomeView>
 
   @override
   void dispose() {
-    _heroStretch.dispose();
     _slashCtrl.dispose();
     super.dispose();
   }
@@ -1210,7 +1209,7 @@ class _HomeViewState extends State<_HomeView>
             RefreshIndicator(
               color: AppColors.accent,
               onRefresh: () => context.read<HomeCubit>().load(),
-              child: _HomeScrollView(heroStretch: _heroStretch),
+              child: const _HomeScrollView(),
             ),
             if (_slashing) _SlashOverlay(controller: _slashCtrl),
           ],
@@ -1225,9 +1224,7 @@ class _HomeViewState extends State<_HomeView>
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _HomeScrollView extends StatelessWidget {
-  const _HomeScrollView({required this.heroStretch});
-
-  final ValueNotifier<double> heroStretch;
+  const _HomeScrollView();
 
   @override
   Widget build(BuildContext context) {
@@ -1269,26 +1266,14 @@ class _HomeScrollView extends StatelessWidget {
         final cardStyle = view._prefs.homeCardStyle;
 
         return ScrollConfiguration(
-          behavior: CinioBounceOnlyScrollBehavior(),
-          child: NotificationListener<ScrollNotification>(
-            onNotification: (notification) {
-              if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) return false;
-              final overscroll = notification.metrics.pixels < notification.metrics.minScrollExtent
-                  ? notification.metrics.minScrollExtent - notification.metrics.pixels
-                  : (notification is OverscrollNotification && notification.overscroll < 0 ? -notification.overscroll : 0.0);
-              heroStretch.value = overscroll.clamp(0.0, 140.0);
-              return false;
-            },
-            child: CustomScrollView(
-              slivers: [
-            SliverToBoxAdapter(
-              child: _HeaderSection(
-                heroItems: homeState.heroItems,
-                noSourceForMode: noSourceForMode,
-                activeSourceValid: activeSourceValid,
-                showSourceSwitcher: showSourceSwitcher,
-                heroStretch: heroStretch,
-              ),
+          behavior: const CinioBounceOnlyScrollBehavior(),
+          child: CustomScrollView(
+            slivers: [
+            _HomeHeroSliver(
+              heroItems: homeState.heroItems,
+              noSourceForMode: noSourceForMode,
+              activeSourceValid: activeSourceValid,
+              showSourceSwitcher: showSourceSwitcher,
             ),
             if (noSourceForMode)
               SliverToBoxAdapter(
@@ -1393,20 +1378,18 @@ class _HomeScrollView extends StatelessWidget {
 // Hero / header section — isolated so hero-only state changes don't rebuild rows
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _HeaderSection extends StatelessWidget {
-  const _HeaderSection({
+class _HomeHeroSliver extends StatelessWidget {
+  const _HomeHeroSliver({
     required this.heroItems,
     required this.noSourceForMode,
     required this.activeSourceValid,
     required this.showSourceSwitcher,
-    required this.heroStretch,
   });
 
   final List<MediaItem> heroItems;
   final bool noSourceForMode;
   final bool activeSourceValid;
   final bool showSourceSwitcher;
-  final ValueNotifier<double> heroStretch;
 
   @override
   Widget build(BuildContext context) {
@@ -1415,34 +1398,39 @@ class _HeaderSection extends StatelessWidget {
     if (hasHero) view._prewarmHeroMeta(heroItems);
 
     if (hasHero && !noSourceForMode && activeSourceValid) {
-      return Stack(
-        children: [
-          FeaturedCarousel(
-            items: heroItems,
-            reading: sl<ContentModeCubit>().state.isReading,
-            inList: (m) => view._myList.contains(m),
-            onPlay: view._playFeatured,
-            onInfo: view._openDetail,
-            onToggleList: (m) => showListStatusSheet(
-              context,
-              item: m,
-              onChanged: () {
-                // Trigger rebuild via state
-                (view as dynamic).setState(() {});
-              },
-            ),
-            meta: view._heroMeta,
-            style: HeroTransition.cinematic,
-            fullBleed: true,
-            stretch: heroStretch,
+      return SliverPersistentHeader(
+        pinned: false,
+        delegate: _HomeHeroDelegate(
+          heroItems: heroItems,
+          inList: view._myList.contains,
+          onPlay: view._playFeatured,
+          onInfo: view._openDetail,
+          onToggleList: (item) => showListStatusSheet(
+            context,
+            item: item,
+            onChanged: () {
+              if (view.mounted) view.setState(() {});
+            },
           ),
-          Positioned(
-            top: MediaQuery.paddingOf(context).top + 10,
+          meta: view._heroMeta,
+        ),
+      );
+    }
+
+    if (showSourceSwitcher) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.only(
+            top: MediaQuery.paddingOf(context).top + 8,
             right: 16,
+            bottom: 8,
+          ),
+          child: Align(
+            alignment: Alignment.centerRight,
             child: BlocBuilder<ActiveSourceCubit, String>(
               builder: (context, id) => SourceSwitcher(
                 currentId: id,
-                compact: true,
+                compact: false,
                 onChanged: (newId) =>
                     context.read<ActiveSourceCubit>().setSource(newId),
                 onInstallSources: () => Navigator.of(context).push(
@@ -1454,23 +1442,74 @@ class _HeaderSection extends StatelessWidget {
               ),
             ),
           ),
-        ],
+        ),
       );
     }
 
-    if (showSourceSwitcher) {
-      return Padding(
-        padding: EdgeInsets.only(
-          top: MediaQuery.paddingOf(context).top + 8,
-          right: 16,
-          bottom: 8,
+    return const SliverToBoxAdapter(child: SizedBox.shrink());
+  }
+}
+
+class _HomeHeroDelegate extends SliverPersistentHeaderDelegate {
+  _HomeHeroDelegate({
+    required this.heroItems,
+    required this.inList,
+    required this.onPlay,
+    required this.onInfo,
+    required this.onToggleList,
+    required this.meta,
+  });
+
+  final List<MediaItem> heroItems;
+  final bool Function(MediaItem) inList;
+  final void Function(MediaItem) onPlay;
+  final void Function(MediaItem) onInfo;
+  final void Function(MediaItem) onToggleList;
+  final Future<HeroMeta?> Function(MediaItem) meta;
+
+  @override
+  double get minExtent => kHeroHeight;
+
+  @override
+  double get maxExtent => kHeroHeight;
+
+  @override
+  OverScrollHeaderStretchConfiguration get stretchConfiguration =>
+      const OverScrollHeaderStretchConfiguration();
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final renderObject = context.findRenderObject();
+    final sliver = renderObject is RenderSliver
+        ? renderObject.constraints.stretchOffset.clamp(0.0, 140.0)
+        : 0.0;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        FeaturedCarousel(
+          items: heroItems,
+          reading: sl<ContentModeCubit>().state.isReading,
+          inList: inList,
+          onPlay: onPlay,
+          onInfo: onInfo,
+          onToggleList: onToggleList,
+          meta: meta,
+          style: HeroTransition.cinematic,
+          fullBleed: true,
+          height: kHeroHeight + sliver,
         ),
-        child: Align(
-          alignment: Alignment.centerRight,
+        Positioned(
+          top: MediaQuery.paddingOf(context).top + 10,
+          right: 16,
           child: BlocBuilder<ActiveSourceCubit, String>(
             builder: (context, id) => SourceSwitcher(
               currentId: id,
-              compact: false,
+              compact: true,
               onChanged: (newId) =>
                   context.read<ActiveSourceCubit>().setSource(newId),
               onInstallSources: () => Navigator.of(context).push(
@@ -1482,10 +1521,14 @@ class _HeaderSection extends StatelessWidget {
             ),
           ),
         ),
-      );
-    }
-    return const SizedBox.shrink();
+      ],
+    );
   }
+
+  @override
+  bool shouldRebuild(covariant _HomeHeroDelegate oldDelegate) =>
+      oldDelegate.heroItems != heroItems ||
+      oldDelegate.heroItems != heroItems;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
