@@ -236,19 +236,37 @@ Widget cinioFallbackTitle({
 
   final displayTitle = cfg.uppercase ? title.toUpperCase() : title;
 
-  return ShaderMask(
-    blendMode: BlendMode.srcIn,
-    shaderCallback: (bounds) => cfg.gradient.createShader(bounds),
-    child: Text(
-      displayTitle,
-      textAlign: textAlign,
-      maxLines: maxLines,
-      softWrap: true,
-      overflow: TextOverflow.ellipsis,
-      style: cfg.baseStyle.copyWith(
-        color: Colors.white,
-        shadows: cfg.shadows,
+  return Stack(
+    alignment: Alignment.center,
+    children: [
+      // Layer 1: Crisp subtle shadow behind the text (renders outside the ShaderMask)
+      Text(
+        displayTitle,
+        textAlign: textAlign,
+        maxLines: maxLines,
+        softWrap: true,
+        overflow: TextOverflow.ellipsis,
+        style: cfg.baseStyle.copyWith(
+          color: Colors.transparent,
+          shadows: cfg.shadows,
+        ),
       ),
-    ),
+      // Layer 2: Razor-sharp vector text filled with the gradient
+      ShaderMask(
+        blendMode: BlendMode.srcIn,
+        shaderCallback: (bounds) => cfg.gradient.createShader(bounds),
+        child: Text(
+          displayTitle,
+          textAlign: textAlign,
+          maxLines: maxLines,
+          softWrap: true,
+          overflow: TextOverflow.ellipsis,
+          style: cfg.baseStyle.copyWith(
+            color: Colors.white,
+            shadows: const [],
+          ),
+        ),
+      ),
+    ],
   );
 }

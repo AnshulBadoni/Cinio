@@ -9,7 +9,6 @@ part of 'detail_screen.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Hero extends StatelessWidget {
-
   const _Hero({
     required this.coverUrl,
     required this.coverHeaders,
@@ -18,6 +17,7 @@ class _Hero extends StatelessWidget {
     this.collapsed = false,
     this.onTapFullscreen,
     this.stretch,
+    this.bottomContent,
   });
 
   static final ValueNotifier<double> _zeroStretch = ValueNotifier<double>(0);
@@ -26,6 +26,7 @@ class _Hero extends StatelessWidget {
   final Map<String, String>? coverHeaders;
   final bool hasCover;
   final ValueListenable<double>? stretch;
+  final Widget? bottomContent;
 
   /// Resolved trailer source (YouTube or direct stream with headers).
   final TrailerSource? trailer;
@@ -123,16 +124,27 @@ class _Hero extends StatelessWidget {
                   Colors.transparent,
                   Colors.transparent,
                   AppColors.bg.withValues(alpha: 0.15),
-                  AppColors.bg.withValues(alpha: 0.45),
-                  AppColors.bg.withValues(alpha: 0.82),
+                  AppColors.bg.withValues(alpha: 0.50),
+                  AppColors.bg.withValues(alpha: 0.88),
                   AppColors.bg,
                   AppColors.bg,
                 ],
-                stops: const [0.0, 0.24, 0.44, 0.64, 0.82, 0.94, 1.0],
+                stops: const [0.0, 0.20, 0.38, 0.55, 0.74, 0.90, 1.0],
               ),
             ),
           ),
         ),
+        if (bottomContent != null)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 12,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 180),
+              opacity: collapsed ? 0.0 : 1.0,
+              child: bottomContent!,
+            ),
+          ),
       ],
     );
   }

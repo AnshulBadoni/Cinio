@@ -216,19 +216,46 @@ class TmdbDiscoverService {
   Future<MediaDetail> movieDetail(MediaItem item) async {
     final id = item.tmdbId;
     if (id == null) throw StateError('Missing TMDB id');
-    final kind = item.tmdbIsTv ? 'tv' : 'movie';
-    final response = await _dio.get<dynamic>(
-      '${Tmdb.base}/$kind/$id',
-      queryParameters: {
-        'append_to_response': item.tmdbIsTv ? 'credits' : 'credits,release_dates',
-      },
-      options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
-    );
+    var isTv = item.tmdbIsTv;
+    var kind = isTv ? 'tv' : 'movie';
+
+    Future<Response<dynamic>> fetch(String k) {
+      return _dio.get<dynamic>(
+        '${Tmdb.base}/$k/$id',
+        queryParameters: {
+          'append_to_response': k == 'tv' ? 'credits' : 'credits,release_dates',
+        },
+        options: Options(
+          receiveTimeout: const Duration(seconds: 14),
+          sendTimeout: const Duration(seconds: 14),
+          validateStatus: (c) => c != null && c < 500,
+        ),
+      );
+    }
+
+    Response<dynamic> response;
+    try {
+      response = await fetch(kind);
+      if (response.statusCode == 404) {
+        final altKind = isTv ? 'movie' : 'tv';
+        final altResp = await fetch(altKind);
+        if (altResp.statusCode == 200) {
+          response = altResp;
+          isTv = !isTv;
+          kind = altKind;
+        }
+      }
+    } catch (_) {
+      // Retry once after brief delay for transient socket hiccup
+      await Future.delayed(const Duration(milliseconds: 400));
+      response = await fetch(kind);
+    }
+
     final row = response.data is Map ? Map<String,dynamic>.from(response.data as Map) : <String,dynamic>{};
-    final title = (item.tmdbIsTv ? row['name'] : row['title'])?.toString() ?? item.title;
+    final title = (isTv ? row['name'] : row['title'])?.toString() ?? item.title;
     final poster = row['poster_path']?.toString();
     final overview = row['overview']?.toString();
-    var date = (item.tmdbIsTv ? row['first_air_date'] : row['release_date'])?.toString();
+    var date = (isTv ? row['first_air_date'] : row['release_date'])?.toString();
     final tmdbStatus = row['status']?.toString();
     var theatricalRelease = false;
 

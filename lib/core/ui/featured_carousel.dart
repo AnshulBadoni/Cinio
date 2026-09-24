@@ -195,9 +195,16 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
           }
         },
         child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 650),
-          switchInCurve: Curves.easeOut,
-          switchOutCurve: Curves.easeIn,
+          duration: const Duration(milliseconds: 380),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          layoutBuilder: (currentChild, previousChildren) => Stack(
+            fit: StackFit.expand,
+            children: [
+              ...previousChildren,
+              ?currentChild,
+            ],
+          ),
           transitionBuilder: (child, anim) =>
               FadeTransition(opacity: anim, child: child),
           child: KeyedSubtree(

@@ -188,7 +188,10 @@ class TitleLogoService {
       try {
         final imgs = await _dio.get<dynamic>(
           '${Tmdb.base}/$type/$tmdbId/images',
-          queryParameters: {'include_image_language': 'en,null'},
+          queryParameters: {
+            'include_image_language':
+                'en,null,ja,ko,es,fr,de,it,pt,hi,zh,ru,ar,th,id,vi,tr,pl,nl,sv,da,fi,no,cs,el,he,ro,hu',
+          },
           options: Options(validateStatus: (c) => c != null && c < 500),
         );
         final logos = (imgs.data is Map) ? imgs.data['logos'] : null;
@@ -196,13 +199,13 @@ class TitleLogoService {
         final candidates = [for (final l in logos) if (l is Map) l];
         candidates.sort((a, b) {
           int languageScore(Map m) {
-            final language = m['iso_639_1']?.toString();
-            if (language == 'en') return 4;
-            if (language == null || language.isEmpty) return 3;
-            return 2;
+            final language = m['iso_639_1']?.toString().toLowerCase();
+            if (language == 'en') return 100;
+            if (language == null || language.isEmpty || language == 'null') return 90;
+            return 50;
           }
-          final language = languageScore(b).compareTo(languageScore(a));
-          if (language != 0) return language;
+          final langDiff = languageScore(b).compareTo(languageScore(a));
+          if (langDiff != 0) return langDiff;
           final av = (a['vote_average'] as num?)?.toDouble() ?? 0;
           final bv = (b['vote_average'] as num?)?.toDouble() ?? 0;
           if (av != bv) return bv.compareTo(av);
@@ -221,17 +224,20 @@ class TitleLogoService {
     }
 
     final preferredKind = isTv ? 'tv' : 'movie';
+    final oppositeKind = isTv ? 'movie' : 'tv';
+
     final preferredLogo = await logoForType(preferredKind, id);
     if (preferredLogo != null) return preferredLogo;
 
-    // TPDB and mixed providers sometimes carry a TMDB id without preserving
-    // whether that id belongs to the TV namespace. If the preferred namespace
-    // has no logo, search the opposite namespace by the title and use the
-    // exact/near-exact match instead of silently falling back to plain text.
+    // Check opposite namespace directly with the existing ID if preferred failed
+    final oppositeLogo = await logoForType(oppositeKind, id);
+    if (oppositeLogo != null) return oppositeLogo;
+
+    // TPDB and mixed providers sometimes carry title variations. If direct ID
+    // has no logo, search by clean title.
     final query = (item.englishTitle ?? item.title).trim();
     if (query.isNotEmpty) {
       final wanted = _normaliseTitle(query);
-      final oppositeKind = isTv ? 'movie' : 'tv';
       try {
         final response = await _dio.get<dynamic>(
           '${Tmdb.base}/search/$oppositeKind',
@@ -255,7 +261,7 @@ class TitleLogoService {
               bestOpposite = r;
             }
           }
-          if (bestOpposite != null && bestScore >= 0.88) {
+          if (bestOpposite != null && bestScore >= 0.70) {
             final oppositeId = (bestOpposite['id'] as num?)?.toInt();
             if (oppositeId != null) {
               return logoForType(oppositeKind, oppositeId);

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -441,12 +442,12 @@ class _FloatingDock extends StatelessWidget {
 }
 
 (IconData, IconData)? _iconFor(DockTab t) => switch (t) {
-  DockTab.home => (Icons.home_outlined, Icons.home_rounded),
-  DockTab.search => (Icons.explore_outlined, Icons.explore_rounded),
-  DockTab.myList => (Icons.bookmark_outline_rounded, Icons.bookmark_rounded),
-  DockTab.schedule => (Icons.calendar_today_rounded, Icons.calendar_month_rounded),
-  DockTab.downloads => (Icons.arrow_downward_rounded, Icons.download_rounded),
-  DockTab.history => (Icons.schedule_rounded, Icons.history_rounded),
+  DockTab.home => (CupertinoIcons.house, CupertinoIcons.house_fill),
+  DockTab.search => (CupertinoIcons.compass, CupertinoIcons.compass_fill),
+  DockTab.myList => (CupertinoIcons.bookmark, CupertinoIcons.bookmark_fill),
+  DockTab.schedule => (CupertinoIcons.calendar, CupertinoIcons.calendar_today),
+  DockTab.downloads => (CupertinoIcons.arrow_down_circle, CupertinoIcons.arrow_down_circle_fill),
+  DockTab.history => (CupertinoIcons.clock, CupertinoIcons.clock_fill),
   _ => null,
 };
 
@@ -521,9 +522,11 @@ class _DockItem extends StatelessWidget {
                 );
               }
               return Icon(
-                selected ? Icons.person_rounded : Icons.person_outline_rounded,
+                selected
+                    ? CupertinoIcons.person_crop_circle_fill
+                    : CupertinoIcons.person_crop_circle,
                 color: iconColor,
-                size: 22,
+                size: 21,
               );
             },
           );
@@ -531,65 +534,82 @@ class _DockItem extends StatelessWidget {
           iconWidget = Icon(
             selected ? icon!.$2 : icon!.$1,
             color: iconColor,
-            size: 22,
+            size: 21,
           );
         }
+
+        final isCompact = t > 0.45;
+        const circleSize = 38.0;
 
         return Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(999),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 90),
-              curve: Curves.easeOut,
-              margin: EdgeInsets.symmetric(horizontal: 2 + (4.0 * t)),
-              padding: EdgeInsets.symmetric(
-                horizontal: 2 + (4.0 * t),
-                vertical: 4 + (2 * (1 - t)),
-              ),
-              decoration: BoxDecoration(
-                color: selected
-                    ? AppColors.accent.withValues(alpha: 0.22)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(999),
-                border: selected
-                    ? Border.all(color: AppColors.accent.withValues(alpha: 0.35), width: 0.75)
-                    : null,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    height: 25,
-                    child: Center(
-                      child: _DockPop(selected: selected, child: iconWidget),
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOutCubic,
+                width: isCompact ? circleSize : double.infinity,
+                height: isCompact ? circleSize : null,
+                margin: EdgeInsets.symmetric(
+                  horizontal: isCompact ? 0 : 3.0,
+                  vertical: isCompact ? 0 : 2.0,
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: isCompact ? 0 : 4.0,
+                  vertical: isCompact ? 0 : 4.0,
+                ),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? AppColors.accent.withValues(alpha: 0.22)
+                      : Colors.transparent,
+                  shape: isCompact ? BoxShape.circle : BoxShape.rectangle,
+                  borderRadius: isCompact ? null : BorderRadius.circular(999),
+                  border: selected
+                      ? Border.all(
+                          color: AppColors.accent.withValues(alpha: 0.35),
+                          width: 0.75,
+                        )
+                      : null,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      height: 24,
+                      child: Center(
+                        child: _DockPop(selected: selected, child: iconWidget),
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    height: 14.0 * (1.0 - t),
-                    child: ClipRect(
-                      child: Opacity(
-                        opacity: labelOpacity.clamp(0.0, 1.0),
-                        child: Center(
-                          child: Text(
-                            label,
-                            maxLines: 1,
-                            softWrap: false,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              height: 1,
-                              color: iconColor,
-                              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    if (t < 0.92)
+                      SizedBox(
+                        height: 14.0 * (1.0 - t),
+                        child: ClipRect(
+                          child: Opacity(
+                            opacity: labelOpacity.clamp(0.0, 1.0),
+                            child: Center(
+                              child: Text(
+                                label,
+                                maxLines: 1,
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  height: 1,
+                                  color: iconColor,
+                                  fontWeight:
+                                      selected ? FontWeight.w600 : FontWeight.w400,
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

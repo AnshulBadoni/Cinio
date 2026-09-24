@@ -198,11 +198,16 @@ class DetailCubit extends Cubit<DetailState> {
       emit(state.copyWith(status: DetailStatus.loading, clearError: true));
     }
     MediaDetail? detail;
-    try {
-      detail = await _loadDetailForCurrentSource(state.category)
-          .timeout(const Duration(seconds: 20));
-    } catch (_) {
-      detail = null;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        detail = await _loadDetailForCurrentSource(state.category)
+            .timeout(const Duration(seconds: 15));
+        break;
+      } catch (_) {
+        if (attempt == 0) {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
     }
 
     if (detail != null) {
