@@ -1719,7 +1719,7 @@ class _ProviderPickerSheetState extends State<_ProviderPickerSheet> {
                     altWanted: widget.catalogItem.englishTitle,
                   )
                 : 0.0;
-            final score = math.max(s1, s2);
+            final score = s1 > s2 ? s1 : s2;
             if (score >= 0.50 ||
                 item.title.toLowerCase().contains(widget.catalogItem.title.toLowerCase())) {
               if (mounted) {
