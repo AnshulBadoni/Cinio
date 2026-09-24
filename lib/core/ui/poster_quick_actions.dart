@@ -27,8 +27,7 @@ Future<void> showPosterQuickActions(
   bool watched = false,
 }) {
   if (item.cover != null && item.cover!.isNotEmpty) {
-    final cover = item.cover!;
-    unawaited(precacheImage(nativeCoverProvider(cover, item.coverHeaders), context));
+    unawaited(precacheImage(nativeCoverProvider(item.cover!, item.coverHeaders), context));
   }
   return Navigator.of(context).push<void>(
     PageRouteBuilder<void>(
@@ -182,7 +181,7 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 30),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 430),
+                  constraints: const BoxConstraints(maxWidth: 310),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -307,7 +306,7 @@ class _QuickActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(16);
+    final radius = BorderRadius.circular(999);
     return ClipRRect(
       borderRadius: radius,
       child: BackdropFilter(
@@ -320,8 +319,8 @@ class _QuickActionButton extends StatelessWidget {
             onTap: onTap,
             borderRadius: radius,
             child: Container(
-              height: compact ? 54 : 58,
-              padding: const EdgeInsets.symmetric(horizontal: 18),
+              height: compact ? 50 : 54,
+              padding: const EdgeInsets.symmetric(horizontal: 22),
               decoration: BoxDecoration(
                 borderRadius: radius,
                 border: Border.all(
@@ -341,34 +340,32 @@ class _QuickActionButton extends StatelessWidget {
                         ],
                 ),
               ),
-              child: Row(
-                children: [
-                  Icon(
-                    icon,
-                    color: primary ? Colors.black : Colors.white,
-                    size: 21,
-                  ),
-                  const SizedBox(width: 13),
-                  Expanded(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.button.copyWith(
-                        color: primary ? Colors.black : Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      icon,
+                      color: primary ? Colors.black : Colors.white,
+                      size: 21,
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: AppText.button.copyWith(
+                          color: primary ? Colors.black : Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: primary
-                        ? Colors.black.withValues(alpha: 0.55)
-                        : Colors.white.withValues(alpha: 0.45),
-                    size: 20,
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

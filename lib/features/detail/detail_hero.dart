@@ -92,20 +92,15 @@ class _Hero extends StatelessWidget {
                 )
               : _coverBackdrop(),
         ),
-        // Gradients render OVER the video for title readability.
+        // One continuous cinematic treatment: a restrained top scrim plus a
+        // single long bottom fade. There is deliberately no second opaque
+        // scrim sitting between the artwork and the fade — that was the hard
+        // "image ends here" band visible on the detail page.
         IgnorePointer(
           child: DecoratedBox(
             decoration: BoxDecoration(gradient: AppColors.topScrim),
           ),
         ),
-        IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(gradient: AppColors.scrim),
-          ),
-        ),
-        // The lower fade is deliberately deep and continuous. The title sits
-        // inside this fade, so the poster dissolves into AMOLED black rather
-        // than looking like a poster dropped on top of the next section.
         IgnorePointer(
           child: DecoratedBox(
             decoration: BoxDecoration(
@@ -114,13 +109,14 @@ class _Hero extends StatelessWidget {
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  AppColors.bg.withValues(alpha: 0.04),
-                  AppColors.bg.withValues(alpha: 0.20),
-                  AppColors.bg.withValues(alpha: 0.52),
-                  AppColors.bg.withValues(alpha: 0.84),
+                  AppColors.bg.withValues(alpha: 0.025),
+                  AppColors.bg.withValues(alpha: 0.10),
+                  AppColors.bg.withValues(alpha: 0.28),
+                  AppColors.bg.withValues(alpha: 0.58),
+                  AppColors.bg.withValues(alpha: 0.86),
                   AppColors.bg,
                 ],
-                stops: const [0.16, 0.38, 0.58, 0.76, 0.92, 1.0],
+                stops: const [0.12, 0.28, 0.46, 0.64, 0.80, 0.93, 1.0],
               ),
             ),
           ),
@@ -129,7 +125,7 @@ class _Hero extends StatelessWidget {
           Positioned(
             left: 20,
             right: 20,
-            bottom: 28,
+            bottom: 38,
             child: bottomContent!,
           ),
       ],

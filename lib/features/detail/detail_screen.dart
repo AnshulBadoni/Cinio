@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:palette_generator/palette_generator.dart';
 
@@ -45,6 +44,7 @@ import '../../core/models/media_item.dart';
 import '../../core/models/media_extras.dart';
 import '../../core/models/person.dart';
 import '../home/search_screen.dart';
+import '../../core/ui/cinio_title_style.dart';
 import '../people/person_page.dart';
 import '../../core/models/video_source.dart';
 import '../../core/models/provider_info.dart';
@@ -305,7 +305,7 @@ class _DetailView extends StatefulWidget {
 
 class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
-  static const double _expandedHeight = 430;
+  static const double _expandedHeight = 500;
   bool _showAppBarTitle = false;
   String? _titleLogoUrl;
   String? _titleLogoKey;
@@ -1814,7 +1814,7 @@ class _DetailViewState extends State<_DetailView>
     final logo = _titleLogoUrl;
     if (logo != null && logo.isNotEmpty) {
       return ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 330, maxHeight: 92),
+        constraints: const BoxConstraints(maxWidth: 380, maxHeight: 86),
         child: CachedNetworkImage(
           imageUrl: logo,
           fit: BoxFit.contain,
@@ -1829,28 +1829,14 @@ class _DetailViewState extends State<_DetailView>
   }
 
   Widget _styledFallbackTitle(MediaDetail detail) {
-    final seed = (detail.tmdbId ?? widget.item.tmdbId ?? detail.title.hashCode).abs();
-    final styleIndex = seed % 3;
-    final families = const ['Poppins', 'Rubik', 'Lato'];
-    final family = families[styleIndex];
+    final seed = detail.tmdbId ?? widget.item.tmdbId ?? detail.title;
     final accent = _titleAccent ?? AppColors.textPrimary;
-    final titleColor = Color.lerp(Colors.white, accent, 0.72) ?? accent;
-    final fontSize = styleIndex == 1 ? 34.0 : 32.0;
-    final letterSpacing = styleIndex == 2 ? -0.55 : -1.05;
-    final weight = styleIndex == 1 ? FontWeight.w700 : FontWeight.w800;
-    return Text(
-      detail.title,
-      style: AppText.display.copyWith(
-        fontFamily: family,
-        fontSize: fontSize,
-        fontWeight: weight,
-        height: 0.98,
-        letterSpacing: letterSpacing,
-        color: titleColor,
-      ),
+    return cinioFallbackTitle(
+      title: detail.title,
+      seed: seed,
+      accent: accent,
+      fontSize: 32,
       maxLines: 2,
-      overflow: TextOverflow.visible,
-      textAlign: TextAlign.center,
     );
   }
 
@@ -2031,14 +2017,17 @@ class _DetailViewState extends State<_DetailView>
                             builder: (_) => SearchScreen(initialQuery: detail.title),
                           ),
                         ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            _titleHeader(detail),
-                            const SizedBox(height: 10),
-                            _heroMetaLine(detail),
-                          ],
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 390),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              _titleHeader(detail),
+                              const SizedBox(height: 10),
+                              _heroMetaLine(detail),
+                            ],
+                          ),
                         ),
                       ),
                     ),

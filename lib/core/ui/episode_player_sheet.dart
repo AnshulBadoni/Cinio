@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../models/video_source.dart';
 import '../playback/external_player.dart';
@@ -55,15 +56,15 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   double? rating,
   String? heroTag,
 }) async {
-  if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+  if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty) {
     unawaited(precacheImage(
-      nativeCoverProvider(thumbnailUrl, thumbnailHeaders),
+      nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
       context,
     ).catchError((_) {}));
   }
-  if (fallbackThumbnailUrl != null && fallbackThumbnailUrl.isNotEmpty) {
+  if (fallbackThumbnailUrl != null && fallbackThumbnailUrl!.isNotEmpty) {
     unawaited(precacheImage(
-      nativeCoverProvider(fallbackThumbnailUrl, fallbackThumbnailHeaders),
+      nativeCoverProvider(fallbackThumbnailUrl!, fallbackThumbnailHeaders),
       context,
     ).catchError((_) {}));
   }
@@ -155,18 +156,16 @@ class _EpisodeQuickActions extends StatelessWidget {
           children: [
             _fallbackImage(),
             if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
-              Image(
-                image: nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
+              CachedNetworkImage(
+                imageUrl: thumbnailUrl!,
+                httpHeaders: resolveEffectiveCoverHeaders(
+                  thumbnailUrl!,
+                  thumbnailHeaders,
+                ),
                 fit: BoxFit.cover,
-                gaplessPlayback: true,
-                filterQuality: FilterQuality.high,
-                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
-                    AnimatedOpacity(
-                      opacity: frame == null && !wasSynchronouslyLoaded ? 0 : 1,
-                      duration: const Duration(milliseconds: 140),
-                      child: child,
-                    ),
-                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                fadeInDuration: const Duration(milliseconds: 120),
+                placeholder: (context, url) => const SizedBox.shrink(),
+                errorWidget: (context, url, error) => const SizedBox.shrink(),
               ),
           ],
         ),
@@ -226,7 +225,7 @@ class _EpisodeQuickActions extends StatelessWidget {
             Positioned.fill(
               child: IgnorePointer(
                 child: Opacity(
-                  opacity: 0.11,
+                  opacity: 0.08,
                   child: Image(
                     image: nativeCoverProvider(
                       (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
@@ -255,11 +254,11 @@ class _EpisodeQuickActions extends StatelessWidget {
                   onTap: () => Navigator.of(context).pop(),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(
-                      sigmaX: 26 * progress,
-                      sigmaY: 26 * progress,
+                      sigmaX: 20 * progress,
+                      sigmaY: 20 * progress,
                     ),
                     child: ColoredBox(
-                      color: Colors.black.withValues(alpha: 0.18 * progress),
+                      color: Colors.black.withValues(alpha: 0.14 * progress),
                     ),
                   ),
                 );

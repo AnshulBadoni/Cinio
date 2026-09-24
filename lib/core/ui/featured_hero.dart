@@ -8,6 +8,7 @@ import 'package:palette_generator/palette_generator.dart';
 
 import '../di/injector.dart';
 import 'native_cover_provider.dart';
+import 'cinio_title_style.dart';
 import '../metadata/title_logo_service.dart';
 import '../metadata/tmdb_discover_service.dart';
 import '../models/media_item.dart';
@@ -362,24 +363,14 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   }
 
   Widget _titleText() {
-    final seed = (widget.item.tmdbId ?? widget.item.id.hashCode).abs();
-    final styleIndex = seed % 3;
-    const families = ['Poppins', 'Rubik', 'Lato'];
+    final seed = widget.item.tmdbId ?? widget.item.id;
     final accent = _artColor ?? Colors.white;
-    final color = Color.lerp(Colors.white, accent, 0.72) ?? accent;
-    return Text(
-      widget.item.title,
-      textAlign: TextAlign.center,
-      style: AppText.display.copyWith(
-        fontFamily: families[styleIndex],
-        fontSize: styleIndex == 1 ? 31 : 30,
-        fontWeight: styleIndex == 1 ? FontWeight.w700 : FontWeight.w800,
-        height: 0.98,
-        letterSpacing: styleIndex == 2 ? -0.45 : -1.0,
-        color: color,
-      ),
+    return cinioFallbackTitle(
+      title: widget.item.title,
+      seed: seed,
+      accent: accent,
+      fontSize: 30,
       maxLines: 2,
-      overflow: TextOverflow.visible,
     );
   }
 
@@ -395,27 +386,29 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       future: widget.metaFuture,
       builder: (context, snap) {
         final m = snap.data;
-        if (m == null) return const SizedBox.shrink();
         final children = <Widget>[];
-        if (m.rating != null && m.rating! > 0) {
+        final rating = m?.rating ?? widget.item.rating;
+        final year = (m?.year ?? widget.item.year)?.trim();
+        final genres = (m?.genres.isNotEmpty == true ? m!.genres : widget.item.genres);
+        if (rating != null && rating > 0) {
           children.add(Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(Icons.star_rounded, color: Color(0xFFFFC107), size: 15),
               const SizedBox(width: 4),
-              Text(m.rating!.toStringAsFixed(1)),
+              Text(rating!.toStringAsFixed(1)),
             ],
           ));
         }
-        if (m.year != null && m.year!.isNotEmpty) {
-          children.add(Text(m.year!));
+        if (year != null && year.isNotEmpty) {
+          children.add(Text(year));
         }
-        for (final genre in m.genres.take(3)) {
+        for (final genre in genres.take(3)) {
           children.add(Text(genre));
         }
-        if (m.episodeCount > 1) {
+        if ((m?.episodeCount ?? 0) > 1) {
           children.add(Text(
-            '${m.episodeCount} ${widget.reading ? 'Chapters' : 'Episodes'}',
+            '${m!.episodeCount} ${widget.reading ? 'Chapters' : 'Episodes'}',
           ));
         }
         if (children.isEmpty) return const SizedBox.shrink();

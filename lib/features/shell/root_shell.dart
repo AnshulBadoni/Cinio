@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/foundation.dart';
@@ -238,16 +239,30 @@ class _RootShellState extends State<RootShell>
             final active = visible.indexOf(_tab);
             return NotificationListener<ScrollNotification>(
               onNotification: (notification) {
-                // Listen to the actual vertical scroll stream, including
-                // NestedScrollView/sliver notifications. Horizontal rails do
-                // not affect the dock. The controller follows the finger
-                // directly — there is no timer-driven hide/show.
+                // Follow real vertical finger movement. A downward scroll
+                // collapses the dock; an upward scroll expands it. Crucially,
+                // an upward overscroll while the scroll position is already at
+                // the top is ignored, so the dock never flashes large→small at
+                // the top edge of a page.
                 if (notification.metrics.axis == Axis.vertical &&
                     notification is ScrollUpdateNotification) {
                   final delta = notification.scrollDelta ?? 0.0;
-                  if (delta.abs() > 0.01) {
-                    final next = (_dockCtrl.value + delta / 110.0).clamp(0.0, 1.0);
-                    _dockCtrl.value = next;
+                  if (delta > 0.01) {
+                    _dockCtrl.value = math.min(
+                      1.0,
+                      _dockCtrl.value + delta / 110.0,
+                    );
+                  } else if (delta < -0.01 &&
+                      notification.metrics.extentBefore > 0.5) {
+                    _dockCtrl.value = math.max(
+                      0.0,
+                      _dockCtrl.value + delta / 110.0,
+                    );
+                  } else if (notification.metrics.extentBefore <= 0.5 &&
+                      _dockCtrl.value != 0) {
+                    // The top of the scrollable is authoritative: if the
+                    // user is already there, the dock stays fully expanded.
+                    _dockCtrl.value = 0;
                   }
                 }
                 return false;
@@ -483,7 +498,7 @@ class _DockItem extends StatelessWidget {
           collapse.value.clamp(0.0, 1.0),
         );
         final labelOpacity = 1.0 - t;
-        final iconColor = selected ? AppColors.textPrimary : AppColors.textSecondary;
+        final iconColor = selected ? AppColors.accent : AppColors.textSecondary;
 
         Widget iconWidget;
         if (profile) {
@@ -497,7 +512,7 @@ class _DockItem extends StatelessWidget {
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: selected
-                          ? Colors.white.withValues(alpha: 0.75)
+                          ? AppColors.accent.withValues(alpha: 0.92)
                           : Colors.white.withValues(alpha: 0.28),
                       width: 1.2,
                     ),
@@ -535,11 +550,11 @@ class _DockItem extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: 2, vertical: 4 + (2 * (1 - t))),
               decoration: BoxDecoration(
                 color: selected
-                    ? Colors.white.withValues(alpha: 0.085)
+                    ? AppColors.accent.withValues(alpha: 0.16)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(999),
                 border: selected
-                    ? Border.all(color: Colors.white.withValues(alpha: 0.10), width: 0.6)
+                    ? Border.all(color: AppColors.accent.withValues(alpha: 0.24), width: 0.65)
                     : null,
               ),
               child: Column(
