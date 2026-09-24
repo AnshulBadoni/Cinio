@@ -14,6 +14,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/ui/jump_prompt.dart';
+import '../../core/ui/elastic_scroll_behavior.dart';
 import '../../core/ui/native_cover_provider.dart';
 import '../../core/util/title_matcher.dart';
 import '../../core/app_mode.dart';

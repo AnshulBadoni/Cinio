@@ -45,6 +45,7 @@ import '../../core/ui/adaptive_content_row.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
+import '../../core/ui/elastic_scroll_behavior.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/people_row.dart';
