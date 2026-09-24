@@ -1273,9 +1273,9 @@ class _HomeScrollView extends StatelessWidget {
           child: NotificationListener<OverscrollNotification>(
             onNotification: (notification) {
               if (notification.depth == 0 &&
-                  notification.overscroll > 0 &&
+                  notification.overscroll < 0 &&
                   notification.metrics.pixels <= 0) {
-                stretch.value = (stretch.value + notification.overscroll).clamp(0.0, 150.0);
+                stretch.value = (stretch.value - notification.overscroll).clamp(0.0, 150.0);
               }
               return false;
             },
@@ -1379,7 +1379,7 @@ class _HomeScrollView extends StatelessWidget {
               ),
             SliverToBoxAdapter(
               child: SizedBox(
-                height: 24 + MediaQuery.paddingOf(context).bottom,
+                height: 12 + MediaQuery.paddingOf(context).bottom,
               ),
             ),
           ],
@@ -1430,7 +1430,7 @@ class _HomeHeroSliver extends StatelessWidget {
         stretch: true,
         stretchTriggerOffset: 120,
         flexibleSpace: FlexibleSpaceBar(
-          collapseMode: CollapseMode.parallax,
+          collapseMode: CollapseMode.pin,
           stretchModes: const [
             StretchMode.zoomBackground,
           ],

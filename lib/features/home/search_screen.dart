@@ -1700,7 +1700,7 @@ class _SearchViewState extends State<_SearchView>
           padding: const EdgeInsets.symmetric(horizontal: 16),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
-            childAspectRatio: 0.66,
+            childAspectRatio: 0.56,
             crossAxisSpacing: 10,
             mainAxisSpacing: 14,
           ),
@@ -1939,7 +1939,7 @@ class _SearchViewState extends State<_SearchView>
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _searchGridColumns,
-        childAspectRatio: 0.66,
+        childAspectRatio: 0.56,
         crossAxisSpacing: 8,
         mainAxisSpacing: 16,
       ),
@@ -2006,7 +2006,7 @@ class _SearchViewState extends State<_SearchView>
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _searchGridColumns,
-        childAspectRatio: 0.66,
+        childAspectRatio: 0.56,
         crossAxisSpacing: 8,
         mainAxisSpacing: 16,
       ),

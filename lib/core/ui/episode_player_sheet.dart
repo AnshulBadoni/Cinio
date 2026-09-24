@@ -52,7 +52,16 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   Map<String, String>? thumbnailHeaders,
   double? rating,
   String? heroTag,
-}) {
+}) async {
+  if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty) {
+    try {
+      await precacheImage(
+        nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
+        context,
+      ).timeout(const Duration(seconds: 2));
+    } catch (_) {}
+  }
+  if (!context.mounted) return null;
   return Navigator.of(context).push<EpisodeAction>(
     PageRouteBuilder<EpisodeAction>(
       opaque: false,
@@ -203,7 +212,7 @@ class _EpisodeQuickActions extends StatelessWidget {
                       sigmaY: 26 * progress,
                     ),
                     child: ColoredBox(
-                      color: AppColors.bg.withValues(alpha: 0.34 * progress),
+                      color: Colors.black.withValues(alpha: 0.18 * progress),
                     ),
                   ),
                 );

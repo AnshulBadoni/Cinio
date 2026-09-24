@@ -287,7 +287,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    if (!widget.item.sourceId.startsWith('tpdb:'))
+                    if (widget.item.heroImage?.isNotEmpty == true)
                       GestureDetector(
                         behavior: HitTestBehavior.translucent,
                         onTap: widget.onInfo,
@@ -356,16 +356,15 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   }
 
   Widget _titleText() {
-    final isTpdb = widget.item.sourceId.startsWith('tpdb:');
     return Text(
       widget.item.title,
       textAlign: TextAlign.center,
       style: AppText.display.copyWith(
-        fontFamily: isTpdb ? 'Montserrat' : null,
-        fontSize: isTpdb ? 28 : 30,
-        fontWeight: isTpdb ? FontWeight.w800 : FontWeight.w700,
+        fontFamily: 'Montserrat',
+        fontSize: 30,
+        fontWeight: FontWeight.w800,
         height: 1.0,
-        letterSpacing: isTpdb ? -0.9 : -0.6,
+        letterSpacing: -0.8,
       ),
       maxLines: 2,
       overflow: TextOverflow.ellipsis,

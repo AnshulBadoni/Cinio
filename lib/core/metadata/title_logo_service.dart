@@ -84,8 +84,8 @@ class TitleLogoService {
 
   Future<String?> logoFor(MediaItem item) async {
     final key = item.tmdbId != null
-        ? 'v4:id:${item.tmdbId}:${item.tmdbIsTv}'
-        : 'v4:q:${item.sourceId}:${(item.englishTitle ?? item.title).toLowerCase()}:${item.year ?? ''}';
+        ? 'v5:id:${item.tmdbId}:${item.tmdbIsTv}'
+        : 'v5:q:${item.sourceId}:${(item.englishTitle ?? item.title).toLowerCase()}:${item.year ?? ''}';
 
     final cached = _mem[key] ?? _box.get(key);
     if (cached != null) {
@@ -182,39 +182,84 @@ class TitleLogoService {
       isTv = match['media_type'] == 'tv';
       if (id == null) return null;
     }
-    final kind = isTv ? 'tv' : 'movie';
-    // Ask TMDB for the complete logo set instead of filtering to en/null at
-    // request time. A surprising number of titles only have a logo tagged in
-    // their original language, and filtering those out made the hero silently
-    // fall back to plain text. We still rank English first when it exists.
-    final imgs = await _dio.get<dynamic>(
-      '${Tmdb.base}/$kind/$id/images',
-      options: Options(validateStatus: (c) => c != null && c < 500),
-    );
-    final logos = (imgs.data is Map) ? imgs.data['logos'] : null;
-    if (logos is! List || logos.isEmpty) return null;
-    final candidates = [for (final l in logos) if (l is Map) l];
-    candidates.sort((a, b) {
-      int languageScore(Map m) {
-        final language = m['iso_639_1']?.toString();
-        if (language == 'en') return 4;
-        if (language == null || language.isEmpty) return 3;
-        return 2;
-      }
-      final language = languageScore(b).compareTo(languageScore(a));
-      if (language != 0) return language;
-      final av = (a['vote_average'] as num?)?.toDouble() ?? 0;
-      final bv = (b['vote_average'] as num?)?.toDouble() ?? 0;
-      if (av != bv) return bv.compareTo(av);
-      final aw = (a['width'] as num?)?.toInt() ?? 0;
-      final bw = (b['width'] as num?)?.toInt() ?? 0;
-      return bw.compareTo(aw);
-    });
-    for (final candidate in candidates) {
-      final path = candidate['file_path']?.toString();
-      if (path != null && path.isNotEmpty) {
-        return '${Tmdb.img}/w1280$path';
-      }
+    Future<String?> logoForType(String type, int tmdbId) async {
+      try {
+        final imgs = await _dio.get<dynamic>(
+          '${Tmdb.base}/$type/$tmdbId/images',
+          options: Options(validateStatus: (c) => c != null && c < 500),
+        );
+        final logos = (imgs.data is Map) ? imgs.data['logos'] : null;
+        if (logos is! List || logos.isEmpty) return null;
+        final candidates = [for (final l in logos) if (l is Map) l];
+        candidates.sort((a, b) {
+          int languageScore(Map m) {
+            final language = m['iso_639_1']?.toString();
+            if (language == 'en') return 4;
+            if (language == null || language.isEmpty) return 3;
+            return 2;
+          }
+          final language = languageScore(b).compareTo(languageScore(a));
+          if (language != 0) return language;
+          final av = (a['vote_average'] as num?)?.toDouble() ?? 0;
+          final bv = (b['vote_average'] as num?)?.toDouble() ?? 0;
+          if (av != bv) return bv.compareTo(av);
+          final aw = (a['width'] as num?)?.toInt() ?? 0;
+          final bw = (b['width'] as num?)?.toInt() ?? 0;
+          return bw.compareTo(aw);
+        });
+        for (final candidate in candidates) {
+          final path = candidate['file_path']?.toString();
+          if (path != null && path.isNotEmpty) {
+            return '${Tmdb.img}/w1280$path';
+          }
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    final preferredKind = isTv ? 'tv' : 'movie';
+    final preferredLogo = await logoForType(preferredKind, id);
+    if (preferredLogo != null) return preferredLogo;
+
+    // TPDB and mixed providers sometimes carry a TMDB id without preserving
+    // whether that id belongs to the TV namespace. If the preferred namespace
+    // has no logo, search the opposite namespace by the title and use the
+    // exact/near-exact match instead of silently falling back to plain text.
+    final query = (item.englishTitle ?? item.title).trim();
+    if (query.isNotEmpty) {
+      final wanted = _normaliseTitle(query);
+      final oppositeKind = isTv ? 'movie' : 'tv';
+      try {
+        final response = await _dio.get<dynamic>(
+          '${Tmdb.base}/search/$oppositeKind',
+          queryParameters: {
+            'query': query,
+            if ((item.year ?? '').trim().isNotEmpty)
+              (oppositeKind == 'tv' ? 'first_air_date_year' : 'year'): int.tryParse(item.year!.trim()),
+          },
+          options: Options(validateStatus: (c) => c != null && c < 500),
+        );
+        final results = response.data is Map ? response.data['results'] : null;
+        if (results is List) {
+          Map? bestOpposite;
+          var bestScore = 0.0;
+          for (final r in results) {
+            if (r is! Map) continue;
+            final candidate = (r['title'] ?? r['name'])?.toString() ?? '';
+            final score = _titleSimilarity(wanted, _normaliseTitle(candidate));
+            if (score > bestScore) {
+              bestScore = score;
+              bestOpposite = r;
+            }
+          }
+          if (bestOpposite != null && bestScore >= 0.88) {
+            final oppositeId = (bestOpposite['id'] as num?)?.toInt();
+            if (oppositeId != null) {
+              return logoForType(oppositeKind, oppositeId);
+            }
+          }
+        }
+      } catch (_) {}
     }
     return null;
   }

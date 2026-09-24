@@ -240,12 +240,16 @@ class _RootShellState extends State<RootShell>
             final active = visible.indexOf(_tab);
             return NotificationListener<UserScrollNotification>(
               onNotification: (notification) {
-                if (notification.direction == ScrollDirection.reverse && !_dockCompact) {
-                  setState(() => _dockCompact = true);
-                  _dockCtrl.animateTo(1.0, curve: Curves.easeInOutCubic);
-                } else if (notification.direction == ScrollDirection.forward && _dockCompact) {
-                  setState(() => _dockCompact = false);
-                  _dockCtrl.animateTo(0.0, curve: Curves.easeInOutCubic);
+                if (notification.depth != 0) return false;
+                if (notification.direction == ScrollDirection.reverse &&
+                    notification.metrics.pixels > 8 &&
+                    _dockCtrl.value < 0.98) {
+                  _dockCompact = true;
+                  _dockCtrl.animateTo(1.0, duration: const Duration(milliseconds: 420), curve: Curves.easeOutCubic);
+                } else if (notification.direction == ScrollDirection.forward &&
+                    _dockCtrl.value > 0.02) {
+                  _dockCompact = false;
+                  _dockCtrl.animateTo(0.0, duration: const Duration(milliseconds: 460), curve: Curves.easeOutCubic);
                 }
                 return false;
               },
@@ -334,9 +338,9 @@ class _FloatingDock extends StatelessWidget {
       animation: collapse,
       builder: (context, _) {
         final t = Curves.easeInOutCubic.transform(collapse.value);
-        final width = screenWidth * (0.94 - (0.08 * t));
-        final verticalPadding = 8.0 - (3.0 * t);
-        final radius = 30.0 - (4.0 * t);
+        final width = screenWidth * (0.94 - (0.12 * t));
+        final verticalPadding = 8.0 - (3.5 * t);
+        final radius = 30.0 - (5.0 * t);
         return Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
@@ -354,8 +358,8 @@ class _FloatingDock extends StatelessWidget {
                       end: Alignment.bottomCenter,
                       colors: [
                         Colors.white.withValues(alpha: 0.13),
-                        AppColors.accent.withValues(alpha: 0.08),
-                        AppColors.surface.withValues(alpha: 0.72),
+                        Colors.white.withValues(alpha: 0.035),
+                        AppColors.surface.withValues(alpha: 0.78),
                       ],
                       stops: const [0.0, 0.32, 1.0],
                     ),
@@ -369,12 +373,7 @@ class _FloatingDock extends StatelessWidget {
                         blurRadius: 28,
                         offset: const Offset(0, 12),
                       ),
-                      BoxShadow(
-                        color: AppColors.accent.withValues(alpha: 0.13),
-                        blurRadius: 34,
-                        spreadRadius: -8,
-                        offset: const Offset(0, -3),
-                      ),
+
                     ],
                   ),
                   child: Stack(
@@ -402,7 +401,7 @@ class _FloatingDock extends StatelessWidget {
                               _ProfileDockItem(
                                 selected: active == tab,
                                 onTap: () => onSelected(tab),
-                                compact: compact,
+                                compact: t > 0.52,
                               )
                             else
                               _DockItem(
@@ -411,7 +410,7 @@ class _FloatingDock extends StatelessWidget {
                                 icon: _iconFor(tab),
                                 selected: active == tab,
                                 onTap: () => onSelected(tab),
-                                compact: compact,
+                                compact: t > 0.52,
                               ),
                         ],
                       ),
@@ -503,10 +502,10 @@ class _DockItem extends StatelessWidget {
             vertical: compact ? 3 : 4,
           ),
           decoration: BoxDecoration(
-            color: selected ? AppColors.accent.withValues(alpha: 0.18) : Colors.transparent,
+            color: selected ? Colors.white.withValues(alpha: 0.075) : Colors.transparent,
             borderRadius: BorderRadius.circular(21),
             border: selected
-                ? Border.all(color: AppColors.accent.withValues(alpha: 0.16))
+                ? Border.all(color: Colors.white.withValues(alpha: 0.10))
                 : null,
           ),
           child: Column(
@@ -528,19 +527,27 @@ class _DockItem extends StatelessWidget {
                 ),
               ),
               SizedBox(height: compact ? 1 : 3),
-              SizedBox(
-                height: 14,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    softWrap: false,
-                    style: TextStyle(
-                      fontSize: compact ? 9.5 : 10.5,
-                      letterSpacing: 0.05,
-                      color: color,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ClipRect(
+                child: Align(
+                  heightFactor: compact ? 0.0 : 1.0,
+                  child: Opacity(
+                    opacity: compact ? 0.0 : 1.0,
+                    child: SizedBox(
+                      height: 14,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            letterSpacing: 0.05,
+                            color: color,
+                            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -579,10 +586,10 @@ class _ProfileDockItem extends StatelessWidget {
             vertical: compact ? 3 : 4,
           ),
           decoration: BoxDecoration(
-            color: selected ? AppColors.accent.withValues(alpha: 0.18) : Colors.transparent,
+            color: selected ? Colors.white.withValues(alpha: 0.075) : Colors.transparent,
             borderRadius: BorderRadius.circular(21),
             border: selected
-                ? Border.all(color: AppColors.accent.withValues(alpha: 0.16))
+                ? Border.all(color: Colors.white.withValues(alpha: 0.10))
                 : null,
           ),
           child: Column(
@@ -653,20 +660,27 @@ class _ProfileDockItem extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 3),
-              SizedBox(
-                height: 14,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'Profile',
-                    maxLines: 1,
-                    softWrap: false,
-                    style: TextStyle(
-                      fontSize: compact ? 9.5 : 10.5,
-                      letterSpacing: 0.05,
-                      color: color,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ClipRect(
+                child: Align(
+                  heightFactor: compact ? 0.0 : 1.0,
+                  child: Opacity(
+                    opacity: compact ? 0.0 : 1.0,
+                    child: SizedBox(
+                      height: 14,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Profile',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            letterSpacing: 0.05,
+                            color: color,
+                            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),

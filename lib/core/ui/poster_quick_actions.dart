@@ -123,7 +123,7 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final maxPosterHeight = (size.height * 0.47).clamp(300.0, 760.0);
+    final maxPosterHeight = (size.height * 0.54).clamp(330.0, 760.0);
 
     final posterWidth = maxPosterHeight * 0.675;
 
@@ -160,7 +160,7 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                       sigmaY: 26 * progress,
                     ),
                     child: ColoredBox(
-                      color: AppColors.bg.withValues(alpha: 0.34 * progress),
+                      color: Colors.black.withValues(alpha: 0.20 * progress),
                     ),
                   ),
                 );
@@ -204,6 +204,18 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: AppText.display.copyWith(fontSize: 22),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    [
+                      if (widget.item.year?.isNotEmpty == true) widget.item.year!,
+                      widget.item.tmdbIsTv ? 'Series' : 'Movie',
+                    ].join('  ·  '),
+                    textAlign: TextAlign.center,
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textSecondary,
+                      fontSize: 14,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   _QuickActionButton(
@@ -261,26 +273,37 @@ class _QuickActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 50,
+      height: primary ? 84 : 72,
       child: Material(
         color: primary ? Colors.white : AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(primary ? 18 : 16),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(primary ? 18 : 16),
           onTap: onTap,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: primary ? Colors.black : Colors.white, size: 22),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: AppText.button.copyWith(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 22),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
                   color: primary ? Colors.black : Colors.white,
-                  fontSize: 15,
+                  size: primary ? 25 : 23,
                 ),
-              ),
-            ],
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.button.copyWith(
+                      color: primary ? Colors.black : Colors.white,
+                      fontSize: primary ? 18 : 17,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

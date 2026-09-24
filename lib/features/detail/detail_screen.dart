@@ -404,13 +404,9 @@ class _DetailViewState extends State<_DetailView>
       length: _tabShowsEpisodes ? 4 : 3,
       vsync: this,
     );
-    // Keep the detail page fully interactive while metadata settles. The
-    // trailer path creates a native media player and may resolve a YouTube
-    // stream; doing that during the first layout was a major source of
-    // startup stalls on lower-end Android devices.
-    _trailerDelayTimer = Timer(const Duration(milliseconds: 1400), () {
-      if (mounted) setState(() => _heroTrailerReady = true);
-    });
+    // Detail opens as a static artwork page. Trailer extraction is intentionally
+    // not started automatically here because native stream extraction/player
+    // creation can monopolize the UI on some Android devices.
     if (sl.isRegistered<DiscordRpc>()) {
       sl<DiscordRpc>().setBrowsing(
         title: widget.item.title,
@@ -1709,13 +1705,12 @@ class _DetailViewState extends State<_DetailView>
 
   Widget _titleHeader(MediaDetail detail) {
     final logo = _titleLogoUrl;
-    final isTpdb = widget.item.sourceId.startsWith('tpdb:');
     final fallbackStyle = AppText.display.copyWith(
-      fontFamily: isTpdb ? 'Montserrat' : null,
-      fontSize: isTpdb ? 29 : 30,
-      fontWeight: isTpdb ? FontWeight.w800 : FontWeight.w700,
+      fontFamily: 'Montserrat',
+      fontSize: 30,
+      fontWeight: FontWeight.w800,
       height: 1.0,
-      letterSpacing: isTpdb ? -0.9 : -0.6,
+      letterSpacing: -0.8,
     );
     if (logo == null || logo.isEmpty) {
       return Text(
@@ -1810,7 +1805,7 @@ class _DetailViewState extends State<_DetailView>
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
     final hasCover = heroCoverUrl.isNotEmpty;
 
-    _resolveTrailer(detail);
+    // Do not resolve or mount a native trailer player during detail rendering.
 
     final seasonSet = seasonsOf(eps, detail.availableSeasons);
     final hasMultipleSeasons = seasonSet.length > 1;
@@ -1868,11 +1863,11 @@ class _DetailViewState extends State<_DetailView>
 
     return NotificationListener<OverscrollNotification>(
       onNotification: (notification) {
-        if (notification.depth == 0 &&
-                  notification.overscroll > 0 &&
-                  notification.metrics.pixels <= 0) {
+        if (notification.metrics.axis == Axis.vertical &&
+            notification.overscroll < 0 &&
+            notification.metrics.pixels <= 0) {
           _heroStretch.value =
-              (_heroStretch.value + notification.overscroll).clamp(0.0, 140.0);
+              (_heroStretch.value - notification.overscroll).clamp(0.0, 140.0);
         }
         return false;
       },
@@ -1909,7 +1904,7 @@ class _DetailViewState extends State<_DetailView>
           stretch: true,
           stretchTriggerOffset: 90,
           flexibleSpace: FlexibleSpaceBar(
-            collapseMode: CollapseMode.parallax,
+            collapseMode: CollapseMode.pin,
             stretchModes: const [
               StretchMode.zoomBackground,
               StretchMode.fadeTitle,
