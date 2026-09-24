@@ -354,17 +354,22 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     );
   }
 
-  Widget _titleText() => Text(
-    widget.item.title,
-    textAlign: TextAlign.center,
-    style: AppText.display.copyWith(
-      fontSize: 30,
-      height: 1.02,
-      letterSpacing: -0.6,
-    ),
-    maxLines: 1,
-    overflow: TextOverflow.ellipsis,
-  );
+  Widget _titleText() {
+    final isTpdb = widget.item.sourceId.startsWith('tpdb:');
+    return Text(
+      widget.item.title,
+      textAlign: TextAlign.center,
+      style: AppText.display.copyWith(
+        fontFamily: isTpdb ? 'Montserrat' : null,
+        fontSize: isTpdb ? 28 : 30,
+        fontWeight: isTpdb ? FontWeight.w800 : FontWeight.w700,
+        height: 1.0,
+        letterSpacing: isTpdb ? -0.9 : -0.6,
+      ),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
 
   /// If a [widget.wrapButton] decorator was provided (TV), wraps [w] with it;
   /// otherwise returns [w] unchanged — phone behaviour is exact.

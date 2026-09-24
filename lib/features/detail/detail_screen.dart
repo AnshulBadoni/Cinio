@@ -469,7 +469,12 @@ class _DetailViewState extends State<_DetailView>
     if (_titleLogoKey == key) return;
     _titleLogoKey = key;
     sl<TitleLogoService>()
-        .logoForDetail(title: detail.title, tmdbId: tmdbId, isTv: isTv)
+        .logoForDetail(
+          title: detail.title,
+          tmdbId: tmdbId,
+          isTv: isTv,
+          sourceId: widget.item.sourceId,
+        )
         .then((url) {
       if (!mounted || _titleLogoKey != key) return;
       if (url != null && url.isNotEmpty) {
@@ -1701,12 +1706,21 @@ class _DetailViewState extends State<_DetailView>
 
   Widget _titleHeader(MediaDetail detail) {
     final logo = _titleLogoUrl;
+    final isTpdb = widget.item.sourceId.startsWith('tpdb:');
+    final fallbackStyle = AppText.display.copyWith(
+      fontFamily: isTpdb ? 'Montserrat' : null,
+      fontSize: isTpdb ? 29 : 30,
+      fontWeight: isTpdb ? FontWeight.w800 : FontWeight.w700,
+      height: 1.0,
+      letterSpacing: isTpdb ? -0.9 : -0.6,
+    );
     if (logo == null || logo.isEmpty) {
       return Text(
         detail.title,
-        style: AppText.display.copyWith(fontSize: 30),
+        style: fallbackStyle,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
       );
     }
     return ConstrainedBox(
@@ -1722,7 +1736,7 @@ class _DetailViewState extends State<_DetailView>
             alignment: Alignment.center,
             child: Text(
               detail.title,
-              style: AppText.display.copyWith(fontSize: 30),
+              style: fallbackStyle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -1730,7 +1744,7 @@ class _DetailViewState extends State<_DetailView>
         ),
         errorWidget: (_, _, _) => Text(
           detail.title,
-          style: AppText.display.copyWith(fontSize: 30),
+          style: fallbackStyle,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
@@ -2252,9 +2266,8 @@ class _DetailViewState extends State<_DetailView>
             description: detail.description,
           ),
         ],
-          ),
-        ),
-      );
+      ),
+    );
   }
 }
 

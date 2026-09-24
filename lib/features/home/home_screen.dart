@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderSliver;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1365,10 +1364,9 @@ class _HomeScrollView extends StatelessWidget {
                 height: 24 + MediaQuery.paddingOf(context).bottom,
               ),
             ),
-              ],
-            ),
-          ),
-        );
+          ],
+        ),
+      );
       },
     );
   }
@@ -1398,21 +1396,65 @@ class _HomeHeroSliver extends StatelessWidget {
     if (hasHero) view._prewarmHeroMeta(heroItems);
 
     if (hasHero && !noSourceForMode && activeSourceValid) {
-      return SliverPersistentHeader(
+      return SliverAppBar(
         pinned: false,
-        delegate: _HomeHeroDelegate(
-          heroItems: heroItems,
-          inList: view._myList.contains,
-          onPlay: view._playFeatured,
-          onInfo: view._openDetail,
-          onToggleList: (item) => showListStatusSheet(
-            context,
-            item: item,
-            onChanged: () {
-              if (view.mounted) view.setState(() {});
-            },
+        primary: false,
+        toolbarHeight: 0,
+        expandedHeight: kHeroHeight,
+        collapsedHeight: 0,
+        backgroundColor: AppColors.bg,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        stretch: true,
+        stretchTriggerOffset: 120,
+        flexibleSpace: FlexibleSpaceBar(
+          collapseMode: CollapseMode.parallax,
+          stretchModes: const [
+            StretchMode.zoomBackground,
+          ],
+          background: Stack(
+            fit: StackFit.expand,
+            children: [
+              FeaturedCarousel(
+                items: heroItems,
+                reading: sl<ContentModeCubit>().state.isReading,
+                inList: view._myList.contains,
+                onPlay: view._playFeatured,
+                onInfo: view._openDetail,
+                onToggleList: (item) => showListStatusSheet(
+                  context,
+                  item: item,
+                  onChanged: () {
+                    if (view.mounted) view.setState(() {});
+                  },
+                ),
+                meta: view._heroMeta,
+                style: HeroTransition.cinematic,
+                fullBleed: true,
+                height: kHeroHeight,
+              ),
+              Positioned(
+                top: MediaQuery.paddingOf(context).top + 10,
+                right: 16,
+                child: BlocBuilder<ActiveSourceCubit, String>(
+                  builder: (context, id) => SourceSwitcher(
+                    currentId: id,
+                    compact: true,
+                    onChanged: (newId) =>
+                        context.read<ActiveSourceCubit>().setSource(newId),
+                    onInstallSources: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            const ZangetsuSourcesScreen(openToRepos: true),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          meta: view._heroMeta,
         ),
       );
     }
@@ -1448,87 +1490,6 @@ class _HomeHeroSliver extends StatelessWidget {
 
     return const SliverToBoxAdapter(child: SizedBox.shrink());
   }
-}
-
-class _HomeHeroDelegate extends SliverPersistentHeaderDelegate {
-  _HomeHeroDelegate({
-    required this.heroItems,
-    required this.inList,
-    required this.onPlay,
-    required this.onInfo,
-    required this.onToggleList,
-    required this.meta,
-  });
-
-  final List<MediaItem> heroItems;
-  final bool Function(MediaItem) inList;
-  final void Function(MediaItem) onPlay;
-  final void Function(MediaItem) onInfo;
-  final void Function(MediaItem) onToggleList;
-  final Future<HeroMeta?> Function(MediaItem) meta;
-
-  @override
-  double get minExtent => kHeroHeight;
-
-  @override
-  double get maxExtent => kHeroHeight;
-
-  @override
-  OverScrollHeaderStretchConfiguration get stretchConfiguration =>
-      const OverScrollHeaderStretchConfiguration();
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    final renderObject = context.findRenderObject();
-    final sliver = renderObject is RenderSliver
-        ? renderObject.constraints.stretchOffset.clamp(0.0, 140.0)
-        : 0.0;
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        FeaturedCarousel(
-          items: heroItems,
-          reading: sl<ContentModeCubit>().state.isReading,
-          inList: inList,
-          onPlay: onPlay,
-          onInfo: onInfo,
-          onToggleList: onToggleList,
-          meta: meta,
-          style: HeroTransition.cinematic,
-          fullBleed: true,
-          height: kHeroHeight + sliver,
-        ),
-        Positioned(
-          top: MediaQuery.paddingOf(context).top + 10,
-          right: 16,
-          child: BlocBuilder<ActiveSourceCubit, String>(
-            builder: (context, id) => SourceSwitcher(
-              currentId: id,
-              compact: true,
-              onChanged: (newId) =>
-                  context.read<ActiveSourceCubit>().setSource(newId),
-              onInstallSources: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) =>
-                      const ZangetsuSourcesScreen(openToRepos: true),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _HomeHeroDelegate oldDelegate) =>
-      oldDelegate.heroItems != heroItems ||
-      oldDelegate.heroItems != heroItems;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

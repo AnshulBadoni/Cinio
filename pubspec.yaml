@@ -280,3 +280,6 @@ flutter:
     - family: Noto Sans
       fonts:
         - asset: assets/fonts/NotoSans-Regular.ttf
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat-Regular.ttf

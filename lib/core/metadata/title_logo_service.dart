@@ -66,6 +66,7 @@ class TitleLogoService {
     required String title,
     int? tmdbId,
     bool isTv = false,
+    String sourceId = 'tmdb:logo',
   }) async {
     final item = MediaItem(
       id: 'logo:$tmdbId:${isTv ? 'tv' : 'movie'}:$title',
@@ -74,15 +75,15 @@ class TitleLogoService {
       tmdbIsTv: isTv,
       url: '',
       type: ProviderType.movie,
-      sourceId: 'tmdb:logo',
+      sourceId: sourceId,
     );
     return logoFor(item);
   }
 
   Future<String?> logoFor(MediaItem item) async {
     final key = item.tmdbId != null
-        ? 'v2:id:${item.tmdbId}:${item.tmdbIsTv}'
-        : 'v2:q:${(item.englishTitle ?? item.title).toLowerCase()}';
+        ? 'v3:id:${item.tmdbId}:${item.tmdbIsTv}'
+        : 'v3:q:${item.sourceId}:${(item.englishTitle ?? item.title).toLowerCase()}';
 
     final cached = _mem[key] ?? _box.get(key);
     if (cached != null) {
@@ -104,6 +105,31 @@ class TitleLogoService {
     }
   }
 
+
+  String _normaliseTitle(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  double _titleSimilarity(String a, String b) {
+    if (a.isEmpty || b.isEmpty) return 0;
+    if (a == b) return 1;
+    if (a.contains(b) || b.contains(a)) {
+      final shorter = a.length < b.length ? a.length : b.length;
+      final longer = a.length > b.length ? a.length : b.length;
+      return 0.82 + (shorter / longer) * 0.16;
+    }
+    final aa = a.split(' ').toSet();
+    final bb = b.split(' ').toSet();
+    final intersection = aa.intersection(bb).length;
+    final union = aa.union(bb).length;
+    final jaccard = union == 0 ? 0.0 : intersection / union;
+    return jaccard;
+  }
+
   Future<String?> _resolve(MediaItem item) async {
     int? id = item.tmdbId;
     var isTv = item.tmdbIsTv;
@@ -117,15 +143,32 @@ class TitleLogoService {
       );
       final results = (s.data is Map) ? s.data['results'] : null;
       if (results is! List) return null;
+
+      // TPDB titles frequently have names that are unrelated to TMDB's
+      // catalogue. Never take TMDB's first search result for a TPDB title:
+      // that can put the wrong franchise logo on an adult title. Only accept
+      // a very strong title match.
+      final wanted = _normaliseTitle(q);
+      Map? best;
+      var bestScore = 0.0;
       for (final r in results) {
         if (r is! Map) continue;
         final mt = r['media_type'];
-        if (mt == 'movie' || mt == 'tv') {
-          id = (r['id'] as num?)?.toInt();
-          isTv = mt == 'tv';
-          break;
+        if (mt != 'movie' && mt != 'tv') continue;
+        final candidate = (r['title'] ?? r['name'])?.toString() ?? '';
+        final score = _titleSimilarity(wanted, _normaliseTitle(candidate));
+        if (score > bestScore) {
+          bestScore = score;
+          best = r;
         }
       }
+      // For TPDB we require an exact/near-exact title match. For the other
+      // catalogues keep the same forgiving behaviour as before, but still
+      // prefer the strongest result rather than an arbitrary first result.
+      final threshold = item.sourceId.startsWith('tpdb:') ? 0.88 : 0.62;
+      if (best == null || bestScore < threshold) return null;
+      id = (best['id'] as num?)?.toInt();
+      isTv = best['media_type'] == 'tv';
       if (id == null) return null;
     }
     final kind = isTv ? 'tv' : 'movie';
