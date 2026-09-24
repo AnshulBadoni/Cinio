@@ -124,82 +124,82 @@ class _EpisodeQuickActions extends StatelessWidget {
   final double? rating;
   final String? heroTag;
 
-  Widget _fallbackImage() {
-    if (fallbackThumbnailUrl == null || fallbackThumbnailUrl!.isEmpty) {
-      return ColoredBox(color: AppColors.surface2);
-    }
-    return Image(
-      image: nativeCoverProvider(
-        fallbackThumbnailUrl!,
-        fallbackThumbnailHeaders,
-      ),
-      fit: BoxFit.cover,
-      gaplessPlayback: true,
-      filterQuality: FilterQuality.high,
-      errorBuilder: (context, error, stackTrace) =>
-          ColoredBox(color: AppColors.surface2),
-    );
-  }
 
   Widget _thumbnail(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final width = (size.width * 0.72).clamp(260.0, 460.0);
     final height = width * 9 / 16;
+    final effectiveUrl = (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
+        ? thumbnailUrl!
+        : (fallbackThumbnailUrl ?? '');
+    final effectiveHeaders = (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
+        ? thumbnailHeaders
+        : fallbackThumbnailHeaders;
+
     Widget image = ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: SizedBox(
         width: width,
         height: height,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            _fallbackImage(),
-            if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
-              Image(
-                image: nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
+        child: effectiveUrl.isNotEmpty
+            ? Image(
+                image: nativeCoverProvider(effectiveUrl, effectiveHeaders),
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
                 filterQuality: FilterQuality.high,
-                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
-              ),
-          ],
-        ),
+                errorBuilder: (context, error, stackTrace) =>
+                    ColoredBox(color: AppColors.surface2),
+              )
+            : ColoredBox(color: AppColors.surface2),
       ),
     );
-    if (rating != null) {
-      image = Stack(
-        fit: StackFit.expand,
-        children: [
-          image,
-          Positioned(
-            top: 8,
-            left: 8,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.72),
-                borderRadius: BorderRadius.circular(7),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.star_rounded, color: Color(0xFFFFC107), size: 13),
-                    const SizedBox(width: 3),
-                    Text(rating!.toStringAsFixed(1), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
-                  ],
+
+    if (heroTag != null && heroTag!.isNotEmpty) {
+      image = Hero(
+        tag: heroTag!,
+        child: image,
+      );
+    }
+
+    if (rating != null && rating! > 0) {
+      image = SizedBox(
+        width: width,
+        height: height,
+        child: Stack(
+          children: [
+            image,
+            Positioned(
+              top: 8,
+              left: 8,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.72),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.star_rounded, color: Color(0xFFFFC107), size: 13),
+                      const SizedBox(width: 3),
+                      Text(
+                        rating!.toStringAsFixed(1),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
-    // Do not rely on a Hero flight for the destination image. On nested
-    // sliver lists the source Hero can be removed from the tree as the
-    // transparent route settles, which previously left a perfectly blurred
-    // screen with no focused thumbnail. The focused image is rendered as a
-    // normal widget here; the poster/episode itself is the source of truth.
     return image;
   }
 
@@ -215,29 +215,6 @@ class _EpisodeQuickActions extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if ((thumbnailUrl != null && thumbnailUrl!.isNotEmpty) ||
-              (fallbackThumbnailUrl != null && fallbackThumbnailUrl!.isNotEmpty))
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Opacity(
-                  opacity: 0.08,
-                  child: Image(
-                    image: nativeCoverProvider(
-                      (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
-                          ? thumbnailUrl!
-                          : fallbackThumbnailUrl!,
-                      (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
-                          ? thumbnailHeaders
-                          : fallbackThumbnailHeaders,
-                    ),
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.low,
-                    errorBuilder: (context, error, stackTrace) =>
-                        ColoredBox(color: AppColors.bg),
-                  ),
-                ),
-              ),
-            ),
           Positioned.fill(
             child: AnimatedBuilder(
               animation: ModalRoute.of(context)?.animation ?? kAlwaysCompleteAnimation,
@@ -249,11 +226,11 @@ class _EpisodeQuickActions extends StatelessWidget {
                   onTap: () => Navigator.of(context).pop(),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(
-                      sigmaX: 20 * progress,
-                      sigmaY: 20 * progress,
+                      sigmaX: 22 * progress,
+                      sigmaY: 22 * progress,
                     ),
                     child: ColoredBox(
-                      color: Colors.black.withValues(alpha: 0.14 * progress),
+                      color: Colors.black.withValues(alpha: 0.72 * progress),
                     ),
                   ),
                 );
