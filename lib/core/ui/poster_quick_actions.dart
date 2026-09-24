@@ -27,7 +27,8 @@ Future<void> showPosterQuickActions(
   bool watched = false,
 }) {
   if (item.cover != null && item.cover!.isNotEmpty) {
-    unawaited(precacheImage(nativeCoverProvider(item.cover!, item.coverHeaders), context));
+    final cover = item.cover!;
+    unawaited(precacheImage(nativeCoverProvider(cover, item.coverHeaders), context));
   }
   return Navigator.of(context).push<void>(
     PageRouteBuilder<void>(

@@ -55,15 +55,15 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   double? rating,
   String? heroTag,
 }) async {
-  if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty) {
+  if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
     unawaited(precacheImage(
-      nativeCoverProvider(thumbnailUrl!, thumbnailHeaders),
+      nativeCoverProvider(thumbnailUrl, thumbnailHeaders),
       context,
     ).catchError((_) {}));
   }
-  if (fallbackThumbnailUrl != null && fallbackThumbnailUrl!.isNotEmpty) {
+  if (fallbackThumbnailUrl != null && fallbackThumbnailUrl.isNotEmpty) {
     unawaited(precacheImage(
-      nativeCoverProvider(fallbackThumbnailUrl!, fallbackThumbnailHeaders),
+      nativeCoverProvider(fallbackThumbnailUrl, fallbackThumbnailHeaders),
       context,
     ).catchError((_) {}));
   }
