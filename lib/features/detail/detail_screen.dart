@@ -5,6 +5,7 @@ import 'package:palette_generator/palette_generator.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPicker;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -263,6 +264,7 @@ class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
   static const double _expandedHeight = 310;
   bool _showAppBarTitle = false;
+  final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0.0);
   String? _titleLogoUrl;
   String? _titleLogoKey;
   Color? _titleAccent;
@@ -1765,33 +1767,52 @@ class _DetailViewState extends State<_DetailView>
     );
   }
 
-  Widget _titleHeader(MediaDetail detail) {
+  Widget _titleHeader(MediaDetail detail, {bool compact = false}) {
     final logo = _titleLogoUrl;
     if (logo != null && logo.isNotEmpty) {
       return ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 380, maxHeight: 86),
+        constraints: BoxConstraints(
+          maxWidth: compact ? 220 : 380,
+          maxHeight: compact ? 32 : 86,
+        ),
         child: CachedNetworkImage(
           imageUrl: logo,
           fit: BoxFit.contain,
           alignment: Alignment.center,
           fadeInDuration: const Duration(milliseconds: 220),
-          placeholder: (_, _) => _styledFallbackTitle(detail),
-          errorWidget: (_, _, _) => _styledFallbackTitle(detail),
+          placeholder: (_, _) => _styledFallbackTitle(
+            detail,
+            fontSize: compact ? 17 : 32,
+            maxLines: compact ? 1 : 2,
+          ),
+          errorWidget: (_, _, _) => _styledFallbackTitle(
+            detail,
+            fontSize: compact ? 17 : 32,
+            maxLines: compact ? 1 : 2,
+          ),
         ),
       );
     }
-    return _styledFallbackTitle(detail);
+    return _styledFallbackTitle(
+      detail,
+      fontSize: compact ? 17 : 32,
+      maxLines: compact ? 1 : 2,
+    );
   }
 
-  Widget _styledFallbackTitle(MediaDetail detail) {
+  Widget _styledFallbackTitle(
+    MediaDetail detail, {
+    double fontSize = 32,
+    int maxLines = 2,
+  }) {
     final seed = detail.tmdbId ?? widget.item.tmdbId ?? detail.title;
     final accent = _titleAccent ?? AppColors.textPrimary;
     return cinioFallbackTitle(
       title: detail.title,
       seed: seed,
       accent: accent,
-      fontSize: 32,
-      maxLines: 2,
+      fontSize: fontSize,
+      maxLines: maxLines,
     );
   }
 
@@ -1902,40 +1923,73 @@ class _DetailViewState extends State<_DetailView>
 
     final sourceName = _sourceLabel(item.sourceId);
 
-    return NestedScrollView(
-          controller: _scrollController,
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          headerSliverBuilder: (context, _) => [
-        SliverAppBar(
-          expandedHeight: _expandedHeight,
-          pinned: false,
-          floating: false,
-          snap: false,
-          backgroundColor: AppColors.bg,
-          surfaceTintColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          elevation: 0,
-          stretch: true,
-          stretchTriggerOffset: 80,
-          flexibleSpace: FlexibleSpaceBar(
-            collapseMode: CollapseMode.parallax,
-            stretchModes: const [
-              StretchMode.zoomBackground,
-            ],
-            background: _Hero(
-              coverUrl: heroCoverUrl,
-              coverHeaders: coverHeaders,
-              hasCover: hasCover,
-              trailer: _trailerSource,
-              collapsed: _showAppBarTitle,
-              onTapFullscreen: _trailerSource != null
-                  ? () => _openTrailer(_trailerSource!)
-                  : null,
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.axis == Axis.vertical) {
+          if (notification.metrics.pixels < 0) {
+            _heroStretch.value = (-notification.metrics.pixels).clamp(0.0, 180.0);
+          } else if (_heroStretch.value > 0) {
+            _heroStretch.value = 0.0;
+          }
+        }
+        return false;
+      },
+      child: NestedScrollView(
+        controller: _scrollController,
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
+        headerSliverBuilder: (context, _) => [
+          SliverAppBar(
+            expandedHeight: _expandedHeight,
+            pinned: true,
+            floating: false,
+            snap: false,
+            backgroundColor: _showAppBarTitle ? AppColors.bg : Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            shadowColor: Colors.black54,
+            elevation: _showAppBarTitle ? 3 : 0,
+            stretch: true,
+            stretchTriggerOffset: 80,
+            leading: Center(
+              child: Container(
+                margin: const EdgeInsets.only(left: 8),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _showAppBarTitle
+                      ? Colors.transparent
+                      : Colors.black.withValues(alpha: 0.45),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              ),
+            ),
+            title: AnimatedOpacity(
+              opacity: _showAppBarTitle ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 220),
+              child: _titleHeader(detail, compact: true),
+            ),
+            centerTitle: true,
+            flexibleSpace: FlexibleSpaceBar(
+              collapseMode: CollapseMode.parallax,
+              stretchModes: const [
+                StretchMode.zoomBackground,
+              ],
+              background: _Hero(
+                coverUrl: heroCoverUrl,
+                coverHeaders: coverHeaders,
+                hasCover: hasCover,
+                trailer: _trailerSource,
+                collapsed: _showAppBarTitle,
+                stretch: _heroStretch,
+                onTapFullscreen: _trailerSource != null
+                    ? () => _openTrailer(_trailerSource!)
+                    : null,
+              ),
             ),
           ),
-        ),
 
         if (state.error == 'load_failed')
           SliverToBoxAdapter(
@@ -2276,6 +2330,7 @@ class _DetailViewState extends State<_DetailView>
           ),
         ],
       ),
+    ),
     );
   }
 }

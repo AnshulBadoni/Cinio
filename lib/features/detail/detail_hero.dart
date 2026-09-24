@@ -17,11 +17,15 @@ class _Hero extends StatelessWidget {
     this.trailer,
     this.collapsed = false,
     this.onTapFullscreen,
+    this.stretch,
   });
+
+  static final ValueNotifier<double> _zeroStretch = ValueNotifier<double>(0);
 
   final String coverUrl;
   final Map<String, String>? coverHeaders;
   final bool hasCover;
+  final ValueListenable<double>? stretch;
 
   /// Resolved trailer source (YouTube or direct stream with headers).
   final TrailerSource? trailer;
@@ -78,14 +82,27 @@ class _Hero extends StatelessWidget {
         // image. The cover image always sits underneath as placeholder/fallback
         // so there's never a blank/black flash.
         Positioned.fill(
-          child: (trailer != null)
-              ? _HeroTrailer(
-                  trailer: trailer!,
-                  collapsed: collapsed,
-                  onTapFullscreen: onTapFullscreen,
-                  placeholder: _coverBackdrop(),
-                )
-              : _coverBackdrop(),
+          child: ValueListenableBuilder<double>(
+            valueListenable: stretch ?? _zeroStretch,
+            builder: (context, overscroll, child) {
+              final scale = 1.0 + (overscroll / 360).clamp(0.0, 0.40);
+              return ClipRect(
+                child: Transform.scale(
+                  alignment: Alignment.topCenter,
+                  scale: scale,
+                  child: child,
+                ),
+              );
+            },
+            child: (trailer != null)
+                ? _HeroTrailer(
+                    trailer: trailer!,
+                    collapsed: collapsed,
+                    onTapFullscreen: onTapFullscreen,
+                    placeholder: _coverBackdrop(),
+                  )
+                : _coverBackdrop(),
+          ),
         ),
         // One continuous cinematic treatment: a restrained top scrim plus a
         // single long bottom fade. There is deliberately no second opaque

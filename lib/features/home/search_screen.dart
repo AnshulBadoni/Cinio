@@ -668,36 +668,23 @@ class _SearchViewState extends State<_SearchView>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Discover',
-                      style: AppText.display.copyWith(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        height: 1.05,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      'Movies, shows and more for you',
-                      style: AppText.body.copyWith(
-                        fontSize: 12.5,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Discover',
+                  style: AppText.display.copyWith(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    height: 1.05,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
               _discoverFilterButton(),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           _discoverSearchField(),
           const SizedBox(height: 12),
           _discoverFilterChips(),
@@ -779,7 +766,7 @@ class _SearchViewState extends State<_SearchView>
       height: 48,
       decoration: BoxDecoration(
         color: AppColors.surface2,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.hairline),
       ),
       child: Row(

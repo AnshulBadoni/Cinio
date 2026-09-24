@@ -243,22 +243,23 @@ class _RootShellState extends State<RootShell>
                 if (notification.metrics.axis == Axis.vertical &&
                     notification is ScrollUpdateNotification) {
                   final delta = notification.scrollDelta ?? 0.0;
-                  if (delta > 0.01) {
+                  final pixels = notification.metrics.pixels;
+
+                  if (pixels <= 0) {
+                    // At top / overscroll area: always remain fully expanded
+                    if (_dockCtrl.value != 0) _dockCtrl.value = 0;
+                  } else if (delta > 0.4) {
+                    // Scrolling down (content moving up): collapse dock
                     _dockCtrl.value = math.min(
                       1.0,
-                      _dockCtrl.value + delta / 110.0,
+                      _dockCtrl.value + delta / 85.0,
                     );
-                  } else if (delta < -0.01 &&
-                      notification.metrics.extentBefore > 0.5) {
+                  } else if (delta < -0.4) {
+                    // Scrolling up (content moving down): expand dock
                     _dockCtrl.value = math.max(
                       0.0,
-                      _dockCtrl.value + delta / 110.0,
+                      _dockCtrl.value + delta / 85.0,
                     );
-                  } else if (notification.metrics.extentBefore <= 0.5 &&
-                      _dockCtrl.value != 0) {
-                    // The top of the scrollable is authoritative: if the
-                    // user is already there, the dock stays fully expanded.
-                    _dockCtrl.value = 0;
                   }
                 }
                 return false;
@@ -350,7 +351,7 @@ class _FloatingDock extends StatelessWidget {
           collapse.value.clamp(0.0, 1.0),
         );
         final expandedWidth = (screenWidth * 0.90).clamp(300.0, 520.0);
-        final compactWidth = (screenWidth * 0.64).clamp(250.0, 380.0);
+        final compactWidth = (screenWidth * 0.64).clamp(240.0, 360.0);
         final width = expandedWidth + (compactWidth - expandedWidth) * t;
         final height = 74.0 - (16.0 * t);
         final radius = height / 2;
@@ -362,27 +363,27 @@ class _FloatingDock extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(radius),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
                 child: Container(
                   width: width,
                   height: height,
                   padding: EdgeInsets.all(5.0 - (1.0 * t)),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(radius),
-                    color: Colors.white.withValues(alpha: 0.045),
+                    color: const Color(0xEE131317),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.14),
-                      width: 0.65,
+                      color: Colors.white.withValues(alpha: 0.16),
+                      width: 0.75,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.30),
+                        color: Colors.black.withValues(alpha: 0.45),
                         blurRadius: 28,
                         offset: const Offset(0, 10),
                       ),
                       BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.025),
-                        blurRadius: 8,
+                        color: Colors.white.withValues(alpha: 0.04),
+                        blurRadius: 10,
                         offset: const Offset(0, -1),
                       ),
                     ],
@@ -400,8 +401,8 @@ class _FloatingDock extends StatelessWidget {
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
                                 colors: [
-                                  Colors.white.withValues(alpha: 0.055),
-                                  Colors.white.withValues(alpha: 0.008),
+                                  Colors.white.withValues(alpha: 0.09),
+                                  Colors.white.withValues(alpha: 0.01),
                                 ],
                                 stops: const [0.0, 0.48],
                               ),
@@ -441,11 +442,11 @@ class _FloatingDock extends StatelessWidget {
 
 (IconData, IconData)? _iconFor(DockTab t) => switch (t) {
   DockTab.home => (Icons.home_outlined, Icons.home_rounded),
-  DockTab.search => (Icons.search_rounded, Icons.search_rounded),
+  DockTab.search => (Icons.explore_outlined, Icons.explore_rounded),
   DockTab.myList => (Icons.bookmark_outline_rounded, Icons.bookmark_rounded),
-  DockTab.schedule => (Icons.calendar_month_outlined, Icons.calendar_month_rounded),
-  DockTab.downloads => (Icons.download_outlined, Icons.download_rounded),
-  DockTab.history => (Icons.history_outlined, Icons.history_rounded),
+  DockTab.schedule => (Icons.calendar_today_rounded, Icons.calendar_month_rounded),
+  DockTab.downloads => (Icons.arrow_downward_rounded, Icons.download_rounded),
+  DockTab.history => (Icons.schedule_rounded, Icons.history_rounded),
   _ => null,
 };
 
@@ -494,7 +495,7 @@ class _DockItem extends StatelessWidget {
           collapse.value.clamp(0.0, 1.0),
         );
         final labelOpacity = 1.0 - t;
-        final iconColor = selected ? AppColors.accent : AppColors.textSecondary;
+        final iconColor = selected ? AppColors.accent : const Color(0xFFD4D4D8);
 
         Widget iconWidget;
         if (profile) {
@@ -542,15 +543,18 @@ class _DockItem extends StatelessWidget {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 90),
               curve: Curves.easeOut,
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              padding: EdgeInsets.symmetric(horizontal: 2, vertical: 4 + (2 * (1 - t))),
+              margin: EdgeInsets.symmetric(horizontal: 2 + (4.0 * t)),
+              padding: EdgeInsets.symmetric(
+                horizontal: 2 + (4.0 * t),
+                vertical: 4 + (2 * (1 - t)),
+              ),
               decoration: BoxDecoration(
                 color: selected
-                    ? AppColors.accent.withValues(alpha: 0.16)
+                    ? AppColors.accent.withValues(alpha: 0.22)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(999),
                 border: selected
-                    ? Border.all(color: AppColors.accent.withValues(alpha: 0.24), width: 0.65)
+                    ? Border.all(color: AppColors.accent.withValues(alpha: 0.35), width: 0.75)
                     : null,
               ),
               child: Column(
