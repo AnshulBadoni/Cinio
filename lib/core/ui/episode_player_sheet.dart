@@ -121,7 +121,7 @@ class _EpisodeQuickActions extends StatelessWidget {
 
   Widget _fallbackImage() {
     if (fallbackThumbnailUrl == null || fallbackThumbnailUrl!.isEmpty) {
-      return const ColoredBox(color: AppColors.surface2);
+      return ColoredBox(color: AppColors.surface2);
     }
     return Image(
       image: nativeCoverProvider(
@@ -132,7 +132,7 @@ class _EpisodeQuickActions extends StatelessWidget {
       gaplessPlayback: true,
       filterQuality: FilterQuality.high,
       errorBuilder: (context, error, stackTrace) =>
-          const ColoredBox(color: AppColors.surface2),
+          ColoredBox(color: AppColors.surface2),
     );
   }
 
@@ -238,7 +238,7 @@ class _EpisodeQuickActions extends StatelessWidget {
                     fit: BoxFit.cover,
                     filterQuality: FilterQuality.low,
                     errorBuilder: (context, error, stackTrace) =>
-                        const ColoredBox(color: AppColors.bg),
+                        ColoredBox(color: AppColors.bg),
                   ),
                 ),
               ),

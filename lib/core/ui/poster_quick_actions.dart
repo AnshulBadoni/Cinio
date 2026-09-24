@@ -197,9 +197,9 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                                     gaplessPlayback: true,
                                     filterQuality: FilterQuality.high,
                                     errorBuilder: (context, error, stackTrace) =>
-                                        const ColoredBox(color: AppColors.surface2),
+                                        ColoredBox(color: AppColors.surface2),
                                   )
-                                : const ColoredBox(color: AppColors.surface2),
+                                : ColoredBox(color: AppColors.surface2),
                           ),
                         ),
                       ),
