@@ -2027,6 +2027,23 @@ class _DetailViewState extends State<_DetailView>
                       onTapFullscreen: _trailerSource != null
                           ? () => _openTrailer(_trailerSource!)
                           : null,
+                      bottomContent: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => SearchScreen(initialQuery: detail.title),
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            _titleHeader(detail),
+                            const SizedBox(height: 8),
+                            _heroMetaLine(detail),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 );
@@ -2035,28 +2052,6 @@ class _DetailViewState extends State<_DetailView>
           ),
         ),
 
-        SliverToBoxAdapter(
-          child: RepaintBoundary(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => SearchScreen(initialQuery: detail.title),
-                      ),
-                    ),
-                    child: Center(child: _titleHeader(detail)),
-                  ),
-                  const SizedBox(height: 8),
-                  _heroMetaLine(detail),
-                ],
-              ),
-            ),
-          ),
-        ),
 
         if (state.error == 'load_failed')
           SliverToBoxAdapter(

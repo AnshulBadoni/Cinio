@@ -17,6 +17,7 @@ class _Hero extends StatelessWidget {
     this.trailer,
     this.collapsed = false,
     this.onTapFullscreen,
+    this.bottomContent,
   });
 
   final String coverUrl;
@@ -31,6 +32,10 @@ class _Hero extends StatelessWidget {
 
   /// Opens the fullscreen trailer when the banner is tapped. Null disables it.
   final VoidCallback? onTapFullscreen;
+
+  /// Title/metadata content rendered inside the hero fade so the artwork
+  /// dissolves naturally into the page instead of ending at a hard edge.
+  final Widget? bottomContent;
 
   /// The static cover backdrop — used as the base layer when there's no
   /// trailer, and as the placeholder/fallback underneath the player.
@@ -98,8 +103,9 @@ class _Hero extends StatelessWidget {
             decoration: BoxDecoration(gradient: AppColors.scrim),
           ),
         ),
-        // Long lower fade: artwork/trailer dissolves into the app background
-        // instead of ending with a visible edge.
+        // The lower fade is deliberately deep and continuous. The title sits
+        // inside this fade, so the poster dissolves into AMOLED black rather
+        // than looking like a poster dropped on top of the next section.
         IgnorePointer(
           child: DecoratedBox(
             decoration: BoxDecoration(
@@ -108,15 +114,23 @@ class _Hero extends StatelessWidget {
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  AppColors.bg.withValues(alpha: 0.18),
-                  AppColors.bg.withValues(alpha: 0.62),
-                  AppColors.bg.withValues(alpha: 0.96),
+                  AppColors.bg.withValues(alpha: 0.08),
+                  AppColors.bg.withValues(alpha: 0.46),
+                  AppColors.bg.withValues(alpha: 0.82),
+                  AppColors.bg,
                 ],
-                stops: const [0.44, 0.68, 0.86, 1.0],
+                stops: const [0.24, 0.48, 0.70, 0.88, 1.0],
               ),
             ),
           ),
         ),
+        if (bottomContent != null)
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 22,
+            child: bottomContent!,
+          ),
       ],
     );
   }

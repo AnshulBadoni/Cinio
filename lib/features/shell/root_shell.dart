@@ -331,19 +331,19 @@ class _FloatingDock extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final screenWidth = MediaQuery.sizeOf(context).width;
+
     return AnimatedBuilder(
       animation: collapse,
       builder: (context, _) {
-        // This value is directly driven by ScrollUpdateNotification. There is
-        // deliberately no duration/settling animation here: the glass dock
-        // should feel attached to the gesture, like a system surface.
-        final t = Curves.easeOutCubic.transform(collapse.value.clamp(0.0, 1.0));
-        // Keep the dock visually close to the reference: a wide glass tray with
-        // one selected inner capsule. It only compresses modestly with the
-        // user's scroll gesture instead of turning into a cramped pill.
-        final width = screenWidth * (0.90 - (0.12 * t));
-        final height = 76.0 - (6.0 * t);
+        // Keep the surface geometry stable. The gesture only makes the dock
+        // slightly shorter; its columns never resize independently.
+        final t = Curves.easeOutCubic.transform(
+          collapse.value.clamp(0.0, 1.0),
+        );
+        final width = (screenWidth * 0.90).clamp(300.0, 520.0);
+        final height = 74.0 - (5.0 * t);
         final radius = height / 2;
+
         return Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
@@ -351,99 +351,70 @@ class _FloatingDock extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(radius),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
                 child: Container(
                   width: width,
                   height: height,
-                  clipBehavior: Clip.antiAlias,
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                  padding: const EdgeInsets.all(5),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(radius),
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.white.withValues(alpha: 0.12),
-                        const Color(0xCC17181A).withValues(alpha: 0.82),
-                      ],
-                    ),
+                    color: Colors.white.withValues(alpha: 0.045),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.20),
-                      width: 0.8,
+                      color: Colors.white.withValues(alpha: 0.14),
+                      width: 0.65,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.48),
-                        blurRadius: 34,
-                        spreadRadius: 1,
-                        offset: const Offset(0, 12),
+                        color: Colors.black.withValues(alpha: 0.30),
+                        blurRadius: 28,
+                        offset: const Offset(0, 10),
                       ),
                       BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.035),
+                        color: Colors.white.withValues(alpha: 0.025),
                         blurRadius: 8,
-                        spreadRadius: -2,
                         offset: const Offset(0, -1),
                       ),
                     ],
                   ),
                   child: Stack(
-                    fit: StackFit.expand,
                     children: [
-                      // A thin specular wash at the top edge is what makes the
-                      // surface read as glass instead of a dark opaque pill.
-                      IgnorePointer(
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          child: FractionallySizedBox(
-                            widthFactor: 0.72,
-                            heightFactor: 0.34,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(999),
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Colors.white.withValues(alpha: 0.075),
-                                    Colors.white.withValues(alpha: 0.0),
-                                  ],
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                ),
+                      // A single glass highlight belongs to the surface, not
+                      // to individual buttons. This keeps every tab uniform.
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(radius - 5),
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.055),
+                                  Colors.white.withValues(alpha: 0.008),
+                                ],
+                                stops: const [0.0, 0.48],
                               ),
                             ),
                           ),
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.18),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.08),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final tab in tabs)
+                            Expanded(
+                              child: _DockItem(
+                                label: tab == DockTab.profile ? 'Profile' : tab.label,
+                                icon: tab == DockTab.profile
+                                    ? null
+                                    : _iconFor(tab),
+                                profile: tab == DockTab.profile,
+                                selected: active == tab,
+                                onTap: () => onSelected(tab),
+                                collapse: collapse,
+                              ),
                             ),
-                          ),
-                          child: Row(
-                            children: [
-                              for (final tab in tabs)
-                                if (tab == DockTab.profile)
-                                  _ProfileDockItem(
-                                    selected: active == tab,
-                                    onTap: () => onSelected(tab),
-                                    collapse: collapse,
-                                  )
-                                else
-                                  _DockItem(
-                                    label: tab.label,
-                                    glyph: null,
-                                    icon: _iconFor(tab),
-                                    selected: active == tab,
-                                    onTap: () => onSelected(tab),
-                                    collapse: collapse,
-                                  ),
-                            ],
-                          ),
-                        ),
+                        ],
                       ),
                     ],
                   ),
@@ -457,26 +428,16 @@ class _FloatingDock extends StatelessWidget {
   }
 }
 
-/// (outline, filled) Material icons for tabs with no hand-drawn glyph.
 (IconData, IconData)? _iconFor(DockTab t) => switch (t) {
   DockTab.home => (Icons.home_outlined, Icons.home_rounded),
   DockTab.search => (Icons.search_rounded, Icons.search_rounded),
   DockTab.myList => (Icons.bookmark_outline_rounded, Icons.bookmark_rounded),
   DockTab.schedule => (Icons.calendar_month_outlined, Icons.calendar_month_rounded),
-  DockTab.downloads => (
-    Icons.download_outlined,
-    Icons.download_rounded,
-  ),
-  DockTab.history => (
-    Icons.history_outlined,
-    Icons.history_rounded,
-  ),
+  DockTab.downloads => (Icons.download_outlined, Icons.download_rounded),
+  DockTab.history => (Icons.history_outlined, Icons.history_rounded),
   _ => null,
 };
 
-/// A quick spring "pop" for a dock icon the moment its tab becomes selected
-/// (scale 0.7 → 1.0 with a soft overshoot). Deselection doesn't animate —
-/// the motion belongs to the tab you're landing on.
 class _DockPop extends StatelessWidget {
   const _DockPop({required this.selected, required this.child});
 
@@ -486,83 +447,126 @@ class _DockPop extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
-      key: ValueKey(selected), // restart the tween when selection flips
-      tween: Tween(begin: selected ? 0.7 : 1.0, end: 1.0),
-      duration: const Duration(milliseconds: 380),
-      curve: Curves.easeOutBack,
-      builder: (_, v, c) => Transform.scale(scale: v, child: c),
+      key: ValueKey(selected),
+      tween: Tween(begin: selected ? 0.88 : 1.0, end: 1.0),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      builder: (_, value, child) => Transform.scale(scale: value, child: child),
       child: child,
     );
   }
 }
 
 class _DockItem extends StatelessWidget {
-  const _DockItem({required this.label, required this.glyph, required this.icon, required this.selected, required this.onTap, required this.collapse});
+  const _DockItem({
+    required this.label,
+    required this.icon,
+    required this.profile,
+    required this.selected,
+    required this.onTap,
+    required this.collapse,
+  });
 
   final String label;
-  final DockGlyph? glyph;
   final (IconData, IconData)? icon;
+  final bool profile;
   final bool selected;
   final VoidCallback onTap;
   final Animation<double> collapse;
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: AnimatedBuilder(
-        animation: collapse,
-        builder: (context, _) {
-          final t = Curves.easeInOutCubic.transform(collapse.value.clamp(0.0, 1.0));
-          final labelOpacity = 1.0 - t;
-          final color = selected ? AppColors.accent : AppColors.textSecondary;
-          return InkWell(
+    return AnimatedBuilder(
+      animation: collapse,
+      builder: (context, _) {
+        final t = Curves.easeOutCubic.transform(
+          collapse.value.clamp(0.0, 1.0),
+        );
+        final labelOpacity = 1.0 - t;
+        final iconColor = selected ? AppColors.textPrimary : AppColors.textSecondary;
+
+        Widget iconWidget;
+        if (profile) {
+          iconWidget = BlocBuilder<AuthCubit, AuthState>(
+            builder: (context, auth) {
+              if (auth.isLoggedIn && auth.avatarUrl != null) {
+                return Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: selected
+                          ? Colors.white.withValues(alpha: 0.75)
+                          : Colors.white.withValues(alpha: 0.28),
+                      width: 1.2,
+                    ),
+                    image: DecorationImage(
+                      image: NetworkImage(auth.avatarUrl!),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                );
+              }
+              return Icon(
+                selected ? Icons.person_rounded : Icons.person_outline_rounded,
+                color: iconColor,
+                size: 22,
+              );
+            },
+          );
+        } else {
+          iconWidget = Icon(
+            selected ? icon!.$2 : icon!.$1,
+            color: iconColor,
+            size: 22,
+          );
+        }
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(24),
-            child: Container(
+            borderRadius: BorderRadius.circular(999),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 90),
+              curve: Curves.easeOut,
               margin: const EdgeInsets.symmetric(horizontal: 2),
-              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2 + (2 * (1 - t))),
+              padding: EdgeInsets.symmetric(horizontal: 2, vertical: 4 + (2 * (1 - t))),
               decoration: BoxDecoration(
                 color: selected
-                    ? Colors.white.withValues(alpha: 0.16 - (0.035 * t))
+                    ? Colors.white.withValues(alpha: 0.085)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(999),
                 border: selected
-                    ? Border.all(color: Colors.white.withValues(alpha: 0.16))
-                    : null,
-                boxShadow: selected
-                    ? [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.18),
-                          blurRadius: 12,
-                          offset: const Offset(0, 3),
-                        ),
-                      ]
+                    ? Border.all(color: Colors.white.withValues(alpha: 0.10), width: 0.6)
                     : null,
               ),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SizedBox(height: 25, child: Center(child: _DockPop(selected: selected, child: glyph != null ? DockIcon(glyph!, color: color, filled: selected) : Icon(selected ? icon!.$2 : icon!.$1, color: color, size: 23)))),
-                  // Keep a fixed label slot and fade its contents instead of
-                  // changing the child's layout height. This prevents text
-                  // from escaping the capsule while the dock is being pinched
-                  // down by a scroll gesture.
                   SizedBox(
-                    height: 15,
+                    height: 25,
+                    child: Center(
+                      child: _DockPop(selected: selected, child: iconWidget),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 14,
                     child: ClipRect(
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: Opacity(
-                          opacity: labelOpacity,
+                      child: Opacity(
+                        opacity: labelOpacity,
+                        child: Center(
                           child: Text(
                             label,
                             maxLines: 1,
                             softWrap: false,
                             overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 10.5,
                               height: 1,
-                              color: color,
+                              color: iconColor,
                               fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                             ),
                           ),
@@ -573,108 +577,9 @@ class _DockItem extends StatelessWidget {
                 ],
               ),
             ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// The Profile tab — the user's avatar when signed in (accent ring while
-/// active), a plain person glyph otherwise. Opens the same Settings screen
-/// the gear used to.
-class _ProfileDockItem extends StatelessWidget {
-  const _ProfileDockItem({required this.selected, required this.onTap, required this.collapse});
-
-  final bool selected;
-  final VoidCallback onTap;
-  final Animation<double> collapse;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: AnimatedBuilder(
-        animation: collapse,
-        builder: (context, _) {
-          final t = Curves.easeInOutCubic.transform(collapse.value.clamp(0.0, 1.0));
-          final labelOpacity = 1.0 - t;
-          final color = selected ? AppColors.accent : AppColors.textSecondary;
-          return InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(24),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2 + (2 * (1 - t))),
-              decoration: BoxDecoration(
-                color: selected
-                    ? Colors.white.withValues(alpha: 0.16 - (0.035 * t))
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(999),
-                border: selected
-                    ? Border.all(color: Colors.white.withValues(alpha: 0.16))
-                    : null,
-                boxShadow: selected
-                    ? [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.18),
-                          blurRadius: 12,
-                          offset: const Offset(0, 3),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    height: 25,
-                    child: Center(
-                      child: _DockPop(
-                        selected: selected,
-                        child: BlocBuilder<AuthCubit, AuthState>(
-                          builder: (context, auth) {
-                            if (auth.isLoggedIn) {
-                              return Container(
-                                width: 24, height: 24,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: selected ? Border.all(color: AppColors.accent, width: 1.6) : null,
-                                  image: auth.avatarUrl != null ? DecorationImage(image: NetworkImage(auth.avatarUrl!), fit: BoxFit.cover) : null,
-                                  color: AppColors.surface2,
-                                ),
-                                child: auth.avatarUrl == null ? Center(child: Text(auth.displayName.isNotEmpty ? auth.displayName[0].toUpperCase() : '?', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))) : null,
-                              );
-                            }
-                            return Icon(selected ? Icons.person_rounded : Icons.person_outline_rounded, color: color, size: 23);
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    height: 15,
-                    child: ClipRect(
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: Opacity(
-                          opacity: labelOpacity,
-                          child: const Text(
-                            'Profile',
-                            maxLines: 1,
-                            softWrap: false,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 11, height: 1),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }
