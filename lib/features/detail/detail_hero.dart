@@ -271,7 +271,12 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
       headers = t.headers;
     } else if (t.isYoutube) {
       final hdEnabled = sl.isRegistered<PlaybackPrefs>() && sl<PlaybackPrefs>().trailerHd;
-      url = await svc.streamUrl(t.youtubeId!, low: !hdEnabled);
+      if (hdEnabled) {
+        final hd = await svc.streamUrlHd(t.youtubeId!);
+        url = hd?.video ?? await svc.streamUrl(t.youtubeId!, low: false);
+      } else {
+        url = await svc.streamUrl(t.youtubeId!, low: true);
+      }
       headers = null;
     } else {
       url = null;

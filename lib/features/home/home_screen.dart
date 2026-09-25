@@ -192,7 +192,6 @@ class _HomeViewState extends State<_HomeView>
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         await maybeShowUpdateDialog(context);
-        if (mounted) await maybeShowCommunitySheet(context);
         if (mounted) await maybeShowAnnouncement(context);
       });
       _checkSourceUpdates();

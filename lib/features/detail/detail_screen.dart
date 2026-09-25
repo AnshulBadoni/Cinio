@@ -2087,165 +2087,172 @@ class _DetailViewState extends State<_DetailView>
             ),
           ),
 
-        if (state.error == 'load_failed')
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: AppColors.surface2,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline, size: 18, color: Colors.orangeAccent),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        'Could not load full details',
-                        style: TextStyle(color: Colors.white70, fontSize: 13),
-                      ),
-                    ),
-                    InkWell(
-                      onTap: () => cubit.retry(),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        child: Text(
-                          'Retry',
-                          style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-        if ((detail.description ?? '').isNotEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-              child: _Description(
-                text: detail.description!,
-                onReadMore: () => _revealTab(showEpisodesTab ? 3 : 2),
-              ),
-            ),
-          )
-        else if (state.extrasLoading)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    height: 12,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: AppColors.surface2,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    height: 12,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: AppColors.surface2,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    height: 12,
-                    width: 200,
-                    decoration: BoxDecoration(
-                      color: AppColors.surface2,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-        if (starring != null || creators != null || genresLine != null)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (starring != null)
-                    _CreditLine(
-                      label: 'Starring',
-                      value: starring,
-                      more: starringMore,
-                      onMore: starringMore ? () => _revealTab(showEpisodesTab ? 1 : 0) : null,
-                    ),
-                  if (genresLine != null)
-                    _CreditLine(label: 'Genres', value: genresLine),
-                  if (creators != null)
-                    _CreditLine(label: 'Creators', value: creators),
-                ],
-              ),
-            ),
-          ),
-
         SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 20, 8, 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+          child: ValueListenableBuilder<double>(
+            valueListenable: _heroStretch,
+            builder: (context, overscroll, child) {
+              final translateY = (overscroll * 0.40).clamp(0.0, 45.0);
+              return Transform.translate(
+                offset: Offset(0, translateY),
+                child: child,
+              );
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _IconAction(
-                  icon: _inMyList ? Icons.check_rounded : Icons.add_rounded,
-                  active: _inMyList,
-                  label: _status == null
-                      ? 'My List'
-                      : shortLabelFor(_status!, reading: isReading),
-                  tooltip: _inMyList ? 'Change status' : 'Add to My List',
-                  onTap: () => _openListSheet(detail),
-                ),
-                if (Platform.isAndroid)
-                  _IconAction(
-                    icon: _subscribed
-                        ? Icons.notifications_active_rounded
-                        : Icons.notifications_none_rounded,
-                    active: _subscribed,
-                    label: 'Notify',
-                    tooltip: _subscribed
-                        ? 'Stop alerts'
-                        : (isReading
-                              ? 'Notify on new chapters'
-                              : 'Notify on new episodes'),
-                    onTap: () => _toggleSubscribe(detail),
+                if (state.error == 'load_failed')
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface2,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline, size: 18, color: Colors.orangeAccent),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Could not load full details',
+                              style: TextStyle(color: Colors.white70, fontSize: 13),
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () => cubit.retry(),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              child: Text(
+                                'Retry',
+                                style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                if (_trackingAvailable(detail))
-                  _IconAction(
-                    icon: _tracked
-                        ? Icons.published_with_changes_rounded
-                        : Icons.sync_rounded,
-                    active: _tracked,
-                    label: 'Tracking',
-                    tooltip: _tracked
-                        ? 'Tracked — edit status, score & progress'
-                        : 'Sync status, score & progress',
-                    onTap: () => _openTrackingSheet(detail),
+
+                if ((detail.description ?? '').isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+                    child: _Description(
+                      text: detail.description!,
+                      onReadMore: () => _revealTab(showEpisodesTab ? 3 : 2),
+                    ),
+                  )
+                else if (state.extrasLoading)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          height: 12,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: AppColors.surface2,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          height: 12,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: AppColors.surface2,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          height: 12,
+                          width: 200,
+                          decoration: BoxDecoration(
+                            color: AppColors.surface2,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                _IconAction(
-                  icon: Icons.ios_share_rounded,
-                  label: 'Share',
-                  tooltip: 'Share',
-                  onTap: () => _share(detail, sourceName),
-                ),
-                _IconAction(
-                  icon: Icons.public_rounded,
-                  label: 'Web',
-                  tooltip: 'Open source site',
-                  onTap: _openSourceSite,
+
+                if (starring != null || creators != null || genresLine != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (starring != null)
+                          _CreditLine(
+                            label: 'Starring',
+                            value: starring,
+                            more: starringMore,
+                            onMore: starringMore ? () => _revealTab(showEpisodesTab ? 1 : 0) : null,
+                          ),
+                        if (genresLine != null)
+                          _CreditLine(label: 'Genres', value: genresLine),
+                        if (creators != null)
+                          _CreditLine(label: 'Creators', value: creators),
+                      ],
+                    ),
+                  ),
+
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 20, 8, 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _IconAction(
+                        icon: _inMyList ? Icons.check_rounded : Icons.add_rounded,
+                        active: _inMyList,
+                        label: _status == null
+                            ? 'My List'
+                            : shortLabelFor(_status!, reading: isReading),
+                        tooltip: _inMyList ? 'Change status' : 'Add to My List',
+                        onTap: () => _openListSheet(detail),
+                      ),
+                      if (Platform.isAndroid)
+                        _IconAction(
+                          icon: _subscribed
+                              ? Icons.notifications_active_rounded
+                              : Icons.notifications_none_rounded,
+                          active: _subscribed,
+                          label: 'Notify',
+                          tooltip: _subscribed
+                              ? 'Stop alerts'
+                              : (isReading
+                                    ? 'Notify on new chapters'
+                                    : 'Notify on new episodes'),
+                          onTap: () => _toggleSubscribe(detail),
+                        ),
+                      if (_trackingAvailable(detail))
+                        _IconAction(
+                          icon: _tracked
+                              ? Icons.published_with_changes_rounded
+                              : Icons.sync_rounded,
+                          active: _tracked,
+                          label: 'Tracking',
+                          tooltip: _tracked
+                              ? 'Tracked — edit status, score & progress'
+                              : 'Sync status, score & progress',
+                          onTap: () => _openTrackingSheet(detail),
+                        ),
+                      _IconAction(
+                        icon: Icons.ios_share_rounded,
+                        label: 'Share',
+                        tooltip: 'Share',
+                        onTap: () => _share(detail, sourceName),
+                      ),
+                      _IconAction(
+                        icon: Icons.public_rounded,
+                        label: 'Web',
+                        tooltip: 'Open source site',
+                        onTap: _openSourceSite,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
