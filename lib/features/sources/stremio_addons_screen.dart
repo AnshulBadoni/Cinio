@@ -392,7 +392,7 @@ class _StremioAddonsScreenState extends State<StremioAddonsScreen> {
           children: [
             CupertinoSwitch(
               value: entry.enabled,
-              activeColor: const Color(0xFF7B5BF2),
+              activeTrackColor: const Color(0xFF7B5BF2),
               onChanged: (val) => sl<StremioManager>().toggleAddon(entry.manifestUrl, val),
             ),
             IconButton(
