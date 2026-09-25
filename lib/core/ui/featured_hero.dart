@@ -240,7 +240,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                       return ClipRect(child: Transform.scale(alignment: Alignment.topCenter, scale: scale, child: child));
                     },
                     child: Image(
-                      image: provider, fit: BoxFit.cover, alignment: const Alignment(0, -0.10),
+                      image: provider, fit: BoxFit.cover, alignment: const Alignment(0, -0.20),
                       filterQuality: FilterQuality.high, frameBuilder: imageFadeIn, gaplessPlayback: true,
                     ),
                   ),

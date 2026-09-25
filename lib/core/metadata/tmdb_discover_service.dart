@@ -347,7 +347,7 @@ class TmdbDiscoverService {
         // delaying first paint or making navigation look frozen.
         return MediaDetail(
           id: item.id, title: title, englishTitle: item.englishTitle,
-          cover: poster == null ? item.cover : '${Tmdb.img}/w500$poster',
+          cover: poster == null ? item.cover : '${Tmdb.img}/w780$poster',
           url: item.url, description: overview, year: date != null && date.length >= 4 ? date.substring(0,4) : null,
           rating: (row['vote_average'] as num?)?.toDouble(),
           type: ProviderType.movie, sourceId: 'tmdb:catalog', tmdbId: id, tmdbIsTv: item.tmdbIsTv,
@@ -368,7 +368,7 @@ class TmdbDiscoverService {
     }
     return MediaDetail(
       id: item.id, title: title, englishTitle: item.englishTitle,
-      cover: poster == null ? item.cover : '${Tmdb.img}/w500$poster',
+      cover: poster == null ? item.cover : '${Tmdb.img}/w780$poster',
       url: item.url, description: overview, year: date != null && date.length >= 4 ? date.substring(0,4) : null,
       rating: (row['vote_average'] as num?)?.toDouble(),
       type: ProviderType.movie, sourceId: 'tmdb:catalog', tmdbId: id, tmdbIsTv: item.tmdbIsTv,
@@ -750,10 +750,10 @@ class TmdbDiscoverService {
     yield MediaItem(
       id: 'tmdb:${isTv ? 'tv' : 'movie'}:$id',
       title: title,
-      cover: coverPath == null ? null : '${Tmdb.img}/w500$coverPath',
+      cover: coverPath == null ? null : '${Tmdb.img}/w780$coverPath',
       heroImage: backdropPath == null || backdropPath.isEmpty
           ? null
-          : '${Tmdb.img}/w1280$backdropPath',
+          : '${Tmdb.img}/original$backdropPath',
       url: 'tmdb://${isTv ? 'tv' : 'movie'}/$id',
       type: ProviderType.movie,
       sourceId: 'tmdb:catalog',

@@ -49,14 +49,16 @@ class _Hero extends StatelessWidget {
     if (aniSrcId != null || mihonSrcId != null) {
       return Image(
         // Resize to the backdrop's memCacheWidth (matches the non-native path)
-        // so a full-res cover doesn't sit in the image cache.
+        // at full high-DPI width so crisp detail is preserved.
         image: ResizeImage(
           aniSrcId != null
               ? AniyomiImage(int.parse(aniSrcId), coverUrl)
               : MihonImage(int.parse(mihonSrcId!), coverUrl),
-          width: 800,
+          width: 1440,
         ),
         fit: BoxFit.cover,
+        alignment: const Alignment(0, -0.20),
+        filterQuality: FilterQuality.high,
         loadingBuilder: (_, child, progress) =>
             progress == null ? child : ColoredBox(color: AppColors.surface2),
         errorBuilder: (context, error, stackTrace) =>
@@ -67,7 +69,9 @@ class _Hero extends StatelessWidget {
       imageUrl: coverUrl,
       httpHeaders: coverHeaders,
       fit: BoxFit.cover,
-      memCacheWidth: 800,
+      alignment: const Alignment(0, -0.20),
+      memCacheWidth: 1440,
+      filterQuality: FilterQuality.high,
       placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
       errorWidget: (c, u, e) => ColoredBox(color: AppColors.surface2),
     );

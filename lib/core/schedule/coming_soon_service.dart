@@ -19,12 +19,12 @@ List<ComingSoonEntry> parseTmdbResults(List<dynamic> results,
         ? DateTime.tryParse(dateStr)
         : null;
     final poster = (posterPath != null && posterPath.isNotEmpty)
-        ? '${Tmdb.img}/w342$posterPath'
+        ? '${Tmdb.img}/w780$posterPath'
         : null;
     if (poster == null && date == null) continue;
     final backdropPath = raw['backdrop_path'] as String?;
     final backdrop = (backdropPath != null && backdropPath.isNotEmpty)
-        ? '${Tmdb.img}/w780$backdropPath'
+        ? '${Tmdb.img}/original$backdropPath'
         : null;
     final overview = raw['overview'] as String?;
     out.add(ComingSoonEntry(
