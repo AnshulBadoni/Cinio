@@ -1059,11 +1059,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   key: ValueKey(section ?? '_root'),
                   slivers: [
                     SliverPadding(
-                      // Bottom: clear the floating dock (its height arrives as
-                      // MediaQuery bottom padding thanks to extendBody).
-                      padding: EdgeInsets.only(
-                        bottom: 24 + MediaQuery.paddingOf(context).bottom,
-                      ),
+                      padding: const EdgeInsets.only(bottom: 64),
                       sliver: SliverList.list(children: children),
                     ),
                   ],

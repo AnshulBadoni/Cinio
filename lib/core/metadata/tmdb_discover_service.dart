@@ -123,7 +123,15 @@ class TmdbDiscoverService {
     return HomeSection(title: title, items: result, more: BrowseMore(sourceId: 'tmdb:catalog', kind: kind));
   }
 
+  List<HomeSection>? _homeCache;
+  DateTime? _homeCacheTime;
+
   Future<List<HomeSection>> home() async {
+    if (_homeCache != null &&
+        _homeCacheTime != null &&
+        DateTime.now().difference(_homeCacheTime!) < const Duration(minutes: 15)) {
+      return _homeCache!;
+    }
     final results = await Future.wait([
       _safe(() => _recentMixed(1)),
       _safe(() => _newReleases(1)),
@@ -145,13 +153,18 @@ class TmdbDiscoverService {
       'Popular Movies', 'Popular Series', 'Trending Anime',
       'Top Rated Movies', 'Top Rated Series',
     ];
-    return [
+    final sections = [
       for (var i = 0; i < results.length; i++)
         if (results[i].isNotEmpty) HomeSection(
           title: titles[i], items: results[i],
           more: BrowseMore(sourceId: 'tmdb:catalog', kind: kinds[i]),
         ),
     ];
+    if (sections.isNotEmpty) {
+      _homeCache = sections;
+      _homeCacheTime = DateTime.now();
+    }
+    return sections;
   }
 
   Future<List<MediaItem>> _safe(Future<List<MediaItem>> Function() loader) async {
@@ -177,30 +190,27 @@ class TmdbDiscoverService {
     try {
       final movieFut = _dio.get<dynamic>(
         '${Tmdb.base}/movie/now_playing',
-        queryParameters: {
-          'page': page,
-          'region': _deviceRegion,
-        },
+        queryParameters: {'page': page},
         options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
-      );
+      ).then<List<MediaItem>>((res) {
+        final rows = res.data is Map ? res.data['results'] : null;
+        if (rows is! List) return const <MediaItem>[];
+        return [for (final r in rows) if (r is Map) ..._mapSearchRow(r, type: 'movies')];
+      }).catchError((_) async => _discoverKind(kind: 'movie', catalog: 'recent', page: page));
+
       final tvFut = _dio.get<dynamic>(
         '${Tmdb.base}/tv/on_the_air',
-        queryParameters: {
-          'page': page,
-        },
+        queryParameters: {'page': page},
         options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
-      );
+      ).then<List<MediaItem>>((res) {
+        final rows = res.data is Map ? res.data['results'] : null;
+        if (rows is! List) return const <MediaItem>[];
+        return [for (final r in rows) if (r is Map) ..._mapSearchRow(r, type: 'series')];
+      }).catchError((_) async => _discoverKind(kind: 'tv', catalog: 'recent', page: page));
 
       final results = await Future.wait([movieFut, tvFut]);
-      final movieRows = results[0].data is Map ? results[0].data['results'] : null;
-      final tvRows = results[1].data is Map ? results[1].data['results'] : null;
-
-      final movies = (movieRows is List)
-          ? [for (final row in movieRows) if (row is Map) ..._mapSearchRow(row, type: 'movies')]
-          : <MediaItem>[];
-      final shows = (tvRows is List)
-          ? [for (final row in tvRows) if (row is Map) ..._mapSearchRow(row, type: 'series')]
-          : <MediaItem>[];
+      final movies = results[0];
+      final shows = results[1];
 
       final mixed = <MediaItem>[];
       final maxLen = math.max(movies.length, shows.length);
@@ -210,7 +220,7 @@ class TmdbDiscoverService {
       }
       if (mixed.isNotEmpty) return mixed;
     } catch (_) {}
-    return _discoverKind(kind: 'movie', catalog: 'recent', page: page);
+    return _recentMixed(page);
   }
 
   Future<List<MediaItem>> _trendingKind(String kind, int page) async {

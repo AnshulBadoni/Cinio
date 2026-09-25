@@ -493,7 +493,13 @@ class PlayerCubit extends Cubit<PlayerState> {
   Timer? _discordPauseTimer;
   bool _discordPaused = false;
 
-  Episode get currentEpisode => episodes[state.currentIndex];
+  Episode get currentEpisode => episodes.isNotEmpty && state.currentIndex >= 0 && state.currentIndex < episodes.length
+      ? episodes[state.currentIndex]
+      : (episodes.isNotEmpty ? episodes.first : Episode(id: '', title: '', url: ''));
+
+  Episode? get currentEpisodeOrNull => episodes.isNotEmpty && state.currentIndex >= 0 && state.currentIndex < episodes.length
+      ? episodes[state.currentIndex]
+      : (episodes.isNotEmpty ? episodes.first : null);
 
   /// Stable per-show key for resume (the show URL, falling back to sourceId) so
   /// episodes with the same id across different shows don't collide.

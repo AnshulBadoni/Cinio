@@ -584,40 +584,37 @@ class _SearchViewState extends State<_SearchView>
               buildWhen: (p, c) =>
                   p.query.trim().isEmpty != c.query.trim().isEmpty,
               builder: (context, state) {
-                final discover = state.query.trim().isEmpty;
-                if (discover) {
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        if (widget.showBack)
-                          IconButton(
-                            icon: const Icon(
-                              CupertinoIcons.chevron_back,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                            onPressed: () => Navigator.pop(context),
-                            tooltip: 'Back',
+                final isDiscover = state.query.trim().isEmpty;
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      if (widget.showBack)
+                        IconButton(
+                          icon: const Icon(
+                            CupertinoIcons.chevron_back,
+                            color: Colors.white,
+                            size: 19.5,
                           ),
-                        Expanded(
-                          child: Text(
-                            'Discover',
-                            style: AppText.display.copyWith(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w700,
-                              height: 1.05,
-                            ),
+                          onPressed: () => Navigator.pop(context),
+                          tooltip: 'Back',
+                        ),
+                      Expanded(
+                        child: Text(
+                          isDiscover ? 'Discover' : 'Search',
+                          style: AppText.display.copyWith(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
+                            height: 1.05,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        _discoverFilterButton(),
-                      ],
-                    ),
-                  );
-                }
-                return const SizedBox.shrink();
+                      ),
+                      const SizedBox(width: 12),
+                      _discoverFilterButton(),
+                    ],
+                  ),
+                );
               },
             ),
             _searchBar(),
@@ -933,9 +930,6 @@ class _SearchViewState extends State<_SearchView>
                       ),
                     ),
                   ),
-                  const SizedBox(width: 2),
-                  _filterAction(),
-                  const SizedBox(width: 2),
                   // Clear button (only when there's text).
                   ValueListenableBuilder<TextEditingValue>(
                     valueListenable: _controller,

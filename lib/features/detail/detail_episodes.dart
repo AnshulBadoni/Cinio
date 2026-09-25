@@ -145,13 +145,14 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   /// The chapters actually shown. Identical to the source list when no group
   /// is picked, so nothing changes for the titles that have only one.
   List<Episode> get _filteredEps {
+    final base = widget.seasonEps.isNotEmpty ? widget.seasonEps : widget.eps;
     final want = _scanlator;
-    if (want == null) return widget.seasonEps;
+    if (want == null) return base;
     final list = [
-      for (final e in widget.seasonEps)
+      for (final e in base)
         if (e.scanlator?.trim() == want) e,
     ];
-    return list.isEmpty ? widget.seasonEps : list;
+    return list.isEmpty ? base : list;
   }
 
   /// Reading progress lives in [ReadStore] (page index / scroll permille),

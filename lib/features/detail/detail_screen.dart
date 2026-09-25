@@ -1907,11 +1907,14 @@ class _DetailViewState extends State<_DetailView>
     final currentSeason = hasMultipleSeasons
         ? (seasonSet.contains(selectedSeason)
               ? selectedSeason
-              : seasonSet.first)
+              : (seasonSet.isNotEmpty ? seasonSet.first : 1))
         : 1;
-    final seasonEps = hasMultipleSeasons
-        ? eps.where((e) => seasonOf(e) == currentSeason).toList()
+    final filteredBySeason = hasMultipleSeasons
+        ? eps.where((e) => (seasonOf(e) ?? 1) == currentSeason).toList()
         : eps;
+    final seasonEps = (filteredBySeason.isEmpty && eps.isNotEmpty)
+        ? eps
+        : filteredBySeason;
 
     final episodesBySeason = <int, List<Episode>>{};
     if (hasMultipleSeasons) {
@@ -1984,7 +1987,7 @@ class _DetailViewState extends State<_DetailView>
                       : Colors.black.withValues(alpha: 0.45),
                 ),
                 child: IconButton(
-                  icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 22),
+                  icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 19.5),
                   onPressed: () => Navigator.of(context).maybePop(),
                 ),
               ),
@@ -2035,8 +2038,8 @@ class _DetailViewState extends State<_DetailView>
                       _PlayButton(
                         label: buttonLabel,
                         icon: isReading
-                            ? Icons.menu_book_rounded
-                            : Icons.play_arrow_rounded,
+                            ? CupertinoIcons.book
+                            : CupertinoIcons.play_arrow_solid,
                         onPressed: (eps.isNotEmpty ||
                                 widget.item.sourceId == 'tmdb:catalog' ||
                                 widget.item.sourceId.startsWith('tpdb:'))
@@ -2088,8 +2091,16 @@ class _DetailViewState extends State<_DetailView>
           ),
 
         SliverToBoxAdapter(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: ValueListenableBuilder<double>(
+            valueListenable: _heroStretch,
+            builder: (context, overscroll, child) {
+              return Transform.translate(
+                offset: Offset(0, overscroll * 0.40),
+                child: child,
+              );
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (state.error == 'load_failed')
                   Padding(
@@ -2196,7 +2207,7 @@ class _DetailViewState extends State<_DetailView>
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
                       _IconAction(
-                        icon: _inMyList ? Icons.check_rounded : Icons.add_rounded,
+                        icon: _inMyList ? CupertinoIcons.checkmark_alt : CupertinoIcons.plus,
                         active: _inMyList,
                         label: _status == null
                             ? 'My List'
@@ -2207,8 +2218,8 @@ class _DetailViewState extends State<_DetailView>
                       if (Platform.isAndroid)
                         _IconAction(
                           icon: _subscribed
-                              ? Icons.notifications_active_rounded
-                              : Icons.notifications_none_rounded,
+                              ? CupertinoIcons.bell_fill
+                              : CupertinoIcons.bell,
                           active: _subscribed,
                           label: 'Notify',
                           tooltip: _subscribed
@@ -2221,8 +2232,8 @@ class _DetailViewState extends State<_DetailView>
                       if (_trackingAvailable(detail))
                         _IconAction(
                           icon: _tracked
-                              ? Icons.published_with_changes_rounded
-                              : Icons.sync_rounded,
+                              ? CupertinoIcons.arrow_2_circlepath_circle_fill
+                              : CupertinoIcons.arrow_2_circlepath,
                           active: _tracked,
                           label: 'Tracking',
                           tooltip: _tracked
@@ -2231,13 +2242,13 @@ class _DetailViewState extends State<_DetailView>
                           onTap: () => _openTrackingSheet(detail),
                         ),
                       _IconAction(
-                        icon: Icons.ios_share_rounded,
+                        icon: CupertinoIcons.share,
                         label: 'Share',
                         tooltip: 'Share',
                         onTap: () => _share(detail, sourceName),
                       ),
                       _IconAction(
-                        icon: Icons.public_rounded,
+                        icon: CupertinoIcons.globe,
                         label: 'Web',
                         tooltip: 'Open source site',
                         onTap: _openSourceSite,
@@ -2247,6 +2258,7 @@ class _DetailViewState extends State<_DetailView>
                 ),
               ],
             ),
+          ),
         ),
 
         SliverPersistentHeader(

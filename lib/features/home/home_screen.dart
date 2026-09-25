@@ -1347,8 +1347,8 @@ class _HomeScrollView extends StatelessWidget {
                 ),
               ),
             SliverToBoxAdapter(
-              child: SizedBox(
-                height: MediaQuery.paddingOf(context).bottom + 74,
+              child: const SizedBox(
+                height: 64,
               ),
             ),
           ],

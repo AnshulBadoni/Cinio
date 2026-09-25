@@ -1048,10 +1048,7 @@ class _MyListViewState extends State<_MyListView> {
                     '${_statusFilter?.name}|$_categoryFilter|'
                     '$_customListFilter|${_sort?.name}|$_sortDesc',
                   ),
-                  // Bottom: clear the floating dock (its height arrives as
-                  // MediaQuery bottom padding thanks to extendBody).
-                  padding: EdgeInsets.fromLTRB(
-                      16, 4, 16, 16 + MediaQuery.paddingOf(context).bottom),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 64),
                   physics: const AlwaysScrollableScrollPhysics(),
                   cacheExtent: 800,
                   gridDelegate:

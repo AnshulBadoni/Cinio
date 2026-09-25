@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
@@ -9,7 +10,7 @@ import 'cinio_title_style.dart';
 /// Features:
 /// - Base layer: Title in its distinct cinematic typographic style, dimmed (translucent).
 /// - Fill layer: The exact title in vibrant solid/gradient color, revealed via a horizontal
-///   clip mask according to [progress] (or smooth looping sweep when indeterminate).
+///   clip mask according to [progress] (or smooth gentle opacity pulse when indeterminate).
 /// - Contextual status: Displays [label] ("Finding best source…") or live stream
 ///   telemetry ([speed] • [buffered] • [quality]) with clean dot separators and NO emojis/glow.
 /// - No separate loader bar line: The title itself is the progress visual.
@@ -41,7 +42,7 @@ class _BrandLoaderState extends State<BrandLoader>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1800),
+    duration: const Duration(milliseconds: 2200),
   )..repeat();
 
   @override
@@ -97,28 +98,62 @@ class _BrandLoaderState extends State<BrandLoader>
           AnimatedBuilder(
             animation: _c,
             builder: (context, _) {
-              final fillFactor = widget.progress != null
-                  ? widget.progress!.clamp(0.0, 1.0)
-                  : Curves.easeInOut.transform(_c.value);
+              if (widget.progress != null) {
+                final fillFactor = widget.progress!.clamp(0.0, 1.0);
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Base Dimmed Title Layer
+                    Text(
+                      displayTitle,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: cfg.baseStyle.copyWith(
+                        color: Colors.white.withValues(alpha: 0.22),
+                        shadows: cleanShadows,
+                      ),
+                    ),
 
+                    // Active Filled Title Layer (Clipped Horizontally)
+                    ClipRect(
+                      clipper: _HorizontalFillClipper(fillFactor),
+                      child: ShaderMask(
+                        shaderCallback: (bounds) =>
+                            cfg.gradient.createShader(bounds),
+                        child: Text(
+                          displayTitle,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: cfg.baseStyle.copyWith(
+                            color: Colors.white,
+                            shadows: cleanShadows,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              // Indeterminate (finding source): Gentle breathing opacity pulse without clipping wipes
+              final pulse = 0.35 + 0.55 * (0.5 + 0.5 * math.sin(_c.value * 2 * math.pi));
               return Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Base Dimmed Title Layer
                   Text(
                     displayTitle,
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: cfg.baseStyle.copyWith(
-                      color: Colors.white.withValues(alpha: 0.22),
+                      color: Colors.white.withValues(alpha: 0.18),
                       shadows: cleanShadows,
                     ),
                   ),
-
-                  // Active Filled Title Layer (Clipped Horizontally)
-                  ClipRect(
-                    clipper: _HorizontalFillClipper(fillFactor),
+                  Opacity(
+                    opacity: pulse.clamp(0.0, 1.0),
                     child: ShaderMask(
                       shaderCallback: (bounds) =>
                           cfg.gradient.createShader(bounds),
@@ -168,10 +203,39 @@ class _BrandLoaderState extends State<BrandLoader>
           AnimatedBuilder(
             animation: _c,
             builder: (context, _) {
-              final fillFactor = widget.progress != null
-                  ? widget.progress!.clamp(0.0, 1.0)
-                  : Curves.easeInOut.transform(_c.value);
+              if (widget.progress != null) {
+                final fillFactor = widget.progress!.clamp(0.0, 1.0);
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Text(
+                      'CINIO',
+                      textAlign: TextAlign.center,
+                      style: AppText.display.copyWith(
+                        fontSize: widget.fontSize,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 3,
+                        color: Colors.white.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    ClipRect(
+                      clipper: _HorizontalFillClipper(fillFactor),
+                      child: Text(
+                        'CINIO',
+                        textAlign: TextAlign.center,
+                        style: AppText.display.copyWith(
+                          fontSize: widget.fontSize,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 3,
+                          color: AppColors.accent,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
 
+              final pulse = 0.35 + 0.55 * (0.5 + 0.5 * math.sin(_c.value * 2 * math.pi));
               return Stack(
                 alignment: Alignment.center,
                 children: [
@@ -182,11 +246,11 @@ class _BrandLoaderState extends State<BrandLoader>
                       fontSize: widget.fontSize,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 3,
-                      color: Colors.white.withValues(alpha: 0.22),
+                      color: Colors.white.withValues(alpha: 0.18),
                     ),
                   ),
-                  ClipRect(
-                    clipper: _HorizontalFillClipper(fillFactor),
+                  Opacity(
+                    opacity: pulse.clamp(0.0, 1.0),
                     child: Text(
                       'CINIO',
                       textAlign: TextAlign.center,

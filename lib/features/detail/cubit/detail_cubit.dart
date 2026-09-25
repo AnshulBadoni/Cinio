@@ -403,7 +403,7 @@ class DetailCubit extends Cubit<DetailState> {
           tmdbIsTv: d.tmdbIsTv,
         );
         if (isClosed) return;
-        if (!identical(enriched, d.episodes)) {
+        if (enriched.isNotEmpty && !identical(enriched, d.episodes)) {
           d = d.copyWith(episodes: enriched);
           emit(state.copyWith(detail: d));
         }

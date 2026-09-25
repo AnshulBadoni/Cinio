@@ -1811,6 +1811,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
     }
 
+    final effectiveTitle = (widget.showTitle?.trim().isNotEmpty ?? false)
+        ? widget.showTitle!.trim()
+        : (widget.scrobbleTitle?.trim().isNotEmpty ?? false)
+            ? widget.scrobbleTitle!.trim()
+            : (widget.episodes.isNotEmpty && widget.episodes.first.title.trim().isNotEmpty)
+                ? widget.episodes.first.title.trim()
+                : null;
+
     if (!_ready) {
       return Scaffold(
         backgroundColor: Colors.black,
@@ -1850,7 +1858,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             if (state.loadingSources) {
               return _buildLoadingBackdrop(
                 'Finding best source…',
-                thumb: _c.currentEpisode.thumbnail,
+                thumb: _c.currentEpisodeOrNull?.thumbnail,
                 progress: state.loadProgress,
                 speed: state.loadSpeed,
                 buffered: state.loadBuffered,
@@ -1860,7 +1868,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             if (state.torrentPhase != null) {
               return _buildLoadingBackdrop(
                 state.torrentPhase!,
-                thumb: _c.currentEpisode.thumbnail,
+                thumb: _c.currentEpisodeOrNull?.thumbnail,
                 progress: state.loadProgress,
                 speed: state.loadSpeed,
                 buffered: state.loadBuffered,
@@ -2059,7 +2067,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
 
                   // 3. Buffering Indicator
-                  // 3. Buffering Indicator
                   StreamBuilder<bool>(
                     stream: _c.player.stream.buffering,
                     builder: (context, snap) {
@@ -2071,12 +2078,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           child: TickerMode(
                             enabled: show,
                             child: Center(
-                              child: SizedBox(
-                                width: 36,
-                                height: 36,
-                                child: CircularProgressIndicator(
-                                  color: AppColors.accent,
-                                  strokeWidth: 2.5,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 28),
+                                child: BrandLoader(
+                                  title: effectiveTitle,
+                                  label: 'Buffering…',
+                                  fontSize: 22,
                                 ),
                               ),
                             ),

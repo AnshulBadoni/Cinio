@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../core/ui/settings_widgets.dart';
 
@@ -262,63 +263,103 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     final manager = sl<DownloadManager>();
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar(
-        showBack: widget.showBack,
-        'Downloads',
-        actions: [
+      body: SafeArea(
+        bottom: false,
+        child: ListenableBuilder(
+          listenable: manager,
+          builder: (context, _) {
+            final groups = manager.byShow;
+            return Column(
+              children: [
+                _topHeaderBar(context),
+                Expanded(
+                  child: PageView(
+                    children: [
+                      if (groups.isEmpty)
+                        const EmptyState(
+                          icon: Icons.download_outlined,
+                          message: 'Episodes you download appear here',
+                        )
+                      else
+                        Column(
+                          children: [
+                            _searchField(),
+                            Expanded(child: _list(groups, manager)),
+                          ],
+                        ),
+                      ChapterDownloadsScreen(
+                        mode: ContentMode.manga,
+                        embedded: true,
+                      ),
+                      ChapterDownloadsScreen(
+                        mode: ContentMode.novel,
+                        embedded: true,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _topHeaderBar(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (widget.showBack) ...[
+            IconButton(
+              icon: const Icon(
+                CupertinoIcons.chevron_back,
+                color: Colors.white,
+                size: 19.5,
+              ),
+              onPressed: () => Navigator.maybePop(context),
+              tooltip: 'Back',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: Text(
+              'Downloads',
+              style: AppText.display.copyWith(
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+                height: 1.05,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
           IconButton(
             tooltip: sl<DownloadPrefs>().presentation == 'cards'
                 ? 'Use list view'
                 : 'Use card view',
             icon: Icon(
               sl<DownloadPrefs>().presentation == 'cards'
-                  ? Icons.view_list_rounded
-                  : Icons.grid_view_rounded,
+                  ? CupertinoIcons.list_bullet
+                  : CupertinoIcons.square_grid_2x2,
+              color: Colors.white,
+              size: 20,
             ),
             onPressed: _openPresentationPicker,
           ),
           IconButton(
             tooltip: 'Download settings',
-            icon: const Icon(Icons.tune_rounded),
+            icon: const Icon(
+              CupertinoIcons.slider_horizontal_3,
+              color: Colors.white,
+              size: 20,
+            ),
             onPressed: _openDownloadSettings,
           ),
         ],
-      ),
-      body: ListenableBuilder(
-        listenable: manager,
-        builder: (context, _) {
-          final groups = manager.byShow;
-          return Column(
-            children: [
-              Expanded(
-                child: PageView(
-                  children: [
-                    if (groups.isEmpty)
-                      const EmptyState(
-                        icon: Icons.download_outlined,
-                        message: 'Episodes you download appear here',
-                      )
-                    else
-                      Column(
-                        children: [
-                          _searchField(),
-                          Expanded(child: _list(groups, manager)),
-                        ],
-                      ),
-                    ChapterDownloadsScreen(
-                      mode: ContentMode.manga,
-                      embedded: true,
-                    ),
-                    ChapterDownloadsScreen(
-                      mode: ContentMode.novel,
-                      embedded: true,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
       ),
     );
   }
@@ -418,7 +459,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         );
       }
       return ListView(
-        padding: const EdgeInsets.only(bottom: 32),
+        padding: const EdgeInsets.only(bottom: 64),
         children: [
               _summaryStrip(
                 count: done.length,
@@ -474,7 +515,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
 
     final anyExpanded = showIds.any(_expanded.contains);
     return ListView(
-      padding: const EdgeInsets.only(bottom: 32),
+      padding: const EdgeInsets.only(bottom: 64),
       children: [
         _summaryStrip(
           count: done.length,
