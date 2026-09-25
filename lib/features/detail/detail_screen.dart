@@ -1006,10 +1006,14 @@ class _DetailViewState extends State<_DetailView>
     if (catalog.sourceId != 'tmdb:catalog' && !catalog.sourceId.startsWith('tpdb:')) {
       return null;
     }
-    return sl<SourceRepository>().resolveCatalogTitle(
-      catalog,
-      category: category,
-    );
+    try {
+      return await sl<SourceRepository>().resolveCatalogTitle(
+        catalog,
+        category: category,
+      ).timeout(const Duration(seconds: 10), onTimeout: () => null);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _openPlayer(
@@ -2115,9 +2119,18 @@ class _DetailViewState extends State<_DetailView>
           ),
 
         SliverToBoxAdapter(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          child: ValueListenableBuilder<double>(
+            valueListenable: _heroStretch,
+            builder: (context, overscroll, child) {
+              final translateY = (overscroll * 0.35).clamp(0.0, 110.0);
+              return Transform.translate(
+                offset: Offset(0, translateY),
+                child: child,
+              );
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 if (state.error == 'load_failed')
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -2275,6 +2288,7 @@ class _DetailViewState extends State<_DetailView>
               ],
             ),
           ),
+        ),
 
         SliverPersistentHeader(
           pinned: true,

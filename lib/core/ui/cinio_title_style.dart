@@ -6,26 +6,18 @@ import '../theme/app_text.dart';
 ///
 /// Deterministically assigned per title (via seed hash), so each movie/series
 /// gets a consistent, uniquely stylized typographic identity across Home,
-/// Detail, and Search.
+/// Detail, Search, and Player loading.
 enum CinioTitlePreset {
-  sciFiFuturistic,
-  boldComic,
-  epicFantasy,
-  atmosphericMystery,
-  grittyRealistic,
-  stylizedUnique,
-  cinematicGold,
-  neonGlow,
-  blockbusterTitan,
-  editorialModern,
-  crimsonImpact,
-  cyberEmerald,
-  sunsetAmber,
-  sciFiHolo,
+  breakingChemical,
+  darkKnightNoir,
+  espionageTypewriter,
+  deathGameGeometric,
   retroSynthwave,
-  gothicMidnight,
-  actionInferno,
-  prestigeSilver,
+  cyberMatrix,
+  atomicInferno,
+  vintageGold,
+  cosmicHolo,
+  prestigeTitanium,
 }
 
 class CinioTitleStyle {
@@ -46,205 +38,41 @@ class CinioTitleStyle {
     required Color accent,
     double fontSize = 32,
   }) {
-    final tunedAccent = _tuneAccent(accent);
-
     return switch (preset) {
-      CinioTitlePreset.sciFiFuturistic => (
+      // 1. Inspired by Breaking Bad (Chemical element toxic cyan-emerald)
+      CinioTitlePreset.breakingChemical => (
         baseStyle: AppText.display.copyWith(
           fontFamily: 'Montserrat',
-          fontSize: fontSize * 0.94,
-          fontWeight: FontWeight.w300,
-          height: 1.05,
-          letterSpacing: 4.5,
+          fontSize: fontSize * 0.98,
+          fontWeight: FontWeight.w900,
+          height: 0.95,
+          letterSpacing: 2.8,
         ),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: [
-            const Color(0xFFFFFFFF),
-            tunedAccent,
-            tunedAccent.withValues(alpha: 0.70),
+            Color(0xFFE6FFFA),
+            Color(0xFF38EF7D),
+            Color(0xFF11998E),
+            Color(0xFF0A5C54),
           ],
-          stops: const [0.0, 0.65, 1.0],
+          stops: [0.0, 0.40, 0.75, 1.0],
         ),
-        shadows: [
-          Shadow(color: tunedAccent.withValues(alpha: 0.45), blurRadius: 16),
-          const Shadow(color: Color(0xEE000000), offset: Offset(0, 3), blurRadius: 8),
+        shadows: const [
+          Shadow(color: Color(0xDD11998E), blurRadius: 20),
+          Shadow(color: Color(0xFF000000), offset: Offset(0, 4), blurRadius: 10),
         ],
         uppercase: true,
       ),
-      CinioTitlePreset.boldComic => (
+
+      // 2. Inspired by Batman (Dark Knight gritty noir with bat-amber shadow)
+      CinioTitlePreset.darkKnightNoir => (
         baseStyle: AppText.display.copyWith(
           fontFamily: 'Montserrat',
           fontSize: fontSize * 1.06,
           fontWeight: FontWeight.w900,
-          height: 0.92,
-          letterSpacing: 0.2,
-        ),
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFFF7A7A),
-            Color(0xFFE50914),
-            Color(0xFF6B0004),
-          ],
-          stops: [0.0, 0.45, 1.0],
-        ),
-        shadows: const [
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 4), blurRadius: 10),
-          Shadow(color: Color(0x88E50914), blurRadius: 18),
-        ],
-        uppercase: true,
-      ),
-      CinioTitlePreset.epicFantasy => (
-        baseStyle: AppText.display.copyWith(
-          fontFamily: 'Montserrat',
-          fontSize: fontSize * 0.98,
-          fontWeight: FontWeight.w800,
-          height: 1.0,
-          letterSpacing: 2.5,
-        ),
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFFFFBEB),
-            Color(0xFFE6C687),
-            Color(0xFF9E7730),
-          ],
-          stops: [0.0, 0.50, 1.0],
-        ),
-        shadows: const [
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 3), blurRadius: 8),
-          Shadow(color: Color(0x55E6C687), blurRadius: 14),
-        ],
-        uppercase: true,
-      ),
-      CinioTitlePreset.atmosphericMystery => (
-        baseStyle: AppText.display.copyWith(
-          fontFamily: 'Rubik',
-          fontSize: fontSize * 0.92,
-          fontWeight: FontWeight.w600,
-          height: 1.05,
-          letterSpacing: 3.5,
-        ),
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFF1F5F9),
-            Color(0xFF94A3B8),
-            Color(0xFF475569),
-          ],
-          stops: [0.0, 0.55, 1.0],
-        ),
-        shadows: const [
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 3), blurRadius: 8),
-        ],
-        uppercase: true,
-      ),
-      CinioTitlePreset.grittyRealistic => (
-        baseStyle: AppText.display.copyWith(
-          fontFamily: 'Montserrat',
-          fontSize: fontSize * 1.04,
-          fontWeight: FontWeight.w900,
-          height: 0.94,
-          letterSpacing: 0.1,
-        ),
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFFFFFFF),
-            Color(0xFFD1D5DB),
-            Color(0xFF6B7280),
-          ],
-          stops: [0.0, 0.48, 1.0],
-        ),
-        shadows: const [
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 4), blurRadius: 8),
-        ],
-        uppercase: true,
-      ),
-      CinioTitlePreset.stylizedUnique => (
-        baseStyle: AppText.display.copyWith(
-          fontFamily: 'Poppins',
-          fontSize: fontSize * 0.98,
-          fontWeight: FontWeight.w800,
-          height: 1.0,
-          letterSpacing: 1.2,
-        ),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFFFFFFFF),
-            tunedAccent,
-            tunedAccent.withValues(alpha: 0.85),
-          ],
-          stops: const [0.0, 0.55, 1.0],
-        ),
-        shadows: [
-          Shadow(color: tunedAccent.withValues(alpha: 0.70), blurRadius: 16),
-          const Shadow(color: Color(0xEE000000), offset: Offset(0, 3), blurRadius: 8),
-        ],
-        uppercase: true,
-      ),
-      CinioTitlePreset.cinematicGold => (
-        baseStyle: AppText.display.copyWith(
-          fontFamily: 'Montserrat',
-          fontSize: fontSize,
-          fontWeight: FontWeight.w900,
-          height: 0.98,
-          letterSpacing: -0.4,
-        ),
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFFFFDF5),
-            Color(0xFFFFDF7A),
-            Color(0xFFD69324),
-          ],
-          stops: [0.0, 0.50, 1.0],
-        ),
-        shadows: const [
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 3), blurRadius: 8),
-          Shadow(color: Color(0x66D69324), blurRadius: 16),
-        ],
-        uppercase: true,
-      ),
-      CinioTitlePreset.neonGlow => (
-        baseStyle: AppText.display.copyWith(
-          fontFamily: 'Rubik',
-          fontSize: fontSize * 0.96,
-          fontWeight: FontWeight.w800,
-          height: 1.0,
-          letterSpacing: 1.2,
-        ),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white,
-            tunedAccent,
-            tunedAccent.withValues(alpha: 0.85),
-          ],
-          stops: const [0.0, 0.60, 1.0],
-        ),
-        shadows: [
-          Shadow(color: tunedAccent.withValues(alpha: 0.85), blurRadius: 16),
-          const Shadow(color: Colors.black87, offset: Offset(0, 3), blurRadius: 8),
-        ],
-        uppercase: true,
-      ),
-      CinioTitlePreset.blockbusterTitan => (
-        baseStyle: AppText.display.copyWith(
-          fontFamily: 'Montserrat',
-          fontSize: fontSize * 1.02,
-          fontWeight: FontWeight.w900,
-          height: 0.94,
+          height: 0.88,
           letterSpacing: -0.8,
         ),
         gradient: const LinearGradient(
@@ -252,143 +80,79 @@ class CinioTitleStyle {
           end: Alignment.bottomCenter,
           colors: [
             Color(0xFFFFFFFF),
-            Color(0xFFDCE2EB),
-            Color(0xFF8893A2),
+            Color(0xFFE2E8F0),
+            Color(0xFF64748B),
+            Color(0xFF0F172A),
           ],
-          stops: [0.0, 0.48, 1.0],
+          stops: [0.0, 0.35, 0.70, 1.0],
         ),
         shadows: const [
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 4), blurRadius: 10),
-          Shadow(color: Color(0x55000000), offset: Offset(0, 8), blurRadius: 20),
+          Shadow(color: Color(0xCCFECA57), offset: Offset(0, 0), blurRadius: 16),
+          Shadow(color: Color(0xFF000000), offset: Offset(0, 6), blurRadius: 12),
         ],
         uppercase: true,
       ),
-      CinioTitlePreset.editorialModern => (
+
+      // 3. Inspired by Slow Horses (Cold British MI5 stamped dossier)
+      CinioTitlePreset.espionageTypewriter => (
         baseStyle: AppText.display.copyWith(
-          fontFamily: 'Poppins',
-          fontSize: fontSize * 0.94,
-          fontWeight: FontWeight.w700,
-          height: 1.02,
-          letterSpacing: 0.2,
+          fontFamily: 'Rubik',
+          fontSize: fontSize * 0.90,
+          fontWeight: FontWeight.w800,
+          height: 1.08,
+          letterSpacing: 5.0,
         ),
         gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: [
-            Color(0xFFFFFFFF),
-            Color(0xFFE6ECF5),
-            Color(0xFFB0BDCF),
+            Color(0xFFFEF3C7),
+            Color(0xFFF59E0B),
+            Color(0xFFB45309),
           ],
           stops: [0.0, 0.55, 1.0],
         ),
         shadows: const [
-          Shadow(color: Colors.black87, offset: Offset(0, 2), blurRadius: 6),
+          Shadow(color: Color(0x99DC2626), offset: Offset(0, 0), blurRadius: 14),
+          Shadow(color: Color(0xEE000000), offset: Offset(0, 3), blurRadius: 8),
         ],
-        uppercase: false,
+        uppercase: true,
       ),
-      CinioTitlePreset.crimsonImpact => (
+
+      // 4. Inspired by Squid Game (Geometric high-contrast hot pink on void)
+      CinioTitlePreset.deathGameGeometric => (
         baseStyle: AppText.display.copyWith(
           fontFamily: 'Montserrat',
-          fontSize: fontSize,
+          fontSize: fontSize * 1.02,
           fontWeight: FontWeight.w900,
-          height: 0.96,
-          letterSpacing: 0.4,
+          height: 0.94,
+          letterSpacing: 2.2,
         ),
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color(0xFFFF9E9E),
-            Color(0xFFE50914),
-            Color(0xFF8A0006),
-          ],
-          stops: [0.0, 0.48, 1.0],
-        ),
-        shadows: const [
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 3), blurRadius: 8),
-          Shadow(color: Color(0x77E50914), blurRadius: 14),
-        ],
-        uppercase: true,
-      ),
-      CinioTitlePreset.cyberEmerald => (
-        baseStyle: AppText.display.copyWith(
-          fontFamily: 'Rubik',
-          fontSize: fontSize * 0.96,
-          fontWeight: FontWeight.w800,
-          height: 1.0,
-          letterSpacing: 0.8,
-        ),
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFB3FFE8),
-            Color(0xFF00E676),
-            Color(0xFF007A3E),
+            Color(0xFFFFF0F7),
+            Color(0xFFFF007F),
+            Color(0xFFA30052),
           ],
           stops: [0.0, 0.50, 1.0],
         ),
         shadows: const [
-          Shadow(color: Colors.black87, offset: Offset(0, 2), blurRadius: 6),
-          Shadow(color: Color(0x6600E676), blurRadius: 14),
+          Shadow(color: Color(0xDDFF007F), blurRadius: 24),
+          Shadow(color: Color(0xFF000000), offset: Offset(0, 4), blurRadius: 10),
         ],
         uppercase: true,
       ),
-      CinioTitlePreset.sunsetAmber => (
-        baseStyle: AppText.display.copyWith(
-          fontFamily: 'Poppins',
-          fontSize: fontSize * 0.96,
-          fontWeight: FontWeight.w800,
-          height: 1.0,
-          letterSpacing: -0.4,
-        ),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFFDFB0),
-            Color(0xFFFF8C42),
-            Color(0xFFFF3C5F),
-          ],
-          stops: [0.0, 0.50, 1.0],
-        ),
-        shadows: const [
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 3), blurRadius: 8),
-          Shadow(color: Color(0x55FF8C42), blurRadius: 12),
-        ],
-        uppercase: true,
-      ),
-      CinioTitlePreset.sciFiHolo => (
-        baseStyle: AppText.display.copyWith(
-          fontFamily: 'Rubik',
-          fontSize: fontSize * 0.94,
-          fontWeight: FontWeight.w800,
-          height: 1.0,
-          letterSpacing: 1.8,
-        ),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFFFFFF),
-            Color(0xFF40C4FF),
-            Color(0xFF0059B2),
-          ],
-          stops: [0.0, 0.52, 1.0],
-        ),
-        shadows: const [
-          Shadow(color: Color(0x8840C4FF), blurRadius: 16),
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 3), blurRadius: 8),
-        ],
-        uppercase: true,
-      ),
+
+      // 5. Inspired by Stranger Things / 80s Synthwave (Electric violet neon)
       CinioTitlePreset.retroSynthwave => (
         baseStyle: AppText.display.copyWith(
           fontFamily: 'Montserrat',
           fontSize: fontSize * 0.96,
           fontWeight: FontWeight.w900,
-          height: 0.98,
-          letterSpacing: 1.0,
+          height: 0.96,
+          letterSpacing: 1.6,
         ),
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
@@ -401,93 +165,146 @@ class CinioTitleStyle {
           stops: [0.0, 0.45, 1.0],
         ),
         shadows: const [
-          Shadow(color: Color(0x88FF007F), blurRadius: 16),
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 3), blurRadius: 8),
+          Shadow(color: Color(0xBBFF007F), blurRadius: 20),
+          Shadow(color: Color(0xFF000000), offset: Offset(0, 3), blurRadius: 8),
         ],
         uppercase: true,
       ),
-      CinioTitlePreset.gothicMidnight => (
+
+      // 6. Inspired by The Matrix / Cyberpunk (Digital terminal phosphor)
+      CinioTitlePreset.cyberMatrix => (
+        baseStyle: AppText.display.copyWith(
+          fontFamily: 'Rubik',
+          fontSize: fontSize * 0.96,
+          fontWeight: FontWeight.w800,
+          height: 1.0,
+          letterSpacing: 2.0,
+        ),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFFD1FAE5),
+            Color(0xFF10B981),
+            Color(0xFF047857),
+          ],
+          stops: [0.0, 0.48, 1.0],
+        ),
+        shadows: const [
+          Shadow(color: Color(0xBB10B981), blurRadius: 18),
+          Shadow(color: Color(0xFF000000), offset: Offset(0, 3), blurRadius: 8),
+        ],
+        uppercase: true,
+      ),
+
+      // 7. Inspired by Oppenheimer / Action Inferno (Atomic flame ember)
+      CinioTitlePreset.atomicInferno => (
+        baseStyle: AppText.display.copyWith(
+          fontFamily: 'Montserrat',
+          fontSize: fontSize * 1.04,
+          fontWeight: FontWeight.w900,
+          height: 0.92,
+          letterSpacing: -0.4,
+        ),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFFFFFBEB),
+            Color(0xFFF59E0B),
+            Color(0xFFEF4444),
+            Color(0xFF7F1D1D),
+          ],
+          stops: [0.0, 0.35, 0.70, 1.0],
+        ),
+        shadows: const [
+          Shadow(color: Color(0xCCF59E0B), blurRadius: 22),
+          Shadow(color: Color(0xFF000000), offset: Offset(0, 4), blurRadius: 10),
+        ],
+        uppercase: true,
+      ),
+
+      // 8. Inspired by Peaky Blinders / Godfather (Brushed antique gold)
+      CinioTitlePreset.vintageGold => (
         baseStyle: AppText.display.copyWith(
           fontFamily: 'Montserrat',
           fontSize: fontSize * 0.96,
           fontWeight: FontWeight.w800,
           height: 1.0,
-          letterSpacing: 2.2,
+          letterSpacing: 3.2,
         ),
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color(0xFFE2E8F0),
-            Color(0xFF94A3B8),
-            Color(0xFF334155),
+            Color(0xFFFFFDF0),
+            Color(0xFFFCD34D),
+            Color(0xFFD97706),
+            Color(0xFF78350F),
           ],
-          stops: [0.0, 0.50, 1.0],
+          stops: [0.0, 0.38, 0.75, 1.0],
         ),
         shadows: const [
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 4), blurRadius: 10),
-          Shadow(color: Color(0x4464748B), blurRadius: 14),
+          Shadow(color: Color(0x99D97706), blurRadius: 18),
+          Shadow(color: Color(0xFF000000), offset: Offset(0, 3), blurRadius: 8),
         ],
         uppercase: true,
       ),
-      CinioTitlePreset.actionInferno => (
+
+      // 9. Inspired by Interstellar / 2001 (Deep cosmic cyan holo)
+      CinioTitlePreset.cosmicHolo => (
         baseStyle: AppText.display.copyWith(
-          fontFamily: 'Montserrat',
-          fontSize: fontSize * 1.02,
-          fontWeight: FontWeight.w900,
-          height: 0.94,
-          letterSpacing: -0.6,
+          fontFamily: 'Rubik',
+          fontSize: fontSize * 0.94,
+          fontWeight: FontWeight.w800,
+          height: 1.02,
+          letterSpacing: 3.0,
         ),
         gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: [
-            Color(0xFFFFF275),
-            Color(0xFFFF8C00),
-            Color(0xFFE52D27),
+            Color(0xFFF0FDF4),
+            Color(0xFF38BDF8),
+            Color(0xFF0284C7),
+            Color(0xFF0369A1),
           ],
-          stops: [0.0, 0.45, 1.0],
+          stops: [0.0, 0.40, 0.75, 1.0],
         ),
         shadows: const [
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 4), blurRadius: 8),
-          Shadow(color: Color(0x66FF8C00), blurRadius: 14),
+          Shadow(color: Color(0xAA38BDF8), blurRadius: 20),
+          Shadow(color: Color(0xFF000000), offset: Offset(0, 3), blurRadius: 8),
         ],
         uppercase: true,
       ),
-      CinioTitlePreset.prestigeSilver => (
+
+      // 10. Inspired by Succession / Prestige Drama (Clean frosted platinum)
+      CinioTitlePreset.prestigeTitanium => (
         baseStyle: AppText.display.copyWith(
           fontFamily: 'Poppins',
           fontSize: fontSize * 0.95,
           fontWeight: FontWeight.w800,
           height: 1.02,
-          letterSpacing: 1.4,
+          letterSpacing: 2.0,
         ),
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
             Color(0xFFFFFFFF),
-            Color(0xFFCBD5E1),
-            Color(0xFF64748B),
+            Color(0xFFE2E8F0),
+            Color(0xFF94A3B8),
+            Color(0xFF475569),
           ],
-          stops: [0.0, 0.50, 1.0],
+          stops: [0.0, 0.45, 0.80, 1.0],
         ),
         shadows: const [
-          Shadow(color: Color(0xEE000000), offset: Offset(0, 3), blurRadius: 8),
+          Shadow(color: Color(0xFF000000), offset: Offset(0, 4), blurRadius: 10),
+          Shadow(color: Color(0x6664748B), blurRadius: 14),
         ],
         uppercase: true,
       ),
     };
-  }
-
-  static Color _tuneAccent(Color accent) {
-    final hsl = HSLColor.fromColor(accent);
-    final saturation = hsl.saturation.clamp(0.50, 0.95).toDouble();
-    final lightness = hsl.lightness.clamp(0.50, 0.72).toDouble();
-    return hsl
-        .withSaturation(saturation)
-        .withLightness(lightness)
-        .toColor();
   }
 }
 

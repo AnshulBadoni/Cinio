@@ -1634,6 +1634,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 28),
             child: BrandLoader(
               title: effectiveTitle,
+              tmdbId: widget.tmdbId,
+              tmdbIsTv: widget.tmdbIsTv,
               label: label,
               progress: progress,
               speed: speed,
@@ -2082,6 +2084,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 padding: const EdgeInsets.symmetric(horizontal: 28),
                                 child: BrandLoader(
                                   title: effectiveTitle,
+                                  tmdbId: widget.tmdbId,
+                                  tmdbIsTv: widget.tmdbIsTv,
                                   label: 'Buffering…',
                                   fontSize: 22,
                                 ),
