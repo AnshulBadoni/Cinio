@@ -76,6 +76,9 @@ class PlayerState extends Equatable {
     this.currentIndex = 0,
     this.tracks = const Tracks(),
     this.torrentPhase,
+    this.loadProgress,
+    this.loadSpeed,
+    this.loadBuffered,
   });
 
   /// True while sources for the current episode are being resolved.
@@ -108,6 +111,15 @@ class PlayerState extends Equatable {
   /// every non-torrent source, so normal playback is unaffected.
   final String? torrentPhase;
 
+  /// Fractional progress (0.0 - 1.0) during source buffering/loading.
+  final double? loadProgress;
+
+  /// Download speed string (e.g. "2.4 MB/s") during buffering.
+  final String? loadSpeed;
+
+  /// Buffered amount string (e.g. "5.1 MB" or "12%") during buffering.
+  final String? loadBuffered;
+
   PlayerState copyWith({
     bool? loadingSources,
     String? Function()? error,
@@ -118,6 +130,9 @@ class PlayerState extends Equatable {
     int? currentIndex,
     Tracks? tracks,
     String? Function()? torrentPhase,
+    double? Function()? loadProgress,
+    String? Function()? loadSpeed,
+    String? Function()? loadBuffered,
   }) => PlayerState(
     loadingSources: loadingSources ?? this.loadingSources,
     error: error != null ? error() : this.error,
@@ -128,6 +143,9 @@ class PlayerState extends Equatable {
     currentIndex: currentIndex ?? this.currentIndex,
     tracks: tracks ?? this.tracks,
     torrentPhase: torrentPhase != null ? torrentPhase() : this.torrentPhase,
+    loadProgress: loadProgress != null ? loadProgress() : this.loadProgress,
+    loadSpeed: loadSpeed != null ? loadSpeed() : this.loadSpeed,
+    loadBuffered: loadBuffered != null ? loadBuffered() : this.loadBuffered,
   );
 
   @override
@@ -141,6 +159,9 @@ class PlayerState extends Equatable {
     currentIndex,
     tracks,
     torrentPhase,
+    loadProgress,
+    loadSpeed,
+    loadBuffered,
   ];
 }
 
@@ -1986,18 +2007,40 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// couldn't (a clean error is emitted, no throw). Stops any previous torrent.
   Future<VideoSource?> _resolveTorrent(VideoSource s, int g) async {
     await _stopTorrent();
-    emit(state.copyWith(torrentPhase: () => 'Finding peers…', error: () => null));
+    emit(state.copyWith(
+      torrentPhase: () => 'Finding peers…',
+      error: () => null,
+      loadProgress: () => null,
+      loadSpeed: () => null,
+      loadBuffered: () => null,
+    ));
     _torrentSub = sl<TorrentService>().events().listen((p) {
       if (g != _gen) return;
+      final speedStr = p.downSpeedBps > 0
+          ? (p.downSpeedBps >= 1024 * 1024
+              ? '${(p.downSpeedBps / (1024 * 1024)).toStringAsFixed(1)} MB/s'
+              : '${(p.downSpeedBps / 1024).round()} kB/s')
+          : null;
+      final bufferedStr = p.bufferPct > 0
+          ? '${(p.bufferPct * 100).clamp(0, 100).toStringAsFixed(0)}%'
+          : null;
+
       final txt = switch (p.state) {
-        TorrentState.finding => 'Finding peers…',
-        TorrentState.buffering =>
-          'Buffering ${(p.bufferPct * 100).clamp(0, 100).toStringAsFixed(0)}%'
-              '${p.peers > 0 ? ' · ${p.peers} peers' : ''}',
+        TorrentState.finding => p.peers > 0
+            ? 'Finding peers (${p.peers} connected)…'
+            : 'Finding peers…',
+        TorrentState.buffering => 'Buffering…',
         TorrentState.ready => 'Starting…',
         TorrentState.error => 'Finding peers…',
       };
-      emit(state.copyWith(torrentPhase: () => txt));
+      emit(state.copyWith(
+        torrentPhase: () => txt,
+        loadProgress: () => p.state == TorrentState.buffering
+            ? p.bufferPct.clamp(0.0, 1.0)
+            : (p.state == TorrentState.ready ? 1.0 : null),
+        loadSpeed: () => speedStr,
+        loadBuffered: () => bufferedStr,
+      ));
     });
     try {
       final t = await sl<TorrentService>().startStream(
@@ -2011,7 +2054,12 @@ class PlayerCubit extends Cubit<PlayerState> {
         return null;
       }
       _activeTorrentId = t.id;
-      emit(state.copyWith(torrentPhase: () => null));
+      emit(state.copyWith(
+        torrentPhase: () => null,
+        loadProgress: () => null,
+        loadSpeed: () => null,
+        loadBuffered: () => null,
+      ));
       // A local progressive stream — treat as a plain file (mp4 tuning, no
       // headers); keep the original quality/label/subs.
       return VideoSource(

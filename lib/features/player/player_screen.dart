@@ -1591,8 +1591,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Sub-builders ──────────────────────────────────────────────────────────
 
-  Widget _buildLoadingBackdrop(String label, {String? thumb}) {
+  Widget _buildLoadingBackdrop(
+    String label, {
+    String? thumb,
+    double? progress,
+    String? speed,
+    String? buffered,
+    String? quality,
+  }) {
     final img = (thumb?.trim().isNotEmpty ?? false) ? thumb!.trim() : (widget.cover ?? '').trim();
+    final effectiveTitle = (widget.showTitle?.trim().isNotEmpty ?? false)
+        ? widget.showTitle!.trim()
+        : (widget.scrobbleTitle?.trim().isNotEmpty ?? false)
+            ? widget.scrobbleTitle!.trim()
+            : (widget.episodes.isNotEmpty && widget.episodes.first.title.trim().isNotEmpty)
+                ? widget.episodes.first.title.trim()
+                : null;
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -1614,7 +1629,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
         ),
-        Center(child: BrandLoader(label: label)),
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: BrandLoader(
+              title: effectiveTitle,
+              label: label,
+              progress: progress,
+              speed: speed,
+              buffered: buffered,
+              quality: quality,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1821,10 +1848,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
               );
             }
             if (state.loadingSources) {
-              return _buildLoadingBackdrop('Finding the best source…', thumb: _c.currentEpisode.thumbnail);
+              return _buildLoadingBackdrop(
+                'Finding best source…',
+                thumb: _c.currentEpisode.thumbnail,
+                progress: state.loadProgress,
+                speed: state.loadSpeed,
+                buffered: state.loadBuffered,
+                quality: state.active?.quality,
+              );
             }
             if (state.torrentPhase != null) {
-              return _buildLoadingBackdrop(state.torrentPhase!, thumb: _c.currentEpisode.thumbnail);
+              return _buildLoadingBackdrop(
+                state.torrentPhase!,
+                thumb: _c.currentEpisode.thumbnail,
+                progress: state.loadProgress,
+                speed: state.loadSpeed,
+                buffered: state.loadBuffered,
+                quality: state.active?.quality,
+              );
             }
             if (state.error != null) {
               return Center(

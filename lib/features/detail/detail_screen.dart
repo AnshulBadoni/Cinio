@@ -1233,7 +1233,7 @@ class _DetailViewState extends State<_DetailView>
   void _openTrailer(TrailerSource source) {
     Navigator.of(
       context,
-    ).push(MaterialPageRoute(builder: (_) => TrailerScreen(source: source)));
+    ).push(MaterialPageRoute(builder: (_) => TrailerScreen(title: widget.item.title, source: source)));
   }
 
   String _downloadLabel(

@@ -18,10 +18,12 @@ import '../../core/ui/brand_loader.dart';
 class TrailerScreen extends StatefulWidget {
   const TrailerScreen({
     super.key,
+    this.title,
     this.source,
     this.videoId,
   }) : assert(source != null || videoId != null);
 
+  final String? title;
   final TrailerSource? source;
   final String? videoId;
 
@@ -162,7 +164,10 @@ class _TrailerScreenState extends State<TrailerScreen> {
   Widget _content() {
     switch (_resolved) {
       case null:
-        return const BrandLoader(label: 'Loading trailer…');
+        return BrandLoader(
+          title: widget.title,
+          label: 'Finding best source…',
+        );
       case false:
         return Column(
           mainAxisSize: MainAxisSize.min,
