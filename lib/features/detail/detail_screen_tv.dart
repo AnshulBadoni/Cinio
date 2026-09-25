@@ -687,13 +687,67 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   Future<void> _openRelation(MediaRelation r) async {
     _snack('Finding "${r.title}"…');
     try {
-      final results = await sl<SourceRepository>().search(r.title, sourceId: widget.item.sourceId);
-      if (!mounted) return;
-      if (results.isEmpty) {
-        _snack('"${r.title}" isn\'t on this source');
+      if (r.tmdbId != null) {
+        final isTv = r.tmdbIsTv;
+        final related = MediaItem(
+          id: 'tmdb:${isTv ? 'tv' : 'movie'}:${r.tmdbId}',
+          title: r.title,
+          cover: r.cover,
+          url: 'tmdb://${isTv ? 'tv' : 'movie'}/${r.tmdbId}',
+          type: ProviderType.movie,
+          sourceId: 'tmdb:catalog',
+          tmdbId: r.tmdbId,
+          tmdbIsTv: isTv,
+        );
+        MediaDetail? catalogDetail;
+        try {
+          catalogDetail = await sl<TmdbDiscoverService>().movieDetail(related);
+        } catch (_) {}
+        if (!mounted) return;
+        Navigator.of(context).push(DetailScreen.route(related, catalogDetail: catalogDetail));
         return;
       }
-      Navigator.of(context).push(DetailScreen.route(results.first));
+      if (r.catalogId != null || widget.item.sourceId == 'tpdb:catalog') {
+        final id = r.catalogId ?? r.title;
+        final related = MediaItem(
+          id: 'tpdb:movie:$id',
+          title: r.title,
+          cover: r.cover,
+          url: 'tpdb://movie/$id',
+          type: ProviderType.movie,
+          sourceId: 'tpdb:catalog',
+        );
+        if (!mounted) return;
+        Navigator.of(context).push(DetailScreen.route(related));
+        return;
+      }
+
+      if (widget.item.sourceId != 'tmdb:catalog') {
+        final results = await sl<SourceRepository>().search(r.title, sourceId: widget.item.sourceId);
+        if (!mounted) return;
+        if (results.isNotEmpty) {
+          Navigator.of(context).push(DetailScreen.route(results.first));
+          return;
+        }
+      }
+
+      final tmdbMatches = await sl<TmdbDiscoverService>().search(
+        query: r.title,
+        type: 'all',
+      );
+      if (!mounted) return;
+      if (tmdbMatches.isNotEmpty) {
+        final best = tmdbMatches.first;
+        MediaDetail? catalogDetail;
+        try {
+          catalogDetail = await sl<TmdbDiscoverService>().movieDetail(best);
+        } catch (_) {}
+        if (!mounted) return;
+        Navigator.of(context).push(DetailScreen.route(best, catalogDetail: catalogDetail));
+        return;
+      }
+
+      _snack('"${r.title}" isn\'t available');
     } catch (_) {
       if (mounted) _snack('Couldn\'t open "${r.title}"');
     }
