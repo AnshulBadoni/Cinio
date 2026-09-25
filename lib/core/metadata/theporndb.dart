@@ -345,8 +345,35 @@ class ThePornDb {
   }
 
   Future<MediaDetail> movieDetail(MediaItem item) async {
-    final rawId = item.id.replaceFirst('tpdb:movie:', '');
-    final data = await _get('/movies/$rawId');
+    final isScene = item.id.startsWith('tpdb:scene:');
+    final rawId = item.id
+        .replaceFirst('tpdb:movie:', '')
+        .replaceFirst('tpdb:scene:', '')
+        .replaceFirst('tpdb:performer:', '')
+        .replaceFirst('tpdb:studio:', '')
+        .replaceFirst('tpdb:', '');
+
+    Map<String, dynamic> data = const {};
+    if (isScene) {
+      try {
+        data = await _get('/scenes/$rawId');
+        if (data['data'] == null) {
+          data = await _get('/movies/$rawId');
+        }
+      } catch (_) {
+        data = await _get('/movies/$rawId');
+      }
+    } else {
+      try {
+        data = await _get('/movies/$rawId');
+        if (data['data'] == null) {
+          data = await _get('/scenes/$rawId');
+        }
+      } catch (_) {
+        data = await _get('/scenes/$rawId');
+      }
+    }
+
     final row = data['data'] is Map
         ? data['data'] as Map
         : (data['data'] is List && (data['data'] as List).isNotEmpty ? data['data'][0] as Map : const {});
@@ -360,7 +387,7 @@ class ThePornDb {
         final name = (parent?['name'] ?? parent?['full_name'] ?? p['name'] ?? p['full_name'])?.toString();
         if (name == null || name.isEmpty) continue;
         final rawPid = (parent?['id'] ?? parent?['uuid'] ?? parent?['_id'] ?? parent?['slug'] ?? p['id'] ?? p['uuid'] ?? p['_id'] ?? p['slug'])?.toString();
-        final photo = (parent?['image'] ?? parent?['thumbnail'] ?? parent?['face'] ?? p['image'] ?? p['thumbnail'] ?? p['face'])?.toString() ?? _firstImage(p);
+        final photo = _extractUrl(parent?['image']) ?? _extractUrl(parent?['thumbnail']) ?? _extractUrl(parent?['face']) ?? _extractUrl(p['image']) ?? _extractUrl(p['thumbnail']) ?? _extractUrl(p['face']) ?? _firstImage(p);
         cast.add(name);
         if (rawPid != null && rawPid.isNotEmpty) {
           members.add(CastMember(
@@ -379,19 +406,20 @@ class ThePornDb {
         }
       }
     }
+    final cover = _firstImage(row) ?? _firstHeroImage(row) ?? item.cover;
     final ep = Episode(
       id: item.id,
       number: 1,
       title: (row['title'] ?? item.title).toString(),
       url: item.url,
-      thumbnail: _firstImage(row) ?? item.cover,
+      thumbnail: cover,
       description: (row['description'] ?? row['synopsis'])?.toString(),
     );
     return MediaDetail(
       id: item.id,
       title: (row['title'] ?? item.title).toString(),
       description: (row['description'] ?? row['synopsis'])?.toString(),
-      cover: _firstImage(row) ?? item.cover,
+      cover: cover,
       url: item.url,
       year: _year(row['date'] ?? row['release_date']),
       type: ProviderType.movie,
@@ -432,7 +460,7 @@ class ThePornDb {
     return MediaItem(
       id: 'tpdb:performer:$id',
       title: (row['name'] ?? row['full_name'] ?? 'Performer').toString(),
-      cover: (row['image'] ?? row['thumbnail'] ?? row['face'])?.toString(),
+      cover: _firstImage(row) ?? _extractUrl(row['image']) ?? _extractUrl(row['thumbnail']) ?? _extractUrl(row['face']),
       url: 'https://theporndb.net/performers/$id',
       type: ProviderType.movie,
       sourceId: 'tpdb:performer',
@@ -445,7 +473,7 @@ class ThePornDb {
     return MediaItem(
       id: 'tpdb:studio:$id',
       title: (row['name'] ?? 'Studio').toString(),
-      cover: (row['logo'] ?? row['poster'] ?? row['favicon'])?.toString(),
+      cover: _firstImage(row) ?? _extractUrl(row['logo']) ?? _extractUrl(row['poster']) ?? _extractUrl(row['favicon']),
       url: 'https://theporndb.net/sites/$id',
       type: ProviderType.movie,
       sourceId: 'tpdb:studio',
@@ -457,51 +485,76 @@ class ThePornDb {
     return s.length >= 4 ? s.substring(0, 4) : null;
   }
 
-  String? _firstHeroImage(Map row) {
-    for (final key in [
-      'background',
-      'backdrop',
-      'backdrop_image',
-      'background_image',
-      'banner',
-      'landscape',
-      'fanart',
-    ]) {
-      final value = row[key]?.toString();
-      if (value != null && value.isNotEmpty) return value;
+  String? _extractUrl(dynamic value) {
+    if (value == null) return null;
+    if (value is String) {
+      final s = value.trim();
+      if (s.isEmpty || s.startsWith('{') || s.startsWith('[')) return null;
+      return s;
     }
-    final backgrounds = row['backgrounds'] ?? row['backdrops'] ?? row['fanart'];
-    if (backgrounds is Map) {
-      for (final key in ['large', 'medium', 'full', 'original']) {
-        final value = backgrounds[key]?.toString();
-        if (value != null && value.isNotEmpty) return value;
+    if (value is Map) {
+      for (final k in [
+        'full',
+        'large',
+        'original',
+        'medium',
+        'small',
+        'url',
+        'src',
+        'poster',
+        'image',
+        'thumbnail',
+      ]) {
+        final res = _extractUrl(value[k]);
+        if (res != null) return res;
       }
     }
-    if (backgrounds is List) {
-      for (final value in backgrounds) {
-        if (value is String && value.isNotEmpty) return value;
-        if (value is Map) {
-          for (final key in ['url', 'image', 'src', 'large', 'full']) {
-            final v = value[key]?.toString();
-            if (v != null && v.isNotEmpty) return v;
-          }
-        }
+    if (value is List) {
+      for (final item in value) {
+        final res = _extractUrl(item);
+        if (res != null) return res;
       }
     }
     return null;
   }
 
-  String? _firstImage(Map row) {
-    for (final key in ['poster', 'poster_image', 'image']) {
-      final value = row[key]?.toString();
-      if (value != null && value.isNotEmpty) return value;
+  String? _firstHeroImage(Map row) {
+    for (final key in [
+      'background',
+      'backgrounds',
+      'backdrop',
+      'backdrops',
+      'backdrop_image',
+      'background_image',
+      'banner',
+      'landscape',
+      'fanart',
+      'image',
+      'poster',
+      'posters',
+    ]) {
+      final val = _extractUrl(row[key]);
+      if (val != null) return val;
     }
-    final posters = row['posters'];
-    if (posters is Map) {
-      for (final key in ['large', 'medium', 'small', 'full']) {
-        final value = posters[key]?.toString();
-        if (value != null && value.isNotEmpty) return value;
-      }
+    return null;
+  }
+
+  String? _firstImage(Map row) {
+    for (final key in [
+      'poster',
+      'poster_image',
+      'posters',
+      'image',
+      'images',
+      'thumbnail',
+      'thumb',
+      'face',
+      'cover',
+      'logo',
+      'background',
+    ]) {
+      final val = _extractUrl(row[key]);
+      if (val != null) return val;
     }
     return null;
   }
@@ -529,7 +582,6 @@ class ThePornDb {
     }
     return raw == null || raw.toString().isEmpty ? const [] : [raw.toString()];
   }
-
 
   double _rating(MediaItem item) => item.rating ?? 0;
 

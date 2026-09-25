@@ -264,8 +264,11 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                       ),
                       const SizedBox(height: 8),
                       _QuickActionButton(
-                        icon: _inLibrary ? Icons.check_rounded : Icons.add_rounded,
-                        label: _inLibrary ? 'In Library' : 'Add to Library',
+                        icon: _inLibrary
+                            ? Icons.delete_outline_rounded
+                            : Icons.add_rounded,
+                        label: _inLibrary ? 'Remove from Library' : 'Add to Library',
+                        destructive: _inLibrary,
                         onTap: _toggleLibrary,
                       ),
                       if (_busy) ...[
@@ -295,6 +298,7 @@ class _QuickActionButton extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.primary = false,
+    this.destructive = false,
     this.compact = false,
   });
 
@@ -302,19 +306,46 @@ class _QuickActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool primary;
+  final bool destructive;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(999);
+    final fgColor = primary
+        ? Colors.black
+        : destructive
+            ? const Color(0xFFFF6E6E)
+            : Colors.white;
+    final borderColor = destructive
+        ? Colors.redAccent.withValues(alpha: 0.38)
+        : Colors.white.withValues(alpha: primary ? 0.30 : 0.14);
+    final gradientColors = primary
+        ? [
+            Colors.white.withValues(alpha: 0.98),
+            Colors.white.withValues(alpha: 0.82),
+          ]
+        : destructive
+            ? [
+                Colors.redAccent.withValues(alpha: 0.22),
+                Colors.redAccent.withValues(alpha: 0.10),
+              ]
+            : [
+                Colors.white.withValues(alpha: 0.10),
+                Colors.white.withValues(alpha: 0.045),
+              ];
+    final matColor = primary
+        ? Colors.white.withValues(alpha: 0.92)
+        : destructive
+            ? Colors.redAccent.withValues(alpha: 0.16)
+            : Colors.white.withValues(alpha: 0.075);
+
     return ClipRRect(
       borderRadius: radius,
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Material(
-          color: primary
-              ? Colors.white.withValues(alpha: 0.92)
-              : Colors.white.withValues(alpha: 0.075),
+          color: matColor,
           child: InkWell(
             onTap: onTap,
             borderRadius: radius,
@@ -324,20 +355,12 @@ class _QuickActionButton extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: radius,
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: primary ? 0.30 : 0.14),
+                  color: borderColor,
                 ),
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: primary
-                      ? [
-                          Colors.white.withValues(alpha: 0.98),
-                          Colors.white.withValues(alpha: 0.82),
-                        ]
-                      : [
-                          Colors.white.withValues(alpha: 0.10),
-                          Colors.white.withValues(alpha: 0.045),
-                        ],
+                  colors: gradientColors,
                 ),
               ),
               child: Center(
@@ -347,7 +370,7 @@ class _QuickActionButton extends StatelessWidget {
                   children: [
                     Icon(
                       icon,
-                      color: primary ? Colors.black : Colors.white,
+                      color: fgColor,
                       size: 21,
                     ),
                     const SizedBox(width: 10),
@@ -358,7 +381,7 @@ class _QuickActionButton extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
                         style: AppText.button.copyWith(
-                          color: primary ? Colors.black : Colors.white,
+                          color: fgColor,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),

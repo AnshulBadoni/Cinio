@@ -65,9 +65,10 @@ class _Hero extends StatelessWidget {
             ColoredBox(color: AppColors.surface2),
       );
     }
+    final effectiveHeaders = resolveEffectiveCoverHeaders(coverUrl, coverHeaders);
     return CachedNetworkImage(
       imageUrl: coverUrl,
-      httpHeaders: coverHeaders,
+      httpHeaders: effectiveHeaders,
       fit: BoxFit.cover,
       alignment: const Alignment(0, -0.20),
       memCacheWidth: 1440,
