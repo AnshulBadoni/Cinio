@@ -110,16 +110,15 @@ class _TrailerScreenState extends State<TrailerScreen> {
             await p.command(['audio-add', hd.audio, 'select']);
           } catch (_) {/* audio failing shouldn't sink the HD attempt */}
         }
-        // Throttled 1080p stalls here — position never leaves zero.
-        await _player.stream.position.firstWhere((pos) => pos > Duration.zero);
+        await _player.stream.playing.firstWhere((playing) => playing);
       }
 
-      await setup().timeout(const Duration(seconds: 8));
+      await setup().timeout(const Duration(seconds: 12));
       if (!mounted) return true;
       setState(() => _resolved = true);
       return true;
     } catch (_) {
-      return false; // stalled/failed → caller falls back to 360p muxed
+      return false; // stalled/failed → caller falls back to muxed stream
     }
   }
 

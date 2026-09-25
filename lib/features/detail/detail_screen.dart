@@ -264,9 +264,9 @@ class _DetailView extends StatefulWidget {
 class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
   double _expandedHeightFor({required bool isReading, required bool hasDownload}) {
-    if (isReading) return 450.0;
-    if (hasDownload) return 530.0;
-    return 465.0;
+    if (isReading) return 520.0;
+    if (hasDownload) return 610.0;
+    return 540.0;
   }
 
   bool _showAppBarTitle = false;

@@ -176,11 +176,14 @@ class TrailerService {
     final yt = YoutubeExplode();
     try {
       final manifest = await yt.videos.streamsClient.getManifest(youtubeId);
-      final videoOnly = manifest.videoOnly.toList();
+      final allVideo = manifest.videoOnly.toList();
       final audioOnly = manifest.audioOnly;
-      if (videoOnly.isEmpty || audioOnly.isEmpty) return null;
-      // Highest quality at or below 1080p (a trailer doesn't need 1440/4K);
-      // if nothing is ≤1080p, take the lowest available (closest to 1080).
+      if (allVideo.isEmpty || audioOnly.isEmpty) return null;
+
+      // Prefer MP4 (H.264) for broad hardware decoder support
+      final mp4Video = allVideo.where((s) => s.container.name.toLowerCase() == 'mp4').toList();
+      final videoOnly = mp4Video.isNotEmpty ? mp4Video : allVideo;
+
       videoOnly.sort(
         (a, b) => b.videoResolution.height.compareTo(a.videoResolution.height),
       );

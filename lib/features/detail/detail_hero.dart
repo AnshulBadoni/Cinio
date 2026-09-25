@@ -129,7 +129,7 @@ class _Hero extends StatelessWidget {
                   AppColors.bg,
                   AppColors.bg,
                 ],
-                stops: const [0.0, 0.20, 0.38, 0.55, 0.74, 0.90, 1.0],
+                stops: const [0.0, 0.28, 0.48, 0.68, 0.84, 0.94, 1.0],
               ),
             ),
           ),
@@ -139,10 +139,21 @@ class _Hero extends StatelessWidget {
             left: 16,
             right: 16,
             bottom: 12,
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 180),
-              opacity: collapsed ? 0.0 : 1.0,
-              child: bottomContent!,
+            child: ValueListenableBuilder<double>(
+              valueListenable: stretch ?? _zeroStretch,
+              builder: (context, overscroll, child) {
+                final s = 1.0 + (overscroll / 1000).clamp(0.0, 0.08);
+                return Transform.scale(
+                  alignment: Alignment.bottomCenter,
+                  scale: s,
+                  child: child,
+                );
+              },
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: collapsed ? 0.0 : 1.0,
+                child: bottomContent!,
+              ),
             ),
           ),
       ],
@@ -255,10 +266,8 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
       url = t.directUrl;
       headers = t.headers;
     } else if (t.isYoutube) {
-      // The hero is a muted background, so always use the lightweight muxed
-      // stream. Fullscreen trailer playback owns the optional HD path. This
-      // keeps opening a detail page from triggering a heavy adaptive manifest.
-      url = await svc.streamUrl(t.youtubeId!, low: true);
+      final hdEnabled = sl.isRegistered<PlaybackPrefs>() && sl<PlaybackPrefs>().trailerHd;
+      url = await svc.streamUrl(t.youtubeId!, low: !hdEnabled);
       headers = null;
     } else {
       url = null;
