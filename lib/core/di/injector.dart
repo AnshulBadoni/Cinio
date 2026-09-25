@@ -93,6 +93,9 @@ import '../lnreader/lnreader_runtime.dart' show LnReaderHttpResponse;
 import '../mihon/mihon_extension_service.dart';
 import '../mihon/mihon_manager.dart';
 import '../mihon/mihon_provider.dart';
+import '../stremio/stremio_client.dart';
+import '../stremio/stremio_manager.dart';
+import '../stremio/stremio_store.dart';
 import '../../features/auth/auth_cubit.dart';
 import '../../features/auth/migration_bridge.dart';
 import '../../features/auth/tv_pairing_service.dart';
@@ -849,6 +852,13 @@ Future<void> initDependencies() async {
     await ContentModeCubit.create(sl<ActiveSourceCubit>()),
   );
 
+  final stremioStore = await StremioStore.init();
+  final stremioClient = StremioClient(dio: dio);
+  final stremioManager = StremioManager(store: stremioStore, client: stremioClient);
+  sl.registerSingleton<StremioStore>(stremioStore);
+  sl.registerSingleton<StremioClient>(stremioClient);
+  sl.registerSingleton<StremioManager>(stremioManager);
+
   sl.registerSingleton<SourceRepository>(
     SourceRepository(
       manager: manager,
@@ -856,6 +866,7 @@ Future<void> initDependencies() async {
       aniManager: aniyomiManager,
       mihonManager: mihonManager,
       lnrManager: lnrManager,
+      stremioManager: stremioManager,
       activeSource: sl<ActiveSourceCubit>(),
       prefs: sl<PlaybackPrefs>(),
       // The language sets the sources screens already filter their lists by.

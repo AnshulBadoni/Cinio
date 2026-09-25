@@ -17,12 +17,14 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../../core/stremio/stremio_manager.dart';
 import '../../core/ui/source_switcher.dart';
 import 'aniyomi_sources_screen.dart';
 import 'bloc/sources_state.dart';
 import 'cloudstream_sources_screen.dart';
 import 'lnreader_sources_screen.dart';
 import 'mihon_sources_screen.dart';
+import 'stremio_addons_screen.dart';
 import 'zangetsu_sources_screen.dart';
 
 const Widget _kChevron = Icon(
@@ -31,10 +33,10 @@ const Widget _kChevron = Icon(
   size: 22,
 );
 
-// CloudStream/Aniyomi don't have a dedicated brand color in AppColors, so we
-// keep small local tints here — same "@ ~15%" recipe as AppColors.accentSoft.
+// CloudStream/Aniyomi/Stremio tints
 const _csBlue = Color(0xFF4D9DFF);
 const _aniGreen = Color(0xFF4DD68C);
+const _stremioPurple = Color(0xFF7B5BF2);
 
 /// Providers hub — lists the three provider ecosystems (Zangetsu always,
 /// CloudStream/Aniyomi on Android only), each row pushing its dedicated
@@ -84,6 +86,7 @@ class _HubPhoneView extends StatelessWidget {
         sl<CloudStreamManager>(),
         sl<AniyomiManager>(),
         sl<MihonManager>(),
+        sl<StremioManager>(),
       ]),
       builder: (context, _) => _body(context),
     );
@@ -109,6 +112,7 @@ class _HubPhoneView extends StatelessWidget {
     final mihonCount = sl<MihonManager>().all.length;
     final lnrCount =
         showLnReader ? sl<LnReaderManager>().installedSources.length : 0;
+    final stremioCount = sl<StremioManager>().allAddons.length;
 
     // Read-only pending-update counts. Zangetsu reuses SourcesState's own
     // installed-vs-manifest comparison (same result the Zangetsu screen shows);
@@ -125,12 +129,13 @@ class _HubPhoneView extends StatelessWidget {
 
     final total =
         zangetsuCount +
+        stremioCount +
         (showCs ? csInstalled : 0) +
         (showAniyomi ? aniCount : 0) +
         (showMihon ? mihonCount : 0) +
         (showLnReader ? lnrCount : 0);
     final ecoCount =
-        1 + (showCs ? 1 : 0) + (showAniyomi ? 1 : 0) + (showMihon ? 1 : 0);
+        2 + (showCs ? 1 : 0) + (showAniyomi ? 1 : 0) + (showMihon ? 1 : 0);
 
     final activeId = sl<ActiveSourceCubit>().state;
     final activeName = activeId.isEmpty ? 'None' : _activeSourceLabel(activeId);
@@ -138,8 +143,9 @@ class _HubPhoneView extends StatelessWidget {
     final activeIsAni = activeId.startsWith('ani:');
     final activeIsMihon = activeId.startsWith('mihon:');
     final activeIsLnReader = activeId.startsWith('lnr:');
+    final activeIsStremio = activeId.startsWith('stremio:');
     final activeIsZangetsu =
-        activeId.isNotEmpty && !activeIsCs && !activeIsAni && !activeIsMihon;
+        activeId.isNotEmpty && !activeIsCs && !activeIsAni && !activeIsMihon && !activeIsStremio;
 
     // Manga/novel sources are also Zangetsu JS providers under the hood, but
     // get their own hub entry (Task E3) so reading sources read as visibly
@@ -186,6 +192,16 @@ class _HubPhoneView extends StatelessWidget {
             active: activeIsZangetsu && !activeIsReading,
             updateCount: zUpdates,
             onTap: () => open(const ZangetsuSourcesScreen()),
+          ),
+          const SizedBox(height: 12),
+          _EcoRow(
+            icon: Icons.hub_rounded,
+            title: 'Stremio',
+            desc: 'Stremio Addons & Debrid streams',
+            info: '$stremioCount addon${stremioCount == 1 ? '' : 's'}',
+            active: activeIsStremio,
+            updateCount: 0,
+            onTap: () => open(const StremioAddonsScreen()),
           ),
           if (showCs) ...[
             const SizedBox(height: 12),
@@ -283,6 +299,11 @@ String _activeSourceLabel(String id) {
   if (id.startsWith('lnr:')) {
     return sl.isRegistered<LnReaderManager>()
         ? (sl<LnReaderManager>().metaFor(id.substring(4))?.name ?? id)
+        : id;
+  }
+  if (id.startsWith('stremio:')) {
+    return sl.isRegistered<StremioManager>()
+        ? (sl<StremioManager>().getProvider(id)?.displayName ?? id)
         : id;
   }
   final e = sl<ProviderRegistry>().entryFor(id);
@@ -610,6 +631,13 @@ class _HubTvViewState extends State<_HubTvView> {
                         subtitle: '$zangetsuCount installed',
                         tint: AppColors.accent,
                         onTap: () => _open(const ZangetsuSourcesScreen()),
+                      ),
+                      row(
+                        icon: Icons.hub_rounded,
+                        title: 'Stremio addons',
+                        subtitle: '${sl<StremioManager>().allAddons.length} installed',
+                        tint: _stremioPurple,
+                        onTap: () => _open(const StremioAddonsScreen()),
                       ),
                       if (showCs)
                         row(

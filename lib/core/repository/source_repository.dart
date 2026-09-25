@@ -42,6 +42,7 @@ class SourceRepository {
     required PlaybackPrefs prefs,
     MihonManager? mihonManager,
     LnReaderManager? lnrManager,
+    StremioManager? stremioManager,
     // Optional so existing tests construct this unchanged; null simply means
     // "no language filtering", which is also the behaviour for a user who has
     // never picked a language set.
@@ -56,6 +57,7 @@ class SourceRepository {
        _aniManager = aniManager,
        _active = activeSource,
        _prefs = prefs,
+       _stremioManager = stremioManager,
        // Optional (not `required`) purely so adding manga wiring changes no
        // existing call site — omitting it yields an EMPTY registry, which is
        // exactly the right behaviour anywhere Mihon isn't wired (tests,
@@ -76,6 +78,7 @@ class SourceRepository {
   final AniyomiManager _aniManager;
   final MihonManager _mihonManager;
   final LnReaderManager? _lnrManager;
+  final StremioManager? _stremioManager;
   final ActiveSourceCubit _active;
   final PlaybackPrefs _prefs;
   final ThePornDb? _tpdb;
@@ -158,6 +161,9 @@ class SourceRepository {
   /// [_isMihon] — its own prefix so `sourceTypeOf` can type it novel without
   /// disturbing the `mihon:`/`ani:` lines.
   static bool _isLnReader(String id) => id.startsWith('lnr:');
+
+  /// True for Stremio addon source ids (`stremio:<addonId>`).
+  static bool _isStremio(String id) => id.startsWith('stremio:');
 
   /// The currently-active source identifier.
   String get sourceId => _active.state;
@@ -267,6 +273,11 @@ class SourceRepository {
       ..._lnrManager.installedSources.map(
         (s) => (id: s.id, name: s.name, lang: null),
       ),
+    // Stremio addon providers
+    if (_stremioManager != null)
+      ..._stremioManager.providers.map(
+        (p) => (id: p.sourceId, name: p.displayName, lang: null),
+      ),
   ];
 
   /// Base site URL for a source, used to turn a relative item URL into an
@@ -301,6 +312,9 @@ class SourceRepository {
     if (_isLnReader(sourceId)) {
       return _lnrManager?.get(sourceId)?.displayName ?? sourceId;
     }
+    if (_isStremio(sourceId)) {
+      return _stremioManager?.getProvider(sourceId)?.displayName ?? sourceId;
+    }
     return _manager.get(sourceId)?.displayName ?? sourceId;
   }
 
@@ -320,6 +334,9 @@ class SourceRepository {
     }
     if (_isLnReader(sourceId)) {
       return _lnrManager?.get(sourceId) != null;
+    }
+    if (_isStremio(sourceId)) {
+      return _stremioManager?.hasProvider(sourceId) ?? false;
     }
     return _manager.get(sourceId) != null;
   }
@@ -345,6 +362,8 @@ class SourceRepository {
       p = _mihonManager.get(resolved);
     } else if (_isLnReader(resolved)) {
       p = _lnrManager?.get(resolved);
+    } else if (_isStremio(resolved)) {
+      p = _stremioManager?.getProvider(resolved);
     } else {
       p = _manager.get(resolved);
     }
@@ -648,6 +667,43 @@ class SourceRepository {
     String category,
   ) async {
     try {
+      if (_isStremio(providerId)) {
+        final imdbId = catalog.imdbId;
+        if (imdbId != null && imdbId.isNotEmpty) {
+          final streamTarget = catalog.tmdbIsTv ? '$imdbId:1:1' : imdbId;
+          final addonId = providerId.substring('stremio:'.length);
+          final stremioUrl = 'stremio://$addonId/stream/${catalog.tmdbIsTv ? 'series' : 'movie'}/$streamTarget';
+          final synthesizedDetail = MediaDetail(
+            id: catalog.id,
+            title: catalog.title,
+            cover: catalog.cover,
+            url: stremioUrl,
+            type: ProviderType.movie,
+            sourceId: providerId,
+            isSeries: catalog.tmdbIsTv,
+            episodes: [
+              Episode(
+                id: streamTarget,
+                number: 1,
+                title: catalog.title,
+                url: stremioUrl,
+              ),
+            ],
+          );
+          final item = MediaItem(
+            id: catalog.id,
+            title: catalog.title,
+            cover: catalog.cover,
+            url: stremioUrl,
+            type: ProviderType.movie,
+            sourceId: providerId,
+            imdbId: imdbId,
+            tmdbIsTv: catalog.tmdbIsTv,
+          );
+          return (item: item, detail: synthesizedDetail);
+        }
+      }
+
       final isTpdb = catalog.sourceId.startsWith('tpdb:');
       final effectiveCategory = (isTpdb || !catalog.tmdbIsTv) ? '' : category;
 
