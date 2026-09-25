@@ -298,9 +298,9 @@ class CinioTitleStyle {
           ],
           stops: [0.0, 0.45, 0.80, 1.0],
         ),
-        shadows: const [
-          Shadow(color: Color(0xFF000000), offset: Offset(0, 4), blurRadius: 10),
-          Shadow(color: Color(0x6664748B), blurRadius: 14),
+        shadows: [
+          const Shadow(color: Color(0xFF000000), offset: Offset(0, 4), blurRadius: 10),
+          Shadow(color: accent.withValues(alpha: 0.50), blurRadius: 16),
         ],
         uppercase: true,
       ),
@@ -308,49 +308,170 @@ class CinioTitleStyle {
   }
 }
 
+/// Helper to decompose a title into Main Title + Subtitle if it contains a separator.
+({String main, String? sub}) _splitCompoundTitle(String title) {
+  final trimmed = title.trim();
+  if (trimmed.isEmpty) return (main: '', sub: null);
+
+  // Check colon first
+  if (trimmed.contains(':')) {
+    final idx = trimmed.indexOf(':');
+    final p1 = trimmed.substring(0, idx).trim();
+    final p2 = trimmed.substring(idx + 1).trim();
+    if (p1.isNotEmpty && p2.isNotEmpty && p1.length <= 40) {
+      return (main: p1, sub: p2);
+    }
+  }
+
+  // Check " - " or " — "
+  for (final sep in const [' — ', ' – ', ' - ']) {
+    if (trimmed.contains(sep)) {
+      final idx = trimmed.indexOf(sep);
+      final p1 = trimmed.substring(0, idx).trim();
+      final p2 = trimmed.substring(idx + sep.length).trim();
+      if (p1.isNotEmpty && p2.isNotEmpty && p1.length <= 40) {
+        return (main: p1, sub: p2);
+      }
+    }
+  }
+
+  return (main: trimmed, sub: null);
+}
+
 Widget cinioFallbackTitle({
   required String title,
   required Object seed,
   required Color accent,
-  double fontSize = 32,
+  double fontSize = 28,
   int maxLines = 2,
   TextAlign textAlign = TextAlign.center,
 }) {
+  final split = _splitCompoundTitle(title);
+  final hasSub = split.sub != null && split.sub!.isNotEmpty;
+
+  // Auto-scale base font size according to main title length
+  var effectiveFontSize = fontSize;
+  if (split.main.length > 28) {
+    effectiveFontSize = fontSize * 0.72;
+  } else if (split.main.length > 18) {
+    effectiveFontSize = fontSize * 0.84;
+  }
+
   final preset = CinioTitleStyle.presetFor(seed);
   final cfg = CinioTitleStyle.configFor(
     preset: preset,
     accent: accent,
-    fontSize: fontSize,
+    fontSize: effectiveFontSize,
   );
 
-  final displayTitle = cfg.uppercase ? title.toUpperCase() : title;
+  // Combine ambient glow shadow from dominant poster accent
+  final effectiveShadows = [
+    ...cfg.shadows,
+    Shadow(
+      color: accent.withValues(alpha: 0.45),
+      blurRadius: 18,
+    ),
+  ];
+
+  final displayMain = cfg.uppercase ? split.main.toUpperCase() : split.main;
+
+  if (hasSub) {
+    final subText = cfg.uppercase ? split.sub!.toUpperCase() : split.sub!;
+    final subFontSize = (effectiveFontSize * 0.46).clamp(10.5, 14.5);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Main Title (Dominant Tier)
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            Text(
+              displayMain,
+              textAlign: textAlign,
+              maxLines: 2,
+              softWrap: true,
+              overflow: TextOverflow.ellipsis,
+              style: cfg.baseStyle.copyWith(
+                fontSize: effectiveFontSize,
+                color: Colors.transparent,
+                shadows: effectiveShadows,
+              ),
+            ),
+            ShaderMask(
+              blendMode: BlendMode.srcIn,
+              shaderCallback: (bounds) => cfg.gradient.createShader(bounds),
+              child: Text(
+                displayMain,
+                textAlign: textAlign,
+                maxLines: 2,
+                softWrap: true,
+                overflow: TextOverflow.ellipsis,
+                style: cfg.baseStyle.copyWith(
+                  fontSize: effectiveFontSize,
+                  color: Colors.white,
+                  shadows: const [],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        // Subtitle (Secondary Refined Tier)
+        Text(
+          subText,
+          textAlign: textAlign,
+          maxLines: 2,
+          softWrap: true,
+          overflow: TextOverflow.ellipsis,
+          style: AppText.caption.copyWith(
+            fontFamily: cfg.baseStyle.fontFamily ?? 'Rubik',
+            fontSize: subFontSize,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 2.2,
+            color: Color.lerp(Colors.white70, accent, 0.35) ?? Colors.white70,
+            shadows: const [
+              Shadow(
+                color: Color(0xFF000000),
+                offset: Offset(0, 2),
+                blurRadius: 6,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   return Stack(
     alignment: Alignment.center,
     children: [
-      // Layer 1: Crisp subtle shadow behind the text (renders outside the ShaderMask)
+      // Layer 1: Crisp shadow & ambient glow behind text
       Text(
-        displayTitle,
+        displayMain,
         textAlign: textAlign,
         maxLines: maxLines,
         softWrap: true,
         overflow: TextOverflow.ellipsis,
         style: cfg.baseStyle.copyWith(
+          fontSize: effectiveFontSize,
           color: Colors.transparent,
-          shadows: cfg.shadows,
+          shadows: effectiveShadows,
         ),
       ),
-      // Layer 2: Razor-sharp vector text filled with the gradient
+      // Layer 2: Vector text filled with multi-stop gradient
       ShaderMask(
         blendMode: BlendMode.srcIn,
         shaderCallback: (bounds) => cfg.gradient.createShader(bounds),
         child: Text(
-          displayTitle,
+          displayMain,
           textAlign: textAlign,
           maxLines: maxLines,
           softWrap: true,
           overflow: TextOverflow.ellipsis,
           style: cfg.baseStyle.copyWith(
+            fontSize: effectiveFontSize,
             color: Colors.white,
             shadows: const [],
           ),

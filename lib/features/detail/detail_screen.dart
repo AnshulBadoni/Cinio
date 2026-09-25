@@ -1815,8 +1815,8 @@ class _DetailViewState extends State<_DetailView>
     if (logo != null && logo.isNotEmpty) {
       return ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: compact ? 200 : 290,
-          maxHeight: compact ? 32 : 60,
+          maxWidth: compact ? 200 : 350,
+          maxHeight: compact ? 32 : 88,
         ),
         child: CachedNetworkImage(
           imageUrl: logo,
@@ -1825,12 +1825,12 @@ class _DetailViewState extends State<_DetailView>
           fadeInDuration: const Duration(milliseconds: 220),
           placeholder: (_, _) => _styledFallbackTitle(
             detail,
-            fontSize: compact ? 17 : 26,
+            fontSize: compact ? 17 : 28,
             maxLines: compact ? 1 : 2,
           ),
           errorWidget: (_, _, _) => _styledFallbackTitle(
             detail,
-            fontSize: compact ? 17 : 26,
+            fontSize: compact ? 17 : 28,
             maxLines: compact ? 1 : 2,
           ),
         ),
@@ -1838,7 +1838,7 @@ class _DetailViewState extends State<_DetailView>
     }
     return _styledFallbackTitle(
       detail,
-      fontSize: compact ? 17 : 26,
+      fontSize: compact ? 17 : 28,
       maxLines: compact ? 1 : 2,
     );
   }
@@ -2119,18 +2119,9 @@ class _DetailViewState extends State<_DetailView>
           ),
 
         SliverToBoxAdapter(
-          child: ValueListenableBuilder<double>(
-            valueListenable: _heroStretch,
-            builder: (context, overscroll, child) {
-              final translateY = (overscroll * 0.35).clamp(0.0, 110.0);
-              return Transform.translate(
-                offset: Offset(0, translateY),
-                child: child,
-              );
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
                 if (state.error == 'load_failed')
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -2288,7 +2279,6 @@ class _DetailViewState extends State<_DetailView>
               ],
             ),
           ),
-        ),
 
         SliverPersistentHeader(
           pinned: true,

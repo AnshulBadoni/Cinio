@@ -520,6 +520,28 @@ class SourceRepository {
       return cached.value;
     }
 
+    final inFlight = _inFlightResolutions[key];
+    if (inFlight != null) return inFlight;
+
+    final future = _doResolveCatalogTitle(catalog, category: category, key: key);
+    _inFlightResolutions[key] = future;
+    try {
+      return await future;
+    } finally {
+      _inFlightResolutions.remove(key);
+    }
+  }
+
+  final Map<String, Future<({MediaItem item, MediaDetail detail})?>> _inFlightResolutions = {};
+  final Map<String, ({DateTime at, ({MediaItem item, MediaDetail detail}) value})>
+      _catalogResolutionCache = {};
+  static const Duration _catalogResolutionTtl = Duration(minutes: 30);
+
+  Future<({MediaItem item, MediaDetail detail})?> _doResolveCatalogTitle(
+    MediaItem catalog, {
+    required String category,
+    required String key,
+  }) async {
     final isTpdb = catalog.sourceId.startsWith('tpdb:');
     final primaryPref = isTpdb ? _prefs.tpdbPrimaryProvider : _prefs.tmdbPrimaryProvider;
     final preferred = primaryPref.isNotEmpty ? primaryPref : sourceId;
@@ -561,14 +583,10 @@ class SourceRepository {
       }
     }
 
-    // Build candidate list with content-type awareness
     final adultSources = allCandidates.where(isAdultProvider).toList();
     final nonAdultSources = allCandidates.where((id) => !isAdultProvider(id)).toList();
     final List<String> candidates;
     if (isTpdb) {
-      // For TPDB adult catalog titles, prioritize adult providers.
-      // If adult providers exist, search only adult providers to avoid saturating
-      // the channel with 30 non-adult scrapers which causes Himeros / ParadiseHill timeouts.
       candidates = adultSources.isNotEmpty ? adultSources : allCandidates;
     } else {
       candidates = [...nonAdultSources, ...adultSources];
@@ -579,23 +597,18 @@ class SourceRepository {
       candidates.insert(0, preferred);
     }
 
-    // Preferred provider is attempted first if it aligns with content type or is configured.
     final tried = <String>{};
     final preferredMatchesType = !isTpdb || isAdultProvider(preferred);
     if (preferred.isNotEmpty && hasSource(preferred) && preferredMatchesType) {
       tried.add(preferred);
       final hit = await _resolveCatalogOnSource(catalog, preferred, category)
-          .timeout(const Duration(milliseconds: 5000), onTimeout: () => null);
+          .timeout(const Duration(milliseconds: 3500), onTimeout: () => null);
       if (hit != null) {
         _catalogResolutionCache[key] = (at: DateTime.now(), value: hit);
         return hit;
       }
     }
 
-    // Probe providers in small batches instead of opening a request storm across
-    // every installed extension. Large source sets can otherwise create dozens
-    // of simultaneous network/JS jobs when a Continue card or catalog detail is
-    // opened, which makes the UI appear frozen and can starve the player.
     final remaining = candidates.where((id) => !tried.contains(id)).toList();
     if (remaining.isEmpty) return null;
 
@@ -608,12 +621,12 @@ class SourceRepository {
       completer.complete(res);
     }
 
-    for (var offset = 0; offset < remaining.length && !completer.isCompleted; offset += 4) {
-      final batch = remaining.sublist(offset, math.min(offset + 4, remaining.length));
+    for (var offset = 0; offset < remaining.length && !completer.isCompleted; offset += 3) {
+      final batch = remaining.sublist(offset, math.min(offset + 3, remaining.length));
       final results = await Future.wait([
         for (final id in batch)
           _resolveCatalogOnSource(catalog, id, category)
-              .timeout(const Duration(seconds: 12), onTimeout: () => null),
+              .timeout(const Duration(milliseconds: 4000), onTimeout: () => null),
       ]);
 
       for (var i = 0; i < results.length; i++) {
@@ -625,20 +638,17 @@ class SourceRepository {
           result.item.title,
           altWanted: catalog.englishTitle,
         );
-        if (score >= 0.90) {
+        if (score >= 0.88) {
           finishWith(result);
           break;
         }
-        if (score > bestFuzzyScore && score >= 0.70) {
+        if (score > bestFuzzyScore && score >= 0.80) {
           bestFuzzyScore = score;
           bestFuzzyResult = result;
         }
       }
 
-      // If the current batch produced a usable fuzzy match and no strict match,
-      // give the next batch a chance; otherwise avoid keeping the user waiting
-      // through every remaining extension for a weak result.
-      if (!completer.isCompleted && bestFuzzyResult != null && offset + 4 >= remaining.length) {
+      if (!completer.isCompleted && bestFuzzyResult != null && offset + 3 >= remaining.length) {
         finishWith(bestFuzzyResult);
       }
     }
@@ -651,10 +661,6 @@ class SourceRepository {
     return result;
   }
 
-  final Map<String, ({DateTime at, ({MediaItem item, MediaDetail detail}) value})>
-      _catalogResolutionCache = {};
-  static const Duration _catalogResolutionTtl = Duration(minutes: 30);
-
   Future<({MediaItem item, MediaDetail detail})?> _resolveCatalogOnSource(
     MediaItem catalog,
     String providerId,
@@ -663,29 +669,36 @@ class SourceRepository {
     try {
       final isTpdb = catalog.sourceId.startsWith('tpdb:');
       final effectiveCategory = (isTpdb || !catalog.tmdbIsTv) ? '' : category;
-      final queries = TitleMatcher.searchQueries(catalog.title);
 
-      for (final query in queries) {
+      // 1. Fast Path: Exact cleaned title first
+      final cleanTitle = catalog.title.trim();
+      final fastResults = await search(
+        cleanTitle,
+        category: effectiveCategory,
+        sourceId: providerId,
+      ).timeout(const Duration(milliseconds: 3000), onTimeout: () => const []);
+
+      if (fastResults.isNotEmpty) {
+        final hit = await _findValidCatalogMatch(fastResults, catalog, effectiveCategory);
+        if (hit != null) return hit;
+      }
+
+      // 2. Secondary fallback (only 1-2 essential variations: without year or canon)
+      final withoutYear = cleanTitle.replaceAll(RegExp(r'\s*\(\d{4}\)'), '').trim();
+      final fallbackQuery = withoutYear != cleanTitle && withoutYear.length >= 3
+          ? withoutYear
+          : TitleMatcher.canonicalize(cleanTitle);
+
+      if (fallbackQuery != cleanTitle && fallbackQuery.isNotEmpty) {
         final results = await search(
-          query,
+          fallbackQuery,
           category: effectiveCategory,
           sourceId: providerId,
-        );
+        ).timeout(const Duration(milliseconds: 3000), onTimeout: () => const []);
+
         if (results.isNotEmpty) {
           final hit = await _findValidCatalogMatch(results, catalog, effectiveCategory);
           if (hit != null) return hit;
-        }
-
-        if (catalog.tmdbIsTv && category != 'dub') {
-          final dubResults = await search(
-            query,
-            category: 'dub',
-            sourceId: providerId,
-          );
-          if (dubResults.isNotEmpty) {
-            final dubHit = await _findValidCatalogMatch(dubResults, catalog, 'dub');
-            if (dubHit != null) return dubHit;
-          }
         }
       }
 
@@ -709,7 +722,7 @@ class SourceRepository {
           ? TitleMatcher.matchScore(catalog.title, r.englishTitle!, altWanted: catalog.englishTitle)
           : 0.0;
       final score = math.max(s1, s2);
-      if (score >= 0.70) {
+      if (score >= 0.80) {
         candidates.add((item: r, score: score));
       }
     }
@@ -736,7 +749,7 @@ class SourceRepository {
           cand.item.url,
           category: category,
           sourceId: cand.item.sourceId,
-        );
+        ).timeout(const Duration(milliseconds: 3000), onTimeout: () => throw TimeoutException(''));
 
         if (catalog.tmdbIsTv) {
           // If catalog is TV series, reject movies with same name (e.g. Silo 2021 vs Silo TV show)
