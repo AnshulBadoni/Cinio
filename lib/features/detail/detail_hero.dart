@@ -139,20 +139,10 @@ class _Hero extends StatelessWidget {
             left: 16,
             right: 16,
             bottom: 12,
-            child: ValueListenableBuilder<double>(
-              valueListenable: stretch ?? _zeroStretch,
-              builder: (context, overscroll, child) {
-                final translateY = (overscroll * 0.42).clamp(0.0, 70.0);
-                return Transform.translate(
-                  offset: Offset(0, translateY),
-                  child: child,
-                );
-              },
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 180),
-                opacity: collapsed ? 0.0 : 1.0,
-                child: bottomContent!,
-              ),
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 180),
+              opacity: collapsed ? 0.0 : 1.0,
+              child: bottomContent!,
             ),
           ),
       ],

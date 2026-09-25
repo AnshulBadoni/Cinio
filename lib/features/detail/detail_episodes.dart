@@ -332,7 +332,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
           _buildGrid(store, visible, slice.start, indexById, resumeIdx)
         else
           _buildList(store, visible, slice.start, indexById, resumeIdx, isTv),
-        const SliverToBoxAdapter(child: SizedBox(height: 48)),
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
       ],
     );
   }

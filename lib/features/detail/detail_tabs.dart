@@ -47,7 +47,7 @@ class _CastTab extends StatelessWidget {
     if (staff.isNotEmpty && staff.length != cast.length) {
       final people = [for (final m in cast) if (!staff.contains(m)) m];
       return ListView(
-        padding: const EdgeInsets.only(bottom: 40),
+        padding: const EdgeInsets.only(bottom: 16),
         children: [
           _castSection('Characters', people),
           _castSection('Creators', staff),
@@ -56,7 +56,7 @@ class _CastTab extends StatelessWidget {
     }
     return _grid(
       cast,
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
       nested: false,
     );
   }

@@ -264,9 +264,9 @@ class _DetailView extends StatefulWidget {
 class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
   double _expandedHeightFor({required bool isReading, required bool hasDownload}) {
-    if (isReading) return 475.0;
-    if (hasDownload) return 555.0;
-    return 485.0;
+    if (isReading) return 450.0;
+    if (hasDownload) return 530.0;
+    return 465.0;
   }
 
   bool _showAppBarTitle = false;
@@ -1767,8 +1767,8 @@ class _DetailViewState extends State<_DetailView>
     if (logo != null && logo.isNotEmpty) {
       return ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: compact ? 220 : 380,
-          maxHeight: compact ? 32 : 86,
+          maxWidth: compact ? 200 : 270,
+          maxHeight: compact ? 30 : 54,
         ),
         child: CachedNetworkImage(
           imageUrl: logo,
@@ -1777,12 +1777,12 @@ class _DetailViewState extends State<_DetailView>
           fadeInDuration: const Duration(milliseconds: 220),
           placeholder: (_, _) => _styledFallbackTitle(
             detail,
-            fontSize: compact ? 17 : 32,
+            fontSize: compact ? 16 : 23,
             maxLines: compact ? 1 : 2,
           ),
           errorWidget: (_, _, _) => _styledFallbackTitle(
             detail,
-            fontSize: compact ? 17 : 32,
+            fontSize: compact ? 16 : 23,
             maxLines: compact ? 1 : 2,
           ),
         ),
@@ -1790,14 +1790,14 @@ class _DetailViewState extends State<_DetailView>
     }
     return _styledFallbackTitle(
       detail,
-      fontSize: compact ? 17 : 32,
+      fontSize: compact ? 16 : 23,
       maxLines: compact ? 1 : 2,
     );
   }
 
   Widget _styledFallbackTitle(
     MediaDetail detail, {
-    double fontSize = 32,
+    double fontSize = 23,
     int maxLines = 2,
   }) {
     final seed = detail.tmdbId ?? widget.item.tmdbId ?? detail.title;
@@ -1971,7 +1971,7 @@ class _DetailViewState extends State<_DetailView>
             ),
             centerTitle: true,
             flexibleSpace: FlexibleSpaceBar(
-              collapseMode: CollapseMode.parallax,
+              collapseMode: CollapseMode.pin,
               stretchModes: const [
                 StretchMode.zoomBackground,
               ],
