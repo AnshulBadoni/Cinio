@@ -91,7 +91,7 @@ class _Hero extends StatelessWidget {
           child: ValueListenableBuilder<double>(
             valueListenable: stretch ?? _zeroStretch,
             builder: (context, overscroll, child) {
-              final scale = 1.0 + (overscroll / 360).clamp(0.0, 0.40);
+              final scale = 1.0 + (overscroll / 560.0).clamp(0.0, 0.50);
               return ClipRect(
                 child: Transform.scale(
                   alignment: Alignment.topCenter,
@@ -144,10 +144,19 @@ class _Hero extends StatelessWidget {
             left: 16,
             right: 16,
             bottom: 14,
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 180),
-              opacity: collapsed ? 0.0 : 1.0,
-              child: bottomContent!,
+            child: ValueListenableBuilder<double>(
+              valueListenable: stretch ?? _zeroStretch,
+              builder: (context, overscroll, child) {
+                return Transform.translate(
+                  offset: Offset(0, overscroll),
+                  child: child,
+                );
+              },
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: collapsed ? 0.0 : 1.0,
+                child: bottomContent!,
+              ),
             ),
           ),
       ],

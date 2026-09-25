@@ -331,7 +331,7 @@ class DetailCubit extends Cubit<DetailState> {
       emit(state.copyWith(extrasLoading: false));
       return;
     }
-    var d = detail;
+    var d = state.detail ?? detail;
 
     // TMDB fallback: an id-less movie/series (e.g. some CloudStream sources)
     // can't track on Simkl and can't be id-enriched. Resolve a TMDB id from
@@ -354,7 +354,8 @@ class DetailCubit extends Cubit<DetailState> {
         );
         if (isClosed) return;
         if (id != null) {
-          d = d.copyWith(tmdbId: id);
+          final current = state.detail ?? d;
+          d = current.copyWith(tmdbId: id);
           emit(state.copyWith(detail: d));
         }
       } catch (_) {/* keep going with what we have */}
@@ -368,7 +369,8 @@ class DetailCubit extends Cubit<DetailState> {
         final resolved = await sl<MetadataEnrichment>().resolveMalId(d);
         if (isClosed) return;
         if (resolved != null) {
-          d = d.copyWith(malId: resolved);
+          final current = state.detail ?? d;
+          d = current.copyWith(malId: resolved);
           emit(state.copyWith(detail: d));
         }
       } catch (_) {/* keep going without it */}
@@ -385,7 +387,8 @@ class DetailCubit extends Cubit<DetailState> {
         final mal = await promotion;
         if (isClosed) return;
         if (mal != null) {
-          d = d.copyWith(malId: mal, type: ProviderType.anime);
+          final current = state.detail ?? d;
+          d = current.copyWith(malId: mal, type: ProviderType.anime);
           emit(state.copyWith(detail: d));
         }
       } catch (_) {/* stays a movie */}
@@ -393,18 +396,22 @@ class DetailCubit extends Cubit<DetailState> {
 
     // Fill in per-episode descriptions (AniZip for anime, TMDB season for a
     // movie-source TV series). Best-effort — a miss leaves the row on its date.
-    if (d.episodes.isNotEmpty) {
+    final currentEps = (state.detail?.episodes.isNotEmpty ?? false)
+        ? state.detail!.episodes
+        : d.episodes;
+    if (currentEps.isNotEmpty) {
       try {
         final enriched = await sl<EpisodeMetadataService>().enrich(
-          episodes: d.episodes,
+          episodes: currentEps,
           type: d.type,
           malId: d.malId,
           tmdbId: d.tmdbId,
           tmdbIsTv: d.tmdbIsTv,
         );
         if (isClosed) return;
-        if (enriched.isNotEmpty && !identical(enriched, d.episodes)) {
-          d = d.copyWith(episodes: enriched);
+        if (enriched.isNotEmpty && !identical(enriched, currentEps)) {
+          final current = state.detail ?? d;
+          d = current.copyWith(episodes: enriched);
           emit(state.copyWith(detail: d));
         }
       } catch (_) {/* keep episodes as-is */}
@@ -435,8 +442,8 @@ class DetailCubit extends Cubit<DetailState> {
     // CloudStream's actors/recommendations) — so the tabs fill even without ids.
     if (isClosed) return;
     emit(state.copyWith(
-      cast: detail.castMembers,
-      relations: detail.relations,
+      cast: state.cast.isNotEmpty ? state.cast : detail.castMembers,
+      relations: state.relations.isNotEmpty ? state.relations : detail.relations,
       extrasLoading: false,
     ));
   }

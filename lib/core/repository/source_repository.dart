@@ -612,53 +612,34 @@ class SourceRepository {
     final remaining = candidates.where((id) => !tried.contains(id)).toList();
     if (remaining.isEmpty) return null;
 
-    final completer = Completer<({MediaItem item, MediaDetail detail})?>();
     ({MediaItem item, MediaDetail detail})? bestFuzzyResult;
     double bestFuzzyScore = 0.0;
 
-    void finishWith(({MediaItem item, MediaDetail detail})? res) {
-      if (completer.isCompleted) return;
-      completer.complete(res);
-    }
-
-    for (var offset = 0; offset < remaining.length && !completer.isCompleted; offset += 3) {
-      final batch = remaining.sublist(offset, math.min(offset + 3, remaining.length));
-      final results = await Future.wait([
-        for (final id in batch)
-          _resolveCatalogOnSource(catalog, id, category)
-              .timeout(const Duration(milliseconds: 4000), onTimeout: () => null),
-      ]);
-
-      for (var i = 0; i < results.length; i++) {
-        if (completer.isCompleted) break;
-        final result = results[i];
-        if (result == null) continue;
+    for (final id in remaining) {
+      final hit = await _resolveCatalogOnSource(catalog, id, category)
+          .timeout(const Duration(milliseconds: 3000), onTimeout: () => null);
+      if (hit != null) {
         final score = TitleMatcher.matchScore(
           catalog.title,
-          result.item.title,
+          hit.item.title,
           altWanted: catalog.englishTitle,
         );
         if (score >= 0.88) {
-          finishWith(result);
-          break;
+          _catalogResolutionCache[key] = (at: DateTime.now(), value: hit);
+          return hit;
         }
         if (score > bestFuzzyScore && score >= 0.80) {
           bestFuzzyScore = score;
-          bestFuzzyResult = result;
+          bestFuzzyResult = hit;
         }
       }
-
-      if (!completer.isCompleted && bestFuzzyResult != null && offset + 3 >= remaining.length) {
-        finishWith(bestFuzzyResult);
-      }
     }
 
-    if (!completer.isCompleted) finishWith(bestFuzzyResult);
-    final result = await completer.future;
-    if (result != null) {
-      _catalogResolutionCache[key] = (at: DateTime.now(), value: result);
+    if (bestFuzzyResult != null) {
+      _catalogResolutionCache[key] = (at: DateTime.now(), value: bestFuzzyResult);
+      return bestFuzzyResult;
     }
-    return result;
+    return null;
   }
 
   Future<({MediaItem item, MediaDetail detail})?> _resolveCatalogOnSource(
@@ -745,11 +726,34 @@ class SourceRepository {
 
     for (final cand in candidates.take(2)) {
       try {
+        if (!catalog.tmdbIsTv) {
+          // For movies, cand.item already contains the valid stream/target URL.
+          // Synthesizing a 1-episode MediaDetail saves 1.5–3.0s of redundant network latency.
+          final resolvedDetail = MediaDetail(
+            id: cand.item.id,
+            title: cand.item.title.trim().isNotEmpty ? cand.item.title : catalog.title,
+            cover: cand.item.cover ?? catalog.cover,
+            url: cand.item.url,
+            type: cand.item.type,
+            sourceId: cand.item.sourceId,
+            isSeries: false,
+            episodes: [
+              Episode(
+                id: cand.item.id,
+                number: 1,
+                title: cand.item.title.trim().isNotEmpty ? cand.item.title : catalog.title,
+                url: cand.item.url,
+              ),
+            ],
+          );
+          return (item: cand.item, detail: resolvedDetail);
+        }
+
         var resolvedDetail = await detail(
           cand.item.url,
           category: category,
           sourceId: cand.item.sourceId,
-        ).timeout(const Duration(milliseconds: 3000), onTimeout: () => throw TimeoutException(''));
+        ).timeout(const Duration(milliseconds: 2500), onTimeout: () => throw TimeoutException(''));
 
         if (catalog.tmdbIsTv) {
           // If catalog is TV series, reject movies with same name (e.g. Silo 2021 vs Silo TV show)
@@ -758,22 +762,6 @@ class SourceRepository {
           }
           if (resolvedDetail.episodes.isEmpty) {
             continue;
-          }
-        } else {
-          // For movies, if episodes is empty, synthesize 1 episode so it can play/download
-          if (resolvedDetail.episodes.isEmpty) {
-            resolvedDetail = resolvedDetail.copyWith(
-              episodes: [
-                Episode(
-                  id: cand.item.id,
-                  number: 1,
-                  title: resolvedDetail.title.trim().isNotEmpty
-                      ? resolvedDetail.title
-                      : catalog.title,
-                  url: cand.item.url,
-                ),
-              ],
-            );
           }
         }
 

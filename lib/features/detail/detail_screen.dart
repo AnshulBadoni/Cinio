@@ -421,9 +421,12 @@ class _DetailViewState extends State<_DetailView>
   }
 
   void _maybePrefetchCatalog({String category = 'sub'}) {
-    // Background catalog prefetching is disabled because fanning out searches
-    // across all providers in the background freezes the UI isolate on mobile.
-    // Provider resolution is performed on-demand when the user presses Play.
+    final isCatalog = widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:');
+    if (!isCatalog) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      sl<SourceRepository>().resolveCatalogTitle(widget.item, category: category);
+    });
   }
 
   void _loadTitleLogo(MediaDetail detail) {
@@ -1115,11 +1118,12 @@ class _DetailViewState extends State<_DetailView>
       }
       if (!mounted) return;
 
+      ({MediaItem item, MediaDetail detail})? cachedResolved;
       Future<({String url, String sourceId})> resolvePlaybackTarget(String u) async {
         if (widget.item.sourceId != 'tmdb:catalog' && !widget.item.sourceId.startsWith('tpdb:')) {
           return (url: u, sourceId: detail.sourceId);
         }
-        final resolved = await _resolveCatalogPlayback(category: category);
+        final resolved = cachedResolved ??= await _resolveCatalogPlayback(category: category);
         if (resolved == null) {
           return (url: u, sourceId: detail.sourceId);
         }
@@ -1467,7 +1471,9 @@ class _DetailViewState extends State<_DetailView>
     if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) {
       final resolved = await _resolveCatalogPlayback(category: category);
       if (resolved == null) return const {};
-      d = await sl<SourceRepository>().detail(resolved.item.url, category: category, sourceId: resolved.item.sourceId);
+      d = resolved.detail.episodes.isNotEmpty
+          ? resolved.detail
+          : await sl<SourceRepository>().detail(resolved.item.url, category: category, sourceId: resolved.item.sourceId);
     } else {
       d = await sl<SourceRepository>().detail(widget.item.url, category: category, sourceId: widget.item.sourceId);
     }
@@ -1585,30 +1591,33 @@ class _DetailViewState extends State<_DetailView>
             );
           }
 
-          var done = false;
-          var pollTries = 0;
-          final knownUrls = s.map((e) => e.url).toSet();
+          final isCloudStream = targetDetail.sourceId.startsWith('cs:') || targetDetail.sourceId.startsWith('cloudstream:');
+          if (isCloudStream) {
+            var done = false;
+            var pollTries = 0;
+            final knownUrls = s.map((e) => e.url).toSet();
 
-          while (!done && pollTries < 15) {
-            await Future.delayed(const Duration(milliseconds: 750));
-            pollTries++;
-            final polled = await sl<SourceRepository>().polledSources(
-              targetEp.url,
-              sourceId: targetDetail.sourceId,
-            );
-            done = polled.done;
-            final newSources = polled.sources.where((e) => !knownUrls.contains(e.url)).toList();
-            if (newSources.isNotEmpty) {
-              for (final ns in newSources) {
-                knownUrls.add(ns.url);
-              }
-              s = [...s, ...newSources];
-              onProgress?.call(
-                sources: s,
-                resolvedItem: targetItem,
-                resolvedDetail: targetDetail,
-                resolvedEpisode: targetEp,
+            while (!done && pollTries < 4) {
+              await Future.delayed(const Duration(milliseconds: 700));
+              pollTries++;
+              final polled = await sl<SourceRepository>().polledSources(
+                targetEp.url,
+                sourceId: targetDetail.sourceId,
               );
+              done = polled.done;
+              final newSources = polled.sources.where((e) => !knownUrls.contains(e.url)).toList();
+              if (newSources.isNotEmpty) {
+                for (final ns in newSources) {
+                  knownUrls.add(ns.url);
+                }
+                s = [...s, ...newSources];
+                onProgress?.call(
+                  sources: s,
+                  resolvedItem: targetItem,
+                  resolvedDetail: targetDetail,
+                  resolvedEpisode: targetEp,
+                );
+              }
             }
           }
 
@@ -2119,9 +2128,17 @@ class _DetailViewState extends State<_DetailView>
           ),
 
         SliverToBoxAdapter(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          child: ValueListenableBuilder<double>(
+            valueListenable: _heroStretch,
+            builder: (context, overscroll, child) {
+              return Transform.translate(
+                offset: Offset(0, overscroll),
+                child: child,
+              );
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 if (state.error == 'load_failed')
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -2279,6 +2296,7 @@ class _DetailViewState extends State<_DetailView>
               ],
             ),
           ),
+        ),
 
         SliverPersistentHeader(
           pinned: true,
