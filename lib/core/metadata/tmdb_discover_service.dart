@@ -436,6 +436,33 @@ class TmdbDiscoverService {
     } catch (_) { return null; }
   }
 
+  final Map<String, String?> _seasonPosterCache = {};
+
+  Future<String?> seasonPoster(int id, int seasonNumber) async {
+    final key = '$id:$seasonNumber';
+    if (_seasonPosterCache.containsKey(key)) return _seasonPosterCache[key];
+    try {
+      final response = await _dio.get<dynamic>(
+        '${Tmdb.base}/tv/$id/season/$seasonNumber',
+        options: Options(
+          receiveTimeout: const Duration(seconds: 8),
+          sendTimeout: const Duration(seconds: 8),
+        ),
+      );
+      final rawData = response.data;
+      if (rawData is Map && rawData['poster_path'] is String) {
+        final path = rawData['poster_path'] as String;
+        if (path.isNotEmpty) {
+          final url = '${Tmdb.img}/w780$path';
+          _seasonPosterCache[key] = url;
+          return url;
+        }
+      }
+    } catch (_) {}
+    _seasonPosterCache[key] = null;
+    return null;
+  }
+
   Future<List<Episode>> seasonEpisodes(int id, int seasonNumber) => _loadTmdbSeason(id, seasonNumber);
 
   Future<List<Episode>> _loadTmdbSeason(int id, int seasonNumber) async {

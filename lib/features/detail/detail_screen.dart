@@ -486,6 +486,25 @@ class _DetailViewState extends State<_DetailView>
     });
   }
 
+  String? _seasonPosterUrl;
+  String? _seasonPosterKey;
+
+  void _loadSeasonPoster(MediaDetail detail, int seasonNumber) {
+    final tmdbId = detail.tmdbId ?? widget.item.tmdbId;
+    if (tmdbId == null) return;
+    final isTv = detail.tmdbIsTv || widget.item.tmdbIsTv || detail.isSeries;
+    if (!isTv) return;
+    final key = '$tmdbId:$seasonNumber';
+    if (_seasonPosterKey == key) return;
+    _seasonPosterKey = key;
+    sl<TmdbDiscoverService>().seasonPoster(tmdbId, seasonNumber).then((url) {
+      if (!mounted || _seasonPosterKey != key) return;
+      if (url != null && url.isNotEmpty) {
+        setState(() => _seasonPosterUrl = url);
+      }
+    });
+  }
+
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final isReading = sl<ContentModeCubit>().state.isReading;
@@ -1859,7 +1878,21 @@ class _DetailViewState extends State<_DetailView>
         if (mounted) setState(() => _configureTabController(showEpisodesTab));
       });
     }
-    final detailKey = '${detail.sourceId}:${detail.id}';
+    final seasonSet = seasonsOf(eps, detail.availableSeasons);
+    final hasMultipleSeasons = seasonSet.length > 1;
+    final currentSeason = hasMultipleSeasons
+        ? (seasonSet.contains(selectedSeason)
+              ? selectedSeason
+              : (seasonSet.isNotEmpty ? seasonSet.first : 1))
+        : 1;
+    final filteredBySeason = hasMultipleSeasons
+        ? eps.where((e) => (seasonOf(e) ?? 1) == currentSeason).toList()
+        : eps;
+    final seasonEps = (filteredBySeason.isEmpty && eps.isNotEmpty)
+        ? eps
+        : filteredBySeason;
+
+    final detailKey = '${detail.sourceId}:${detail.id}:$currentSeason';
     if (_postFrameForDetailKey != detailKey) {
       _postFrameForDetailKey = detailKey;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1867,6 +1900,7 @@ class _DetailViewState extends State<_DetailView>
         _ensureFiller(detail.malId ?? item.malId);
         _maybeFetchTrackerProgress(detail);
         _loadTitleAccent(detail);
+        _loadSeasonPoster(detail, currentSeason);
         _scheduleTrailerResolution(detail);
       });
     }
@@ -1895,26 +1929,10 @@ class _DetailViewState extends State<_DetailView>
                 ? (resumePercent != null ? 'Continue $resumePercent%' : 'Continue')
                 : (_isInCinema(detail) ? 'In Cinema' : 'Play')));
 
-    final coverUrl = detail.cover ?? item.cover ?? '';
-    final heroCoverUrl = item.heroImage ?? coverUrl;
+    final coverUrl = _seasonPosterUrl ?? detail.cover ?? item.cover ?? '';
+    final heroCoverUrl = _seasonPosterUrl ?? item.heroImage ?? coverUrl;
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
     final hasCover = heroCoverUrl.isNotEmpty;
-
-    // Do not resolve or mount a native trailer player during detail rendering.
-
-    final seasonSet = seasonsOf(eps, detail.availableSeasons);
-    final hasMultipleSeasons = seasonSet.length > 1;
-    final currentSeason = hasMultipleSeasons
-        ? (seasonSet.contains(selectedSeason)
-              ? selectedSeason
-              : (seasonSet.isNotEmpty ? seasonSet.first : 1))
-        : 1;
-    final filteredBySeason = hasMultipleSeasons
-        ? eps.where((e) => (seasonOf(e) ?? 1) == currentSeason).toList()
-        : eps;
-    final seasonEps = (filteredBySeason.isEmpty && eps.isNotEmpty)
-        ? eps
-        : filteredBySeason;
 
     final episodesBySeason = <int, List<Episode>>{};
     if (hasMultipleSeasons) {
@@ -1950,7 +1968,7 @@ class _DetailViewState extends State<_DetailView>
       onNotification: (notification) {
         if (notification.metrics.axis == Axis.vertical) {
           if (notification.metrics.pixels < 0) {
-            _heroStretch.value = (-notification.metrics.pixels).clamp(0.0, 180.0);
+            _heroStretch.value = (-notification.metrics.pixels).clamp(0.0, 320.0);
           } else if (_heroStretch.value > 0) {
             _heroStretch.value = 0.0;
           }
@@ -1977,18 +1995,24 @@ class _DetailViewState extends State<_DetailView>
             elevation: _showAppBarTitle ? 3 : 0,
             stretch: true,
             stretchTriggerOffset: 80,
-            leading: Center(
-              child: Container(
-                margin: const EdgeInsets.only(left: 8),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _showAppBarTitle
-                      ? Colors.transparent
-                      : Colors.black.withValues(alpha: 0.45),
-                ),
-                child: IconButton(
-                  icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 19.5),
-                  onPressed: () => Navigator.of(context).maybePop(),
+            leadingWidth: 68,
+            leading: Padding(
+              padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
+              child: Center(
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _showAppBarTitle
+                        ? Colors.transparent
+                        : Colors.black.withValues(alpha: 0.55),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 19.5),
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
                 ),
               ),
             ),
@@ -2091,17 +2115,9 @@ class _DetailViewState extends State<_DetailView>
           ),
 
         SliverToBoxAdapter(
-          child: ValueListenableBuilder<double>(
-            valueListenable: _heroStretch,
-            builder: (context, overscroll, child) {
-              return Transform.translate(
-                offset: Offset(0, overscroll * 0.40),
-                child: child,
-              );
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
                 if (state.error == 'load_failed')
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -2259,7 +2275,6 @@ class _DetailViewState extends State<_DetailView>
               ],
             ),
           ),
-        ),
 
         SliverPersistentHeader(
           pinned: true,

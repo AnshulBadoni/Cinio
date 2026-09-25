@@ -597,16 +597,23 @@ class _ControlsOverlay extends StatelessWidget {
                   // _AnimatedPlayPause's disc exactly, so the episode arrows
                   // don't twitch every time playback stalls.
                   if (buffering) {
-                    return const SizedBox(
+                    return SizedBox(
                       width: 58,
                       height: 58,
                       child: Center(
-                        child: SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 3,
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: 0.18),
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.play_arrow_rounded,
+                              color: Colors.white70,
+                              size: 26,
+                            ),
                           ),
                         ),
                       ),

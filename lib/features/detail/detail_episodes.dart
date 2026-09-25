@@ -229,7 +229,8 @@ class _EpisodesTabState extends State<_EpisodesTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.seasonEps.isEmpty) {
+    final baseEps = widget.seasonEps.isNotEmpty ? widget.seasonEps : widget.eps;
+    if (baseEps.isEmpty) {
       return const EmptyState(
         icon: Icons.video_library_outlined,
         message: 'No episodes available from this source',
