@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:palette_generator/palette_generator.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/cupertino.dart' show CupertinoPicker;
+import 'package:flutter/cupertino.dart' show CupertinoPicker, CupertinoIcons;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1792,8 +1792,8 @@ class _DetailViewState extends State<_DetailView>
     if (logo != null && logo.isNotEmpty) {
       return ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: compact ? 200 : 270,
-          maxHeight: compact ? 30 : 54,
+          maxWidth: compact ? 200 : 290,
+          maxHeight: compact ? 32 : 60,
         ),
         child: CachedNetworkImage(
           imageUrl: logo,
@@ -1802,12 +1802,12 @@ class _DetailViewState extends State<_DetailView>
           fadeInDuration: const Duration(milliseconds: 220),
           placeholder: (_, _) => _styledFallbackTitle(
             detail,
-            fontSize: compact ? 16 : 23,
+            fontSize: compact ? 17 : 26,
             maxLines: compact ? 1 : 2,
           ),
           errorWidget: (_, _, _) => _styledFallbackTitle(
             detail,
-            fontSize: compact ? 16 : 23,
+            fontSize: compact ? 17 : 26,
             maxLines: compact ? 1 : 2,
           ),
         ),
@@ -1815,14 +1815,14 @@ class _DetailViewState extends State<_DetailView>
     }
     return _styledFallbackTitle(
       detail,
-      fontSize: compact ? 16 : 23,
+      fontSize: compact ? 17 : 26,
       maxLines: compact ? 1 : 2,
     );
   }
 
   Widget _styledFallbackTitle(
     MediaDetail detail, {
-    double fontSize = 23,
+    double fontSize = 26,
     int maxLines = 2,
   }) {
     final seed = detail.tmdbId ?? widget.item.tmdbId ?? detail.title;
@@ -1984,7 +1984,7 @@ class _DetailViewState extends State<_DetailView>
                       : Colors.black.withValues(alpha: 0.45),
                 ),
                 child: IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+                  icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 22),
                   onPressed: () => Navigator.of(context).maybePop(),
                 ),
               ),
@@ -2088,17 +2088,8 @@ class _DetailViewState extends State<_DetailView>
           ),
 
         SliverToBoxAdapter(
-          child: ValueListenableBuilder<double>(
-            valueListenable: _heroStretch,
-            builder: (context, overscroll, child) {
-              final translateY = (overscroll * 0.40).clamp(0.0, 45.0);
-              return Transform.translate(
-                offset: Offset(0, translateY),
-                child: child,
-              );
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (state.error == 'load_failed')
                   Padding(
@@ -2256,7 +2247,6 @@ class _DetailViewState extends State<_DetailView>
                 ),
               ],
             ),
-          ),
         ),
 
         SliverPersistentHeader(

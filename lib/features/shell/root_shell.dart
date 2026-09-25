@@ -253,13 +253,13 @@ class _RootShellState extends State<RootShell>
                     // Scrolling down (content moving up): collapse dock
                     _dockCtrl.value = math.min(
                       1.0,
-                      _dockCtrl.value + delta / 85.0,
+                      _dockCtrl.value + delta / 240.0,
                     );
                   } else if (delta < -0.4) {
                     // Scrolling up (content moving down): expand dock
                     _dockCtrl.value = math.max(
                       0.0,
-                      _dockCtrl.value + delta / 85.0,
+                      _dockCtrl.value + delta / 240.0,
                     );
                   }
                 }
@@ -443,12 +443,12 @@ class _FloatingDock extends StatelessWidget {
 
 (IconData, IconData)? _iconFor(DockTab t) => switch (t) {
   DockTab.home => (CupertinoIcons.house, CupertinoIcons.house_fill),
-  DockTab.search => (CupertinoIcons.compass, CupertinoIcons.compass_fill),
+  DockTab.search => (CupertinoIcons.search, CupertinoIcons.search),
   DockTab.myList => (CupertinoIcons.bookmark, CupertinoIcons.bookmark_fill),
   DockTab.schedule => (CupertinoIcons.calendar, CupertinoIcons.calendar_today),
   DockTab.downloads => (CupertinoIcons.arrow_down_circle, CupertinoIcons.arrow_down_circle_fill),
   DockTab.history => (CupertinoIcons.clock, CupertinoIcons.clock_fill),
-  _ => null,
+  DockTab.profile => (CupertinoIcons.person_crop_circle, CupertinoIcons.person_crop_circle_fill),
 };
 
 class _DockPop extends StatelessWidget {

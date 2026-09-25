@@ -175,7 +175,7 @@ class TmdbDiscoverService {
 
   Future<List<MediaItem>> _newReleases(int page) async {
     try {
-      final response = await _dio.get<dynamic>(
+      final movieFut = _dio.get<dynamic>(
         '${Tmdb.base}/movie/now_playing',
         queryParameters: {
           'page': page,
@@ -183,10 +183,32 @@ class TmdbDiscoverService {
         },
         options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
       );
-      final rows = response.data is Map ? response.data['results'] : null;
-      if (rows is List && rows.isNotEmpty) {
-        return [for (final row in rows) if (row is Map) ..._mapSearchRow(row, type: 'movies')];
+      final tvFut = _dio.get<dynamic>(
+        '${Tmdb.base}/tv/on_the_air',
+        queryParameters: {
+          'page': page,
+        },
+        options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
+      );
+
+      final results = await Future.wait([movieFut, tvFut]);
+      final movieRows = results[0].data is Map ? results[0].data['results'] : null;
+      final tvRows = results[1].data is Map ? results[1].data['results'] : null;
+
+      final movies = (movieRows is List)
+          ? [for (final row in movieRows) if (row is Map) ..._mapSearchRow(row, type: 'movies')]
+          : <MediaItem>[];
+      final shows = (tvRows is List)
+          ? [for (final row in tvRows) if (row is Map) ..._mapSearchRow(row, type: 'series')]
+          : <MediaItem>[];
+
+      final mixed = <MediaItem>[];
+      final maxLen = math.max(movies.length, shows.length);
+      for (var i = 0; i < maxLen; i++) {
+        if (i < movies.length) mixed.add(movies[i]);
+        if (i < shows.length) mixed.add(shows[i]);
       }
+      if (mixed.isNotEmpty) return mixed;
     } catch (_) {}
     return _discoverKind(kind: 'movie', catalog: 'recent', page: page);
   }
