@@ -285,9 +285,7 @@ class _DetailView extends StatefulWidget {
 class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
   double _expandedHeightFor({required bool isReading, required bool hasDownload}) {
-    if (isReading) return 520.0;
-    if (hasDownload) return 610.0;
-    return 540.0;
+    return 330.0;
   }
 
   bool _showAppBarTitle = false;
@@ -2149,7 +2147,17 @@ class _DetailViewState extends State<_DetailView>
                 onTapFullscreen: _trailerSource != null
                     ? () => _openTrailer(_trailerSource!)
                     : null,
-                bottomContent: Column(
+              ),
+            ),
+          ),
+
+        SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -2241,13 +2249,6 @@ class _DetailViewState extends State<_DetailView>
                   ],
                 ),
               ),
-            ),
-          ),
-
-        SliverToBoxAdapter(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
                 if (state.error == 'load_failed')
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
