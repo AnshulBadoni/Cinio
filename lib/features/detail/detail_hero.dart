@@ -120,6 +120,7 @@ class _Hero extends StatelessWidget {
         Positioned.fill(
           child: Stack(
             fit: StackFit.expand,
+            clipBehavior: Clip.none,
             children: [
               IgnorePointer(
                 child: DecoratedBox(

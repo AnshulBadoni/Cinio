@@ -225,15 +225,10 @@ Widget cinioFallbackTitle({
   final split = _splitCompoundTitle(title);
   final hasSub = split.sub != null && split.sub!.isNotEmpty;
 
-  // Auto-scale base font size according to main title length to prevent edge-to-edge overflow
-  var effectiveFontSize = fontSize * 0.95; // 5% base reduction
-  if (split.main.length > 28) {
-    effectiveFontSize *= 0.72;
-  } else if (split.main.length > 18) {
-    effectiveFontSize *= 0.82;
-  } else if (split.main.length > 12) {
-    effectiveFontSize *= 0.90;
-  }
+  // Use the passed-in fontSize directly (already 5% reduced upstream).
+  // FittedBox handles shrinking for long titles automatically — no more
+  // manual length-bucket heuristics.
+  final effectiveFontSize = fontSize;
 
   final preset = CinioTitleStyle.presetFor(seed);
   final cfg = CinioTitleStyle.configFor(
@@ -245,6 +240,46 @@ Widget cinioFallbackTitle({
   final displayMain = cfg.uppercase ? split.main.toUpperCase() : split.main;
   final mainFontSize = cfg.baseStyle.fontSize ?? effectiveFontSize;
 
+  // Builds the shadow + gradient double-layer text, wrapped in a FittedBox
+  // so it scales down only when it would otherwise overflow — short titles
+  // stay at full size, long titles shrink smoothly to fit.
+  Widget buildMainText(double fs, int lines) => FittedBox(
+    fit: BoxFit.scaleDown,
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        Text(
+          displayMain,
+          textAlign: textAlign,
+          maxLines: lines,
+          softWrap: true,
+          overflow: TextOverflow.ellipsis,
+          style: cfg.baseStyle.copyWith(
+            fontSize: fs,
+            color: Colors.transparent,
+            shadows: cfg.shadows,
+          ),
+        ),
+        ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (bounds) => cfg.gradient.createShader(bounds),
+          child: Text(
+            displayMain,
+            textAlign: textAlign,
+            maxLines: lines,
+            softWrap: true,
+            overflow: TextOverflow.ellipsis,
+            style: cfg.baseStyle.copyWith(
+              fontSize: fs,
+              color: Colors.white,
+              shadows: const [],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
   if (hasSub) {
     final subText = cfg.uppercase ? split.sub!.toUpperCase() : split.sub!;
     final subFontSize = (mainFontSize * 0.44).clamp(9.5, 12.5);
@@ -253,100 +288,36 @@ Widget cinioFallbackTitle({
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Main Title
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            Text(
-              displayMain,
-              textAlign: textAlign,
-              maxLines: 2,
-              softWrap: true,
-              overflow: TextOverflow.ellipsis,
-              style: cfg.baseStyle.copyWith(
-                fontSize: mainFontSize,
-                color: Colors.transparent,
-                shadows: cfg.shadows,
-              ),
-            ),
-            ShaderMask(
-              blendMode: BlendMode.srcIn,
-              shaderCallback: (bounds) => cfg.gradient.createShader(bounds),
-              child: Text(
-                displayMain,
-                textAlign: textAlign,
-                maxLines: 2,
-                softWrap: true,
-                overflow: TextOverflow.ellipsis,
-                style: cfg.baseStyle.copyWith(
-                  fontSize: mainFontSize,
-                  color: Colors.white,
-                  shadows: const [],
-                ),
-              ),
-            ),
-          ],
-        ),
+        buildMainText(mainFontSize, 2),
         const SizedBox(height: 3),
         // Subtitle (Secondary Refined Tier)
-        Text(
-          subText,
-          textAlign: textAlign,
-          maxLines: 2,
-          softWrap: true,
-          overflow: TextOverflow.ellipsis,
-          style: AppText.caption.copyWith(
-            fontFamily: cfg.baseStyle.fontFamily ?? 'Rubik',
-            fontSize: subFontSize,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.6,
-            color: Color.lerp(Colors.white70, accent, 0.20) ?? Colors.white70,
-            shadows: const [
-              Shadow(
-                color: Color(0xFF000000),
-                offset: Offset(0, 1.5),
-                blurRadius: 4,
-              ),
-            ],
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            subText,
+            textAlign: textAlign,
+            maxLines: 2,
+            softWrap: true,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.caption.copyWith(
+              fontFamily: cfg.baseStyle.fontFamily ?? 'Rubik',
+              fontSize: subFontSize,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.6,
+              color: Color.lerp(Colors.white70, accent, 0.20) ?? Colors.white70,
+              shadows: const [
+                Shadow(
+                  color: Color(0xFF000000),
+                  offset: Offset(0, 1.5),
+                  blurRadius: 4,
+                ),
+              ],
+            ),
           ),
         ),
       ],
     );
   }
 
-  return Stack(
-    alignment: Alignment.center,
-    children: [
-      // Layer 1: Crisp shadow behind text
-      Text(
-        displayMain,
-        textAlign: textAlign,
-        maxLines: maxLines,
-        softWrap: true,
-        overflow: TextOverflow.ellipsis,
-        style: cfg.baseStyle.copyWith(
-          fontSize: mainFontSize,
-          color: Colors.transparent,
-          shadows: cfg.shadows,
-        ),
-      ),
-      // Layer 2: Vector text filled with subtle poster-tinted gradient
-      ShaderMask(
-        blendMode: BlendMode.srcIn,
-        shaderCallback: (bounds) => cfg.gradient.createShader(bounds),
-        child: Text(
-          displayMain,
-          textAlign: textAlign,
-          maxLines: maxLines,
-          softWrap: true,
-          overflow: TextOverflow.ellipsis,
-          style: cfg.baseStyle.copyWith(
-            fontSize: mainFontSize,
-            color: Colors.white,
-            shadows: const [],
-          ),
-        ),
-      ),
-    ],
-  );
+  return buildMainText(mainFontSize, maxLines);
 }
