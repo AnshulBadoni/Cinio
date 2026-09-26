@@ -83,6 +83,7 @@ class _Hero extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       fit: StackFit.expand,
+      clipBehavior: Clip.none,
       children: [
         // Backdrop: autoplaying trailer once an id resolves, else the cover
         // image. The cover image always sits underneath as placeholder/fallback
@@ -146,17 +147,10 @@ class _Hero extends StatelessWidget {
                   left: 16,
                   right: 16,
                   bottom: 14,
-                  child: ValueListenableBuilder<double>(
-                    valueListenable: stretch ?? _zeroStretch,
-                    builder: (context, overscroll, child) => Transform.translate(
-                      offset: Offset(0, overscroll),
-                      child: child,
-                    ),
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 180),
-                      opacity: collapsed ? 0.0 : 1.0,
-                      child: bottomContent!,
-                    ),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 180),
+                    opacity: collapsed ? 0.0 : 1.0,
+                    child: bottomContent!,
                   ),
                 ),
             ],
