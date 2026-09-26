@@ -1915,11 +1915,12 @@ class _DetailViewState extends State<_DetailView>
 
   Widget _titleHeader(MediaDetail detail, {bool compact = false}) {
     final logo = _titleLogoUrl;
+    final maxW = compact ? 200.0 : 280.0;
     if (logo != null && logo.isNotEmpty) {
       return ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: compact ? 200 : 350,
-          maxHeight: compact ? 32 : 88,
+          maxWidth: maxW,
+          maxHeight: compact ? 32 : 80,
         ),
         child: CachedNetworkImage(
           imageUrl: logo,
@@ -1939,10 +1940,13 @@ class _DetailViewState extends State<_DetailView>
         ),
       );
     }
-    return _styledFallbackTitle(
-      detail,
-      fontSize: compact ? 16 : 26.6,
-      maxLines: compact ? 1 : 2,
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxW),
+      child: _styledFallbackTitle(
+        detail,
+        fontSize: compact ? 16 : 26.6,
+        maxLines: compact ? 1 : 2,
+      ),
     );
   }
 
@@ -2107,6 +2111,7 @@ class _DetailViewState extends State<_DetailView>
             elevation: _showAppBarTitle ? 3 : 0,
             stretch: true,
             stretchTriggerOffset: 80,
+            clipBehavior: Clip.none,
             leadingWidth: 68,
             leading: Padding(
               padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
@@ -2134,21 +2139,16 @@ class _DetailViewState extends State<_DetailView>
               child: _titleHeader(detail, compact: true),
             ),
             centerTitle: true,
-            flexibleSpace: FlexibleSpaceBar(
-              collapseMode: CollapseMode.pin,
-              stretchModes: const [
-                StretchMode.zoomBackground,
-              ],
-              background: _Hero(
-                coverUrl: heroCoverUrl,
-                coverHeaders: coverHeaders,
-                hasCover: hasCover,
-                trailer: _trailerSource,
-                collapsed: _showAppBarTitle,
-                stretch: _heroStretch,
-                onTapFullscreen: _trailerSource != null
-                    ? () => _openTrailer(_trailerSource!)
-                    : null,
+            flexibleSpace: _Hero(
+              coverUrl: heroCoverUrl,
+              coverHeaders: coverHeaders,
+              hasCover: hasCover,
+              trailer: _trailerSource,
+              collapsed: _showAppBarTitle,
+              stretch: _heroStretch,
+              onTapFullscreen: _trailerSource != null
+                  ? () => _openTrailer(_trailerSource!)
+                  : null,
                 bottomContent: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -2161,7 +2161,7 @@ class _DetailViewState extends State<_DetailView>
                         ),
                       ),
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 390),
+                        constraints: const BoxConstraints(maxWidth: 280),
                         child: _titleHeader(detail),
                       ),
                     ),
@@ -2242,7 +2242,6 @@ class _DetailViewState extends State<_DetailView>
                 ),
               ),
             ),
-          ),
 
         SliverToBoxAdapter(
           child: ValueListenableBuilder<double>(
