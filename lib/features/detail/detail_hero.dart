@@ -57,7 +57,7 @@ class _Hero extends StatelessWidget {
           width: 1440,
         ),
         fit: BoxFit.cover,
-        alignment: Alignment.topCenter,
+        alignment: const Alignment(0, -0.20),
         filterQuality: FilterQuality.high,
         loadingBuilder: (_, child, progress) =>
             progress == null ? child : ColoredBox(color: AppColors.surface2),
@@ -70,7 +70,7 @@ class _Hero extends StatelessWidget {
       imageUrl: coverUrl,
       httpHeaders: effectiveHeaders,
       fit: BoxFit.cover,
-      alignment: Alignment.topCenter,
+      alignment: const Alignment(0, -0.20),
       memCacheWidth: 1440,
       filterQuality: FilterQuality.high,
       placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
