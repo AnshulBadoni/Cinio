@@ -102,7 +102,7 @@ class StremioStream extends Equatable {
     if (streamUrl == null || streamUrl.isEmpty) {
       // In pure HTTP Cinio, raw torrents without direct URL are represented with magnet URL
       if (infoHash != null && infoHash!.isNotEmpty) {
-        final magnet = 'magnet:?xt=urn:btih:$infoHash';
+        final magnet = _buildMagnet(infoHash!);
         return VideoSource(
           url: magnet,
           label: _buildLabel(addonName, isTorrent: true),
@@ -128,6 +128,37 @@ class StremioStream extends Equatable {
       headers: headers,
       subtitles: subtitles.map((s) => s.toVideoSubtitle()).toList(),
     );
+  }
+
+  /// Builds a full magnet URI from [hash], appending trackers and display name
+  /// when available. Torrentio supplies trackers in behaviorHints['sources']
+  /// as a List of "tracker:udp://..." strings — without them the torrent
+  /// engine can't find peers and times out immediately.
+  String _buildMagnet(String hash) {
+    final buf = StringBuffer('magnet:?xt=urn:btih:$hash');
+
+    // Display name (dn) — from title or name for peer visibility
+    final dn = (title?.trim().isNotEmpty == true ? title! : name)?.trim();
+    if (dn != null && dn.isNotEmpty) {
+      buf.write('&dn=${Uri.encodeComponent(dn)}');
+    }
+
+    // Trackers (tr) — Torrentio sends them in behaviorHints.sources as
+    // ["tracker:udp://opentracker.i2p.rocks:6969/announce", ...]
+    final sources = behaviorHints?['sources'];
+    if (sources is List) {
+      for (final s in sources) {
+        final str = s?.toString() ?? '';
+        if (str.startsWith('tracker:')) {
+          final tracker = str.substring('tracker:'.length);
+          if (tracker.isNotEmpty) {
+            buf.write('&tr=${Uri.encodeComponent(tracker)}');
+          }
+        }
+      }
+    }
+
+    return buf.toString();
   }
 
   Map<String, String>? _extractHeaders() {
