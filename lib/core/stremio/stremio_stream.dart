@@ -130,10 +130,36 @@ class StremioStream extends Equatable {
     );
   }
 
-  /// Builds a full magnet URI from [hash], appending trackers and display name
-  /// when available. Torrentio supplies trackers in behaviorHints['sources']
-  /// as a List of "tracker:udp://..." strings — without them the torrent
-  /// engine can't find peers and times out immediately.
+  static const _defaultTrackers = [
+    'udp://tracker.opentrackr.org:1337/announce',
+    'udp://open.stealth.si:80/announce',
+    'udp://tracker.torrent.eu.org:451/announce',
+    'udp://tracker.bittor.pw:1337/announce',
+    'udp://public.popcorn-tracker.org:6969/announce',
+    'udp://tracker.dler.org:6969/announce',
+    'udp://exodus.desync.com:6969/announce',
+    'udp://open.demonii.com:1337/announce',
+    'udp://explodie.org:6969/announce',
+    'udp://tracker.coppersurfer.tk:6969/announce',
+  ];
+
+  static String _formatBytes(num bytes) {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    }
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    if (bytes >= 1024) {
+      return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    }
+    return '$bytes B';
+  }
+
+  /// Builds a full magnet URI from [hash], appending trackers and display name.
+  /// When an addon does not provide trackers in behaviorHints, top-tier public
+  /// trackers are automatically appended so libtorrent resolves metadata in seconds
+  /// rather than timing out with no_metadata.
   String _buildMagnet(String hash) {
     final buf = StringBuffer('magnet:?xt=urn:btih:$hash');
 
@@ -143,18 +169,26 @@ class StremioStream extends Equatable {
       buf.write('&dn=${Uri.encodeComponent(dn)}');
     }
 
-    // Trackers (tr) — Torrentio sends them in behaviorHints.sources as
-    // ["tracker:udp://opentracker.i2p.rocks:6969/announce", ...]
+    final addedTrackers = <String>{};
+
+    // Trackers from behaviorHints.sources if present
     final sources = behaviorHints?['sources'];
     if (sources is List) {
       for (final s in sources) {
         final str = s?.toString() ?? '';
         if (str.startsWith('tracker:')) {
-          final tracker = str.substring('tracker:'.length);
-          if (tracker.isNotEmpty) {
+          final tracker = str.substring('tracker:'.length).trim();
+          if (tracker.isNotEmpty && addedTrackers.add(tracker)) {
             buf.write('&tr=${Uri.encodeComponent(tracker)}');
           }
         }
+      }
+    }
+
+    // Always include top tier-1 public trackers to prevent no_metadata timeout
+    for (final tr in _defaultTrackers) {
+      if (addedTrackers.add(tr)) {
+        buf.write('&tr=${Uri.encodeComponent(tr)}');
       }
     }
 
@@ -201,28 +235,104 @@ class StremioStream extends Equatable {
   }
 
   String _buildLabel(String addonName, {bool isTorrent = false}) {
-    final parts = <String>[];
-    if (name != null && name!.trim().isNotEmpty) {
-      parts.add(name!.trim());
-    } else {
-      parts.add(addonName);
+    // 1. Clean addon / provider name (e.g. "Torrentio\n1080p" -> "Torrentio")
+    final rawName = (name ?? '').replaceAll('\r', '').trim();
+    final nameLines = rawName.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+    final addonBase = nameLines.isNotEmpty ? nameLines.first : addonName.split('\n').first.trim();
+
+    // 2. Parse title text and extract metrics (seeders, leechers, size, group)
+    final rawTitle = (title ?? description ?? '').replaceAll('\r', '').trim();
+    final titleLines = rawTitle.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+
+    String? seeders;
+    String? leechers;
+    String? sizeStr;
+    String? sourceGroup;
+    final otherParts = <String>[];
+
+    // Check behaviorHints for videoSize
+    final videoSizeBytes = behaviorHints?['videoSize'];
+    if (videoSizeBytes is num && videoSizeBytes > 0) {
+      sizeStr = _formatBytes(videoSizeBytes);
     }
 
-    if (title != null && title!.trim().isNotEmpty) {
-      // Split on newlines to clean up Torrentio multi-line formatting
-      final cleanTitle = title!.replaceAll('\n', ' · ').replaceAll(RegExp(r'\s+'), ' ').trim();
-      if (cleanTitle.isNotEmpty && !parts.contains(cleanTitle)) {
-        parts.add(cleanTitle);
+    final seederRegex = RegExp(r'(?:👤|🌱)\s*(\d+)|\b(\d+)\s*(?:seeders?|seeds?)\b', caseSensitive: false);
+    final leecherRegex = RegExp(r'(?:👥|🧲)\s*(\d+)|\b(\d+)\s*(?:leechers?|leech?)\b', caseSensitive: false);
+    final sizeRegex = RegExp(r'(?:💾|📦)?\s*(\d+(?:\.\d+)?\s*(?:GB|MB|GiB|MiB))\b', caseSensitive: false);
+    final groupRegex = RegExp(r'⚙️\s*([A-Za-z0-9_.\-]+)');
+
+    for (final line in titleLines) {
+      // Check for seeders
+      final sm = seederRegex.firstMatch(line);
+      if (sm != null && seeders == null) {
+        seeders = sm.group(1) ?? sm.group(2);
       }
-    } else if (description != null && description!.trim().isNotEmpty) {
-      final cleanDesc = description!.replaceAll('\n', ' · ').replaceAll(RegExp(r'\s+'), ' ').trim();
-      if (cleanDesc.isNotEmpty) {
-        parts.add(cleanDesc);
+      // Check for leechers
+      final lm = leecherRegex.firstMatch(line);
+      if (lm != null && leechers == null) {
+        leechers = lm.group(1) ?? lm.group(2);
       }
+      // Check for size if not already found from behaviorHints
+      if (sizeStr == null) {
+        final szm = sizeRegex.firstMatch(line);
+        if (szm != null) {
+          sizeStr = szm.group(1);
+        }
+      }
+      // Check for source group
+      final gm = groupRegex.firstMatch(line);
+      if (gm != null && sourceGroup == null) {
+        sourceGroup = gm.group(1);
+      }
+
+      // If line is not purely metrics, preserve it as clean title / filename
+      final stripped = line
+          .replaceAll(seederRegex, '')
+          .replaceAll(leecherRegex, '')
+          .replaceAll(sizeRegex, '')
+          .replaceAll(groupRegex, '')
+          .replaceAll(RegExp(r'[👤👥💾⚙️🌱🧲·\s]+'), ' ')
+          .trim();
+      if (stripped.isNotEmpty && !otherParts.contains(stripped)) {
+        otherParts.add(stripped);
+      }
+    }
+
+    final quality = _detectQuality();
+
+    // 3. Assemble clean label with metrics prominently up front:
+    // e.g. "Torrentio · 1080p · 💾 2.1 GB · 👤 250 (👥 12) · ⚙️ RARBG · [Torrent] · Movie.Name..."
+    final parts = <String>[];
+    parts.add(addonBase);
+
+    if (quality != 'Auto') {
+      parts.add(quality);
+    }
+
+    if (sizeStr != null && sizeStr.isNotEmpty) {
+      parts.add('💾 $sizeStr');
+    }
+
+    if (seeders != null && seeders.isNotEmpty) {
+      if (leechers != null && leechers.isNotEmpty) {
+        parts.add('👤 $seeders (👥 $leechers)');
+      } else {
+        parts.add('👤 $seeders');
+      }
+    }
+
+    if (sourceGroup != null && sourceGroup.isNotEmpty) {
+      parts.add('⚙️ $sourceGroup');
     }
 
     if (isTorrent) {
-      parts.add('[P2P Torrent]');
+      parts.add('[Torrent]');
+    }
+
+    for (final op in otherParts) {
+      if (!parts.contains(op)) {
+        parts.add(op);
+      }
     }
 
     return parts.join(' · ');

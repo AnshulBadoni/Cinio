@@ -15,7 +15,7 @@ class TorrentPrefs {
   Box get _box => Hive.box(boxName);
 
   bool get allowMobileData =>
-      _box.get('allowMobileData', defaultValue: false) as bool;
+      _box.get('allowMobileData', defaultValue: true) as bool;
 
   Future<void> setAllowMobileData(bool value) =>
       _box.put('allowMobileData', value);

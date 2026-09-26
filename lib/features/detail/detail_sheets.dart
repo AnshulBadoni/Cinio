@@ -304,7 +304,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     final label = _sourceName(s, i);
     final sub = [
       if (s.quality != null && s.quality!.trim().isNotEmpty) s.quality!.trim(),
-      hls ? 'HLS' : 'Direct',
+      s.container == SourceContainer.torrent ? 'Torrent' : (hls ? 'HLS' : 'Direct'),
     ].join(' · ');
     void onTap() => Navigator.pop(
       context,
