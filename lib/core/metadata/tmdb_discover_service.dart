@@ -245,10 +245,48 @@ class TmdbDiscoverService {
     return out;
   }
 
+  int? _extractTmdbId(MediaItem item) {
+    if (item.tmdbId != null && item.tmdbId! > 0) return item.tmdbId;
+    for (final s in [item.id, item.url]) {
+      final match = RegExp(r'(?:movie|tv)[/:](\d+)').firstMatch(s);
+      if (match != null) {
+        final parsed = int.tryParse(match.group(1)!);
+        if (parsed != null && parsed > 0) return parsed;
+      }
+      final numMatch = RegExp(r'^\d+$').firstMatch(s.trim());
+      if (numMatch != null) {
+        final parsed = int.tryParse(numMatch.group(0)!);
+        if (parsed != null && parsed > 0) return parsed;
+      }
+    }
+    return null;
+  }
+
+  bool _extractTmdbIsTv(MediaItem item) {
+    if (item.tmdbIsTv) return true;
+    for (final s in [item.id, item.url]) {
+      if (s.contains(':tv:') || s.contains('/tv/') || s.startsWith('tmdb:tv:')) return true;
+    }
+    return false;
+  }
+
   Future<MediaDetail> movieDetail(MediaItem item) async {
-    final id = item.tmdbId;
+    var id = _extractTmdbId(item);
+    var isTv = _extractTmdbIsTv(item);
+    if (id == null && item.title.trim().isNotEmpty) {
+      try {
+        final searchResults = await search(
+          query: item.title.trim(),
+          type: isTv ? 'series' : 'all',
+        );
+        if (searchResults.isNotEmpty) {
+          final first = searchResults.first;
+          id = _extractTmdbId(first);
+          isTv = _extractTmdbIsTv(first);
+        }
+      } catch (_) {}
+    }
     if (id == null) throw StateError('Missing TMDB id');
-    var isTv = item.tmdbIsTv;
     var kind = isTv ? 'tv' : 'movie';
 
     Future<Response<dynamic>> fetch(String k) {
@@ -312,7 +350,7 @@ class TmdbDiscoverService {
           (r) => r['release_dates'] is List,
           orElse: () => <dynamic,dynamic>{},
         );
-        final dates = matchCountry?['release_dates'];
+        final dates = matchCountry['release_dates'];
         if (dates is List) {
           final today = DateTime.now();
           DateTime? latestTheatrical;

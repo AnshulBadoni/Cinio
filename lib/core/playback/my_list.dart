@@ -166,12 +166,31 @@ class MyListStore {
   ///
   /// Deliberately NOT deleted — if a later build understands the value again,
   /// the row decodes and syncs as normal. Dropping it would be silent data loss.
+  static int? _inferTmdbId(String id, String url) {
+    final match = RegExp(r'(?:movie|tv)[/:](\d+)').firstMatch('$id $url');
+    if (match != null) return int.tryParse(match.group(1)!);
+    final numMatch = RegExp(r'^\d+$').firstMatch(id.trim());
+    if (numMatch != null) return int.tryParse(numMatch.group(0)!);
+    return null;
+  }
+
+  static bool _inferTmdbIsTv(String id, String url) {
+    return '$id $url'.contains('/tv/') || '$id $url'.contains(':tv:');
+  }
+
   static MediaItem? _itemFromHive(Map raw) {
     try {
       final m = Map<String, dynamic>.from(raw);
       final h = m['coverHeaders'];
       if (h is Map) {
         m['coverHeaders'] = h.map((k, v) => MapEntry('$k', '$v'));
+      }
+      final sid = m['sourceId']?.toString() ?? '';
+      final rawId = m['id']?.toString() ?? '';
+      final rawUrl = m['url']?.toString() ?? '';
+      if (m['tmdbId'] == null && (sid == 'tmdb:catalog' || rawId.startsWith('tmdb:') || rawUrl.startsWith('tmdb:'))) {
+        m['tmdbId'] = _inferTmdbId(rawId, rawUrl);
+        m['tmdbIsTv'] = _inferTmdbIsTv(rawId, rawUrl);
       }
       return MediaItem.fromJson(m);
     } catch (_) {
@@ -316,8 +335,17 @@ class MyListStore {
         // dead and every later row went unmerged.
         MediaItem item;
         try {
+          final rawId = row['item_id']?.toString() ?? '';
+          final rawUrl = row['url']?.toString() ?? '';
+          final sourceId = row['source_id']?.toString() ?? '';
+          int? tmdbId;
+          bool tmdbIsTv = false;
+          if (sourceId == 'tmdb:catalog' || rawId.startsWith('tmdb:') || rawUrl.startsWith('tmdb:')) {
+            tmdbId = _inferTmdbId(rawId, rawUrl);
+            tmdbIsTv = _inferTmdbIsTv(rawId, rawUrl);
+          }
           item = MediaItem.fromJson({
-            'id': row['item_id'],
+            'id': rawId,
             'title': row['title'],
             'cover': row['cover'],
             'coverHeaders': headers is String
@@ -325,9 +353,11 @@ class MyListStore {
                 : headers is Map
                 ? headers
                 : null,
-            'url': row['url'],
+            'url': rawUrl,
             'type': row['type'],
-            'sourceId': row['source_id'],
+            'sourceId': sourceId,
+            'tmdbId': tmdbId,
+            'tmdbIsTv': tmdbIsTv,
           });
         } catch (_) {
           continue;

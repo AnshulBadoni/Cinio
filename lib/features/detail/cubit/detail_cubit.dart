@@ -163,15 +163,38 @@ class DetailCubit extends Cubit<DetailState> {
   /// owning source is unknown (active-source title) — robust, never throws.
   String get _prefsSourceId => _sourceId ?? '';
 
+  String? get _effectiveSourceId {
+    if (_sourceId != null && _sourceId.isNotEmpty) return _sourceId;
+    if (_url.startsWith('tmdb:') || _catalogItem?.id.startsWith('tmdb:') == true) {
+      return 'tmdb:catalog';
+    }
+    if (_url.startsWith('tpdb:') || _catalogItem?.id.startsWith('tpdb:') == true) {
+      return 'tpdb:catalog';
+    }
+    return _sourceId;
+  }
+
   static MediaDetail? _shellDetail(
     MediaItem? item,
     String? sourceId,
     String url,
   ) {
-    if (item == null || sourceId == null) return null;
-    final isTmdb = sourceId == 'tmdb:catalog';
-    final isTpdb = sourceId == 'tpdb:catalog';
-    if (!isTmdb && !isTpdb) return null;
+    if (item == null) return null;
+    final sid = (sourceId != null && sourceId.isNotEmpty)
+        ? sourceId
+        : (url.startsWith('tmdb:') || item.id.startsWith('tmdb:')
+            ? 'tmdb:catalog'
+            : (url.startsWith('tpdb:') || item.id.startsWith('tpdb:')
+                ? 'tpdb:catalog'
+                : item.sourceId));
+    final isTv = item.tmdbIsTv || url.contains('/tv/') || item.id.contains(':tv:');
+    int? tmdbId = item.tmdbId;
+    if (tmdbId == null) {
+      final match = RegExp(r'(?:movie|tv)[/:](\d+)').firstMatch('${item.id} $url');
+      if (match != null) {
+        tmdbId = int.tryParse(match.group(1)!);
+      }
+    }
     return MediaDetail(
       id: item.id,
       title: item.title,
@@ -180,14 +203,14 @@ class DetailCubit extends Cubit<DetailState> {
       coverHeaders: item.coverHeaders,
       url: url,
       type: item.type,
-      sourceId: sourceId,
+      sourceId: sid,
       genres: item.genres,
-      tmdbId: item.tmdbId,
-      tmdbIsTv: item.tmdbIsTv,
-      episodes: item.type == ProviderType.movie && !item.tmdbIsTv
+      tmdbId: tmdbId,
+      tmdbIsTv: isTv,
+      episodes: item.type == ProviderType.movie && !isTv
           ? [Episode(id: item.id, title: item.title, number: 1, url: item.url)]
           : const [],
-      isSeries: item.tmdbIsTv,
+      isSeries: isTv,
     );
   }
 
@@ -248,16 +271,17 @@ class DetailCubit extends Cubit<DetailState> {
   }
 
   Future<MediaDetail> _loadDetailForCurrentSource(String category) async {
-    final isCatalog = _sourceId == 'tmdb:catalog' ||
-        (_sourceId?.startsWith('tpdb:') ?? false);
+    final sid = _effectiveSourceId;
+    final isCatalog = sid == 'tmdb:catalog' ||
+        (sid?.startsWith('tpdb:') ?? false);
     if (!isCatalog) {
       try {
-        return await _repo.detail(_url, category: category, sourceId: _sourceId);
+        return await _repo.detail(_url, category: category, sourceId: sid);
       } catch (_) {
         final catDetail = _catalogDetail;
         if (catDetail != null) return catDetail;
         if (_catalogItem != null) {
-          final shell = _shellDetail(_catalogItem, _sourceId, _url);
+          final shell = _shellDetail(_catalogItem, sid, _url);
           if (shell != null) return shell;
         }
         rethrow;
@@ -271,17 +295,29 @@ class DetailCubit extends Cubit<DetailState> {
       cover: _catalogDetail?.cover,
       url: _url,
       type: _catalogDetail?.type ?? ProviderType.movie,
-      sourceId: _sourceId ?? '',
+      sourceId: sid ?? '',
       tmdbId: _catalogDetail?.tmdbId,
       tmdbIsTv: _catalogDetail?.tmdbIsTv ?? false,
     );
     final catDetail = _catalogDetail;
     if (catDetail != null) return catDetail;
 
-    if (_sourceId == 'tmdb:catalog') {
-      return sl<TmdbDiscoverService>().movieDetail(catalogItem);
+    if (sid == 'tmdb:catalog') {
+      try {
+        return await sl<TmdbDiscoverService>().movieDetail(catalogItem);
+      } catch (_) {
+        final shell = _shellDetail(catalogItem, sid, _url);
+        if (shell != null) return shell;
+        rethrow;
+      }
     }
-    return sl<ThePornDb>().movieDetail(catalogItem);
+    try {
+      return await sl<ThePornDb>().movieDetail(catalogItem);
+    } catch (_) {
+      final shell = _shellDetail(catalogItem, sid, _url);
+      if (shell != null) return shell;
+      rethrow;
+    }
   }
 
   /// Pull-to-refresh. Drops the source's HTTP cache first so the re-fetch is

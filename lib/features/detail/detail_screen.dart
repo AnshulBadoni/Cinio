@@ -1180,7 +1180,7 @@ class _DetailViewState extends State<_DetailView>
             final isTv = detail.isSeries || widget.item.tmdbIsTv || (origEp != null && origEp.season != null);
             if (isTv) {
               final s = (origEp != null ? seasonOf(origEp) : null) ?? 1;
-              final epNum = (origEp != null ? origEp.number?.toInt() : null) ?? 1;
+              final epNum = origEp?.number?.toInt() ?? 1;
               return (url: 'stremio://$addonId/stream/series/$imdbId:$s:$epNum', sourceId: targetSourceId);
             } else {
               return (url: 'stremio://$addonId/stream/movie/$imdbId', sourceId: targetSourceId);
@@ -2460,6 +2460,7 @@ class _DetailViewState extends State<_DetailView>
             seasonSet: seasonSet,
             currentSeason: currentSeason,
             onSelectSeason: cubit.selectSeason,
+            tmdbId: detail.tmdbId ?? item.tmdbId,
             coverUrl: coverUrl,
             coverHeaders: coverHeaders,
             sourceId: item.sourceId,

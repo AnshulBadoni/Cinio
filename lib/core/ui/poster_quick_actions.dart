@@ -7,6 +7,8 @@ import '../models/media_item.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'native_cover_provider.dart';
+import 'poster_power_up_effect.dart';
+import 'poster_shatter_effect.dart';
 
 /// Long-press action overlay for browse/discover posters.
 ///
@@ -22,6 +24,7 @@ Future<void> showPosterQuickActions(
   required Future<void> Function() onMarkWatched,
   required Future<bool> Function() onToggleLibrary,
   required VoidCallback onInfo,
+  VoidCallback? onStatus,
   String? playLabel,
   bool inLibrary = false,
   bool watched = false,
@@ -43,6 +46,7 @@ Future<void> showPosterQuickActions(
         onMarkWatched: onMarkWatched,
         onToggleLibrary: onToggleLibrary,
         onInfo: onInfo,
+        onStatus: onStatus,
         playLabel: playLabel,
         initialInLibrary: inLibrary,
         initialWatched: watched,
@@ -70,6 +74,7 @@ class _PosterQuickActions extends StatefulWidget {
     required this.onMarkWatched,
     required this.onToggleLibrary,
     required this.onInfo,
+    this.onStatus,
     required this.initialInLibrary,
     required this.initialWatched,
     this.playLabel,
@@ -81,6 +86,7 @@ class _PosterQuickActions extends StatefulWidget {
   final Future<void> Function() onMarkWatched;
   final Future<bool> Function() onToggleLibrary;
   final VoidCallback onInfo;
+  final VoidCallback? onStatus;
   final bool initialInLibrary;
   final bool initialWatched;
   final String? playLabel;
@@ -90,6 +96,11 @@ class _PosterQuickActions extends StatefulWidget {
 }
 
 class _PosterQuickActionsState extends State<_PosterQuickActions> {
+  final GlobalKey<PosterShatterEffectState> _shatterKey =
+      GlobalKey<PosterShatterEffectState>();
+  final GlobalKey<PosterPowerUpEffectState> _powerUpKey =
+      GlobalKey<PosterPowerUpEffectState>();
+
   late bool _inLibrary = widget.initialInLibrary;
   late bool _watched = widget.initialWatched;
   bool _busy = false;
@@ -100,8 +111,21 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final value = await widget.onToggleLibrary();
-      if (mounted) setState(() => _inLibrary = value);
+      if (_inLibrary) {
+        // Trigger shatter broken-to-pieces animation on the focused poster
+        await _shatterKey.currentState?.shatter();
+        await widget.onToggleLibrary();
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      } else {
+        final value = await widget.onToggleLibrary();
+        if (mounted) {
+          setState(() => _inLibrary = value);
+          // Trigger subtle power-up animation on the focused card
+          unawaited(_powerUpKey.currentState?.powerUp());
+        }
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -194,24 +218,30 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                                 direction == HeroFlightDirection.push
                                     ? fromHero.widget
                                     : toHero.widget,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: SizedBox(
-                            width: posterWidth,
-                            height: posterHeight,
-                            child: widget.item.cover?.isNotEmpty == true
-                                ? Image(
-                                    image: nativeCoverProvider(
-                                      widget.item.cover!,
-                                      widget.item.coverHeaders,
-                                    ),
-                                    fit: BoxFit.cover,
-                                    gaplessPlayback: true,
-                                    filterQuality: FilterQuality.high,
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        ColoredBox(color: AppColors.surface2),
-                                  )
-                                : ColoredBox(color: AppColors.surface2),
+                        child: PosterShatterEffect(
+                          key: _shatterKey,
+                          child: PosterPowerUpEffect(
+                            key: _powerUpKey,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: SizedBox(
+                                width: posterWidth,
+                                height: posterHeight,
+                                child: widget.item.cover?.isNotEmpty == true
+                                    ? Image(
+                                        image: nativeCoverProvider(
+                                          widget.item.cover!,
+                                          widget.item.coverHeaders,
+                                        ),
+                                        fit: BoxFit.cover,
+                                        gaplessPlayback: true,
+                                        filterQuality: FilterQuality.high,
+                                        errorBuilder: (context, error, stackTrace) =>
+                                            ColoredBox(color: AppColors.surface2),
+                                      )
+                                    : ColoredBox(color: AppColors.surface2),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -254,6 +284,19 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                         label: 'Info',
                         onTap: _info,
                       ),
+                      if (widget.onStatus != null) ...[
+                        const SizedBox(height: 8),
+                        _QuickActionButton(
+                          icon: Icons.bookmark_outline_rounded,
+                          label: 'Status & Categories',
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              widget.onStatus!();
+                            });
+                          },
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       _QuickActionButton(
                         icon: _watched
@@ -299,7 +342,6 @@ class _QuickActionButton extends StatelessWidget {
     required this.onTap,
     this.primary = false,
     this.destructive = false,
-    this.compact = false,
   });
 
   final IconData icon;
@@ -307,7 +349,6 @@ class _QuickActionButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool primary;
   final bool destructive;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -350,7 +391,7 @@ class _QuickActionButton extends StatelessWidget {
             onTap: onTap,
             borderRadius: radius,
             child: Container(
-              height: compact ? 50 : 54,
+              height: 54,
               padding: const EdgeInsets.symmetric(horizontal: 22),
               decoration: BoxDecoration(
                 borderRadius: radius,

@@ -15,6 +15,7 @@ class _EpisodesTab extends StatefulWidget {
     required this.seasonSet,
     required this.currentSeason,
     required this.onSelectSeason,
+    this.tmdbId,
     required this.coverUrl,
     required this.coverHeaders,
     required this.sourceId,
@@ -40,6 +41,7 @@ class _EpisodesTab extends StatefulWidget {
   final Set<int> seasonSet;
   final int currentSeason;
   final ValueChanged<int> onSelectSeason;
+  final int? tmdbId;
   final String coverUrl;
   final Map<String, String>? coverHeaders;
   final String sourceId;
@@ -330,10 +332,58 @@ class _EpisodesTabState extends State<_EpisodesTab> {
               }),
             ),
           ),
-        if (_grid)
-          _buildGrid(store, visible, slice.start, indexById, resumeIdx)
-        else
+        if (_grid && !widget.isReading) ...[
+          if (widget.hasMultipleSeasons)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _SeasonPosterRow(
+                  seasons: widget.seasonSet.toList()..sort(),
+                  currentSeason: widget.currentSeason,
+                  onSelectSeason: widget.onSelectSeason,
+                  tmdbId: widget.tmdbId,
+                  defaultCoverUrl: widget.coverUrl,
+                  coverHeaders: widget.coverHeaders,
+                ),
+              ),
+            ),
+          if (widget.hasMultipleSeasons)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
+                child: Text(
+                  'Episodes',
+                  style: AppText.headline,
+                ),
+              ),
+            ),
+          SliverToBoxAdapter(
+            child: _WideEpisodeCarousel(
+              visible: visible,
+              offset: slice.start,
+              indexById: indexById,
+              resumeIdx: resumeIdx,
+              stateFor: (ep, fullIdx) =>
+                  _stateFor(store, ep, fullIdx, resumeIdx),
+              currentSeason: widget.currentSeason,
+              hasMultipleSeasons: widget.hasMultipleSeasons,
+              defaultCoverUrl: widget.coverUrl,
+              coverHeaders: widget.coverHeaders,
+              onOpen: widget.onOpen,
+              onPickPlayer: widget.onPickPlayer,
+              onDownload: widget.onDownload,
+              fillerEps: widget.fillerEps,
+              sourceId: widget.sourceId,
+              showId: widget.showId,
+              isTv: isTv,
+              highlightEpId: _highlightEpId,
+            ),
+          ),
+        ] else if (_grid && widget.isReading) ...[
+          _buildGrid(store, visible, slice.start, indexById, resumeIdx),
+        ] else ...[
           _buildList(store, visible, slice.start, indexById, resumeIdx, isTv),
+        ],
         const SliverToBoxAdapter(child: SizedBox(height: 16)),
       ],
     );
@@ -657,7 +707,7 @@ class _EpisodesHeader extends StatelessWidget {
           Expanded(
             child: Align(
               alignment: Alignment.centerLeft,
-              child: hasMultipleSeasons
+              child: hasMultipleSeasons && !grid
                   ? Material(
                       color: AppColors.surface2,
                       borderRadius: BorderRadius.circular(10),
@@ -685,7 +735,9 @@ class _EpisodesHeader extends StatelessWidget {
                       ),
                     )
                   : Text(
-                      isReading ? 'Chapters' : 'Episodes',
+                      hasMultipleSeasons && grid
+                          ? 'Seasons'
+                          : (isReading ? 'Chapters' : 'Episodes'),
                       style: AppText.headline,
                     ),
             ),
@@ -1717,6 +1769,678 @@ class _EpisodeDownloadIcon extends StatelessWidget {
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wide Episode Card Format & Season Poster Strip
+// ─────────────────────────────────────────────────────────────────────────────
+
+String? _formatEpisodeDate(String? raw) {
+  if (raw == null) return null;
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return null;
+  try {
+    final parsed = DateTime.tryParse(trimmed);
+    if (parsed != null) {
+      const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+      return '${parsed.year} ${months[parsed.month - 1]} ${parsed.day}';
+    }
+  } catch (_) {}
+  return trimmed;
+}
+
+Widget _buildImdbBadge(double rating) {
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5C518),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: const Text(
+          'IMDb',
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 9.5,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.3,
+          ),
+        ),
+      ),
+      const SizedBox(width: 4),
+      Text(
+        rating.toStringAsFixed(1),
+        style: const TextStyle(
+          color: Color(0xFFF5C518),
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    ],
+  );
+}
+
+class _SeasonPosterRow extends StatefulWidget {
+  const _SeasonPosterRow({
+    required this.seasons,
+    required this.currentSeason,
+    required this.onSelectSeason,
+    this.tmdbId,
+    required this.defaultCoverUrl,
+    this.coverHeaders,
+  });
+
+  final List<int> seasons;
+  final int currentSeason;
+  final ValueChanged<int> onSelectSeason;
+  final int? tmdbId;
+  final String defaultCoverUrl;
+  final Map<String, String>? coverHeaders;
+
+  @override
+  State<_SeasonPosterRow> createState() => _SeasonPosterRowState();
+}
+
+class _SeasonPosterRowState extends State<_SeasonPosterRow> {
+  final Map<int, String?> _posters = {};
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    _fetchPosters();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActive());
+  }
+
+  @override
+  void didUpdateWidget(covariant _SeasonPosterRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentSeason != widget.currentSeason) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActive());
+    }
+    if (oldWidget.tmdbId != widget.tmdbId) {
+      _fetchPosters();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToActive() {
+    if (!mounted || !_scrollController.hasClients) return;
+    final index = widget.seasons.indexOf(widget.currentSeason);
+    if (index >= 0) {
+      final target = (index * 98.0) - 16.0;
+      _scrollController.animateTo(
+        target.clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  void _fetchPosters() {
+    final id = widget.tmdbId;
+    if (id == null || id <= 0) return;
+    if (!sl.isRegistered<TmdbDiscoverService>()) return;
+    final tmdb = sl<TmdbDiscoverService>();
+    for (final s in widget.seasons) {
+      tmdb.seasonPoster(id, s).then((url) {
+        if (mounted && url != null) {
+          setState(() => _posters[s] = url);
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 168,
+      child: ListView.separated(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: widget.seasons.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (context, i) {
+          final s = widget.seasons[i];
+          final isSelected = s == widget.currentSeason;
+          final posterUrl = _posters[s] ?? widget.defaultCoverUrl;
+
+          return GestureDetector(
+            onTap: () => widget.onSelectSeason(s),
+            child: SizedBox(
+              width: 86,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 86,
+                    height: 128,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppColors.accent
+                            : Colors.white.withValues(alpha: 0.12),
+                        width: isSelected ? 2.5 : 1.0,
+                      ),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: AppColors.accent.withValues(alpha: 0.35),
+                                blurRadius: 8,
+                                spreadRadius: 1,
+                              ),
+                            ]
+                          : null,
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: posterUrl.isNotEmpty
+                        ? Image(
+                            image: nativeCoverProvider(
+                              posterUrl,
+                              widget.coverHeaders,
+                            ),
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                            filterQuality: FilterQuality.medium,
+                            errorBuilder: (context, error, stackTrace) =>
+                                ColoredBox(
+                              color: AppColors.surface2,
+                              child: const Icon(
+                                Icons.movie_outlined,
+                                color: AppColors.textTertiary,
+                                size: 28,
+                              ),
+                            ),
+                          )
+                        : ColoredBox(
+                            color: AppColors.surface2,
+                            child: const Icon(
+                              Icons.movie_outlined,
+                              color: AppColors.textTertiary,
+                              size: 28,
+                            ),
+                          ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    'Season $s',
+                    style: AppText.caption.copyWith(
+                      color: isSelected
+                          ? AppColors.textPrimary
+                          : AppColors.textSecondary,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WideEpisodeCarousel extends StatefulWidget {
+  const _WideEpisodeCarousel({
+    required this.visible,
+    required this.offset,
+    required this.indexById,
+    required this.resumeIdx,
+    required this.stateFor,
+    required this.currentSeason,
+    required this.hasMultipleSeasons,
+    required this.defaultCoverUrl,
+    this.coverHeaders,
+    required this.onOpen,
+    this.onPickPlayer,
+    required this.onDownload,
+    required this.fillerEps,
+    required this.sourceId,
+    required this.showId,
+    required this.isTv,
+    this.highlightEpId,
+  });
+
+  final List<Episode> visible;
+  final int offset;
+  final Map<String, int> indexById;
+  final int resumeIdx;
+  final ({bool watched, bool inProgress, bool resume, double fraction}) Function(
+    Episode ep,
+    int fullIndex,
+  ) stateFor;
+  final int currentSeason;
+  final bool hasMultipleSeasons;
+  final String defaultCoverUrl;
+  final Map<String, String>? coverHeaders;
+  final void Function(int fullIndex) onOpen;
+  final void Function(int fullIndex)? onPickPlayer;
+  final void Function(Episode ep) onDownload;
+  final Set<int> fillerEps;
+  final String sourceId;
+  final String showId;
+  final bool isTv;
+  final String? highlightEpId;
+
+  @override
+  State<_WideEpisodeCarousel> createState() => _WideEpisodeCarouselState();
+}
+
+class _WideEpisodeCarouselState extends State<_WideEpisodeCarousel> {
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToResume());
+  }
+
+  @override
+  void didUpdateWidget(covariant _WideEpisodeCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.resumeIdx != widget.resumeIdx ||
+        oldWidget.highlightEpId != widget.highlightEpId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToResume());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToResume() {
+    if (!mounted || !_scrollController.hasClients) return;
+    int targetIdx = -1;
+    if (widget.highlightEpId != null) {
+      targetIdx = widget.visible.indexWhere((e) => e.id == widget.highlightEpId);
+    }
+    if (targetIdx < 0 && widget.resumeIdx >= 0) {
+      targetIdx = widget.resumeIdx - widget.offset;
+    }
+    if (targetIdx >= 0 && targetIdx < widget.visible.length) {
+      final target = (targetIdx * (280.0 + 12.0)) - 16.0;
+      _scrollController.animateTo(
+        target.clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 205,
+      child: ListView.separated(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: widget.visible.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (context, i) {
+          final ep = widget.visible[i];
+          final fullIndex = widget.indexById[ep.id] ?? (widget.offset + i);
+          final epNum = ep.number?.toInt() ?? (widget.offset + i + 1);
+          final st = widget.stateFor(ep, fullIndex);
+          final isFiller = widget.fillerEps.contains(epNum);
+          final highlight = ep.id == widget.highlightEpId;
+
+          return _WideEpisodeCard(
+            ep: ep,
+            epNum: epNum,
+            currentSeason: widget.currentSeason,
+            hasMultipleSeasons: widget.hasMultipleSeasons,
+            defaultCoverUrl: widget.defaultCoverUrl,
+            coverHeaders: widget.coverHeaders,
+            isWatched: st.watched,
+            isInProgress: st.inProgress,
+            isResume: st.resume,
+            isFiller: isFiller,
+            highlight: highlight,
+            fraction: st.fraction,
+            sourceId: widget.sourceId,
+            showId: widget.showId,
+            isTv: widget.isTv,
+            onTap: () => widget.onOpen(fullIndex),
+            onLongPress: widget.onPickPlayer != null
+                ? () => widget.onPickPlayer!(fullIndex)
+                : null,
+            onDownload: () => widget.onDownload(ep),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WideEpisodeCard extends StatelessWidget {
+  const _WideEpisodeCard({
+    required this.ep,
+    required this.epNum,
+    required this.currentSeason,
+    required this.hasMultipleSeasons,
+    required this.defaultCoverUrl,
+    this.coverHeaders,
+    required this.isWatched,
+    required this.isInProgress,
+    required this.isResume,
+    required this.isFiller,
+    required this.highlight,
+    required this.fraction,
+    required this.sourceId,
+    required this.showId,
+    required this.isTv,
+    required this.onTap,
+    this.onLongPress,
+    required this.onDownload,
+  });
+
+  final Episode ep;
+  final int epNum;
+  final int currentSeason;
+  final bool hasMultipleSeasons;
+  final String defaultCoverUrl;
+  final Map<String, String>? coverHeaders;
+  final bool isWatched;
+  final bool isInProgress;
+  final bool isResume;
+  final bool isFiller;
+  final bool highlight;
+  final double fraction;
+  final String sourceId;
+  final String showId;
+  final bool isTv;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final VoidCallback onDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    final thumbUrl = (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
+        ? ep.thumbnail!
+        : defaultCoverUrl;
+
+    final titleText =
+        episodeDisplayTitle(ep, sourceTitle: '', number: epNum) ?? '';
+    final heading = titleText.isNotEmpty ? titleText : 'Episode $epNum';
+    final desc = (ep.description != null && ep.description!.trim().isNotEmpty)
+        ? ep.description!.trim()
+        : null;
+
+    final formattedDate = _formatEpisodeDate(ep.date);
+    final seasonNum = ep.season ?? currentSeason;
+    final seasonEpisodeTag =
+        hasMultipleSeasons ? 'S${seasonNum}E$epNum' : 'EP $epNum';
+
+    final borderColor = highlight
+        ? AppColors.accent
+        : (isResume
+            ? AppColors.accent.withValues(alpha: 0.6)
+            : Colors.white.withValues(alpha: 0.08));
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        borderRadius: BorderRadius.circular(12),
+        splashColor: AppColors.accentSoft,
+        highlightColor: Colors.white10,
+        child: Container(
+          width: 280,
+          height: 195,
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: borderColor,
+              width: (highlight || isResume) ? 1.8 : 1.0,
+            ),
+            boxShadow: highlight
+                ? [
+                    BoxShadow(
+                      color: AppColors.accent.withValues(alpha: 0.4),
+                      blurRadius: 10,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : null,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 1. Thumbnail image
+              thumbUrl.isNotEmpty
+                  ? Image(
+                      image: nativeCoverProvider(thumbUrl, coverHeaders),
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                      filterQuality: FilterQuality.medium,
+                      errorBuilder: (context, error, stackTrace) =>
+                          ColoredBox(
+                        color: AppColors.surface2,
+                        child: const Center(
+                          child: Icon(
+                            Icons.movie_outlined,
+                            color: AppColors.textTertiary,
+                            size: 36,
+                          ),
+                        ),
+                      ),
+                    )
+                  : ColoredBox(
+                      color: AppColors.surface2,
+                      child: const Center(
+                        child: Icon(
+                          Icons.movie_outlined,
+                          color: AppColors.textTertiary,
+                          size: 36,
+                        ),
+                      ),
+                    ),
+
+              // 2. Dark gradient overlay
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.45),
+                      Colors.black.withValues(alpha: 0.05),
+                      Colors.black.withValues(alpha: 0.85),
+                      Colors.black.withValues(alpha: 0.98),
+                    ],
+                    stops: const [0.0, 0.28, 0.65, 1.0],
+                  ),
+                ),
+              ),
+
+              // 3. Top-left season & episode pill badge
+              Positioned(
+                top: 10,
+                left: 10,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.65),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      width: 0.5,
+                    ),
+                  ),
+                  child: Text(
+                    seasonEpisodeTag,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ),
+              ),
+
+              // 4. Top-right badges (Watched checkmark, Filler tag, Download icon)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isFiller) ...[
+                      const TagBadge(
+                        text: 'FILLER',
+                        color: Color(0xFFF59E0B),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    if (isWatched)
+                      Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: AppColors.accent,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.5),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.check_rounded,
+                          color: Colors.white,
+                          size: 15,
+                        ),
+                      )
+                    else if (!isTv)
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: _EpisodeDownloadIcon(
+                          sourceId: sourceId,
+                          showId: showId,
+                          episodeId: ep.id,
+                          onTap: onDownload,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
+              // 5. Overlaid bottom content: Title, Description, Meta row
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: isInProgress ? 8 : 10,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      heading,
+                      style: TextStyle(
+                        color: isResume ? AppColors.accent : Colors.white,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                        shadows: const [
+                          Shadow(color: Colors.black, blurRadius: 4),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (desc != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        desc,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 11,
+                          height: 1.25,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        if (ep.runtimeMinutes != null) ...[
+                          Text(
+                            '${ep.runtimeMinutes}m',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        if (ep.rating != null) ...[
+                          _buildImdbBadge(ep.rating!),
+                          const SizedBox(width: 8),
+                        ],
+                        const Spacer(),
+                        if (formattedDate != null)
+                          Text(
+                            formattedDate,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.75),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // 6. Resume progress bar at bottom edge
+              if (isInProgress)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _ThumbnailProgressBar(fraction: fraction),
+                ),
+            ],
+          ),
         ),
       ),
     );

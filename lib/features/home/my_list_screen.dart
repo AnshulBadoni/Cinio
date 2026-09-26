@@ -23,9 +23,11 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
+import '../../core/playback/watch_history.dart';
 import '../../core/ui/buttons.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/poster_card.dart';
+import '../../core/ui/poster_quick_actions.dart';
 import '../../core/ui/states.dart';
 import '../../core/ui/tracker_entry_sheet.dart';
 import '../auth/auth_cubit.dart';
@@ -1059,8 +1061,10 @@ class _MyListViewState extends State<_MyListView> {
                     mainAxisSpacing: 16,
                   ),
                   itemCount: shown.length,
-                  itemBuilder: (context, i) {
+                    itemBuilder: (context, i) {
                     final entry = shown[i];
+                    final heroTag =
+                        'my-list-poster:${entry.item.sourceId}:${entry.item.id}';
                     return RevealItem(
                       index: i,
                       child: PosterCard(
@@ -1068,18 +1072,76 @@ class _MyListViewState extends State<_MyListView> {
                         imageUrl: entry.item.cover,
                         headers: entry.item.coverHeaders,
                         cellWidth: cellW,
+                        heroTag: heroTag,
                         completed: entry.status == WatchStatus.completed,
                         onTap: () => onTap(entry.item),
-                        // Long-press opens the per-card edit sheet (own list →
-                        // status/remove; tracker → the tracker editor).
-                        onLongPress:
-                            onMore == null ? null : () => onMore(entry),
+                        // Long-press opens quick actions with shatter on removal,
+                        // or the tracker editor when browsing a tracker tab.
+                        onLongPress: isMyList
+                            ? () => _showMyListQuickActions(context, entry, heroTag)
+                            : (onMore == null ? null : () => onMore(entry)),
                       ),
                     );
                   },
                 ),
         ),
       ],
+    );
+  }
+
+  Future<void> _showMyListQuickActions(
+    BuildContext context,
+    MyListEntry entry,
+    String heroTag,
+  ) async {
+    final item = entry.item;
+    final myList = sl<MyListStore>();
+    final listStatus = sl<ListStatusStore>();
+    final history = sl<WatchHistory>()
+        .all()
+        .where((e) =>
+            e.sourceId == item.sourceId &&
+            (e.showId == item.url || e.showUrl == item.url))
+        .where((e) => !e.finished)
+        .fold<HistoryEntry?>(
+          null,
+          (best, e) =>
+              best == null || e.updatedAt > best.updatedAt ? e : best,
+        );
+    final watched = entry.status == WatchStatus.completed;
+    final inLibrary =
+        myList.contains(item) || listStatus.statusOf(item) != null;
+    final playLabel = history == null
+        ? null
+        : 'Resume ${((history.progress * 100).round()).clamp(1, 99)}%';
+
+    await showPosterQuickActions(
+      context,
+      item: item,
+      heroTag: heroTag,
+      playLabel: playLabel,
+      inLibrary: inLibrary,
+      watched: watched,
+      onPlay: () => _openItem(context, item),
+      onInfo: () => _openItem(context, item),
+      onStatus: () async {
+        await showListStatusSheet(context, item: item);
+        if (context.mounted) context.read<MyListCubit>().reload();
+      },
+      onMarkWatched: () async {
+        if (!myList.contains(item)) await myList.add(item);
+        await listStatus.setStatus(item, WatchStatus.completed);
+        await myList.pushStatus(item);
+        if (context.mounted) context.read<MyListCubit>().reload();
+      },
+      onToggleLibrary: () async {
+        await myList.toggle(item);
+        if (!myList.contains(item)) {
+          await listStatus.remove(item);
+        }
+        if (context.mounted) context.read<MyListCubit>().reload();
+        return myList.contains(item);
+      },
     );
   }
 
