@@ -2245,17 +2245,9 @@ class _DetailViewState extends State<_DetailView>
           ),
 
         SliverToBoxAdapter(
-          child: ValueListenableBuilder<double>(
-            valueListenable: _heroStretch,
-            builder: (context, overscroll, child) {
-              return Transform.translate(
-                offset: Offset(0, overscroll),
-                child: child,
-              );
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
                 if (state.error == 'load_failed')
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -2413,7 +2405,6 @@ class _DetailViewState extends State<_DetailView>
               ],
             ),
           ),
-        ),
 
         SliverPersistentHeader(
           pinned: true,

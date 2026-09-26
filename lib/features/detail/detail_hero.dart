@@ -118,48 +118,40 @@ class _Hero extends StatelessWidget {
           ),
         ),
         Positioned.fill(
-          child: ValueListenableBuilder<double>(
-            valueListenable: stretch ?? _zeroStretch,
-            builder: (context, overscroll, _) {
-              return Transform.translate(
-                offset: Offset(0, overscroll),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.transparent,
-                              AppColors.bg.withValues(alpha: 0.12),
-                              AppColors.bg.withValues(alpha: 0.40),
-                              AppColors.bg.withValues(alpha: 0.75),
-                              AppColors.bg,
-                            ],
-                            stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
-                          ),
-                        ),
-                      ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.transparent,
+                        AppColors.bg.withValues(alpha: 0.12),
+                        AppColors.bg.withValues(alpha: 0.40),
+                        AppColors.bg.withValues(alpha: 0.75),
+                        AppColors.bg,
+                      ],
+                      stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
                     ),
-                    if (bottomContent != null)
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 14,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 180),
-                          opacity: collapsed ? 0.0 : 1.0,
-                          child: bottomContent!,
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
-              );
-            },
+              ),
+              if (bottomContent != null)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 14,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 180),
+                    opacity: collapsed ? 0.0 : 1.0,
+                    child: bottomContent!,
+                  ),
+                ),
+            ],
           ),
         ),
       ],
