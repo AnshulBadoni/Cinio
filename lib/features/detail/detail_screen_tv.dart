@@ -44,12 +44,28 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   // mirrors phone [_DetailViewState._fillerEps].
   Set<int> _fillerEps = const {};
   int? _fillerForMal;
-  void _ensureFiller(int? malId) {
-    if (malId == null || malId == _fillerForMal) return;
-    _fillerForMal = malId;
-    FillerService.instance.fillerEpisodes(malId).then((s) {
-      if (mounted && s.isNotEmpty) setState(() => _fillerEps = s);
-    });
+  void _ensureFiller(MediaDetail detail, MediaItem item) {
+    final malId = detail.malId ?? item.malId;
+    if (malId != null) {
+      if (malId == _fillerForMal) return;
+      _fillerForMal = malId;
+      FillerService.instance.fillerEpisodes(malId).then((s) {
+        if (mounted && s.isNotEmpty) setState(() => _fillerEps = s);
+      });
+      return;
+    }
+
+    if (detail.type == ProviderType.anime || item.type == ProviderType.anime) {
+      sl<MetadataEnrichment>().resolveMalId(detail).then((resolved) {
+        if (resolved != null && mounted) {
+          if (resolved == _fillerForMal) return;
+          _fillerForMal = resolved;
+          FillerService.instance.fillerEpisodes(resolved).then((s) {
+            if (mounted && s.isNotEmpty) setState(() => _fillerEps = s);
+          });
+        }
+      });
+    }
   }
 
   Future<void> _openEpisodeSearch() async {
@@ -241,6 +257,29 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
           return (url: u, sourceId: detail.sourceId);
         }
         final targetSourceId = resolved.item.sourceId;
+
+        if (targetSourceId.startsWith('stremio:')) {
+          final addonId = targetSourceId.substring('stremio:'.length);
+          final imdbId = resolved.item.imdbId ?? detail.imdbId ?? widget.item.imdbId;
+          if (imdbId != null && imdbId.isNotEmpty) {
+            Episode? origEp;
+            for (final e in eps) {
+              if (e.url == u || e.id == u) {
+                origEp = e;
+                break;
+              }
+            }
+            final isTv = detail.isSeries || widget.item.tmdbIsTv || (origEp != null && origEp.season != null);
+            if (isTv) {
+              final s = (origEp != null ? seasonOf(origEp) : null) ?? 1;
+              final epNum = (origEp != null ? origEp.number?.toInt() : null) ?? 1;
+              return (url: 'stremio://$addonId/stream/series/$imdbId:$s:$epNum', sourceId: targetSourceId);
+            } else {
+              return (url: 'stremio://$addonId/stream/movie/$imdbId', sourceId: targetSourceId);
+            }
+          }
+        }
+
         if (resolved.detail.episodes.isEmpty) {
           return (url: resolved.item.url, sourceId: targetSourceId);
         }
@@ -814,7 +853,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     if (_tab >= tabLabels.length) _tab = tabLabels.length - 1;
     final store = sl<ResumeStore>();
     // Kick the (cached, once-per-malId) filler lookup for the FILLER badge.
-    _ensureFiller(detail.malId ?? item.malId);
+    _ensureFiller(detail, item);
     // Once-per-detail tracker-progress lookup for episode grey-out.
     _maybeFetchTrackerProgress(detail);
 

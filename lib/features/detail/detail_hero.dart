@@ -88,14 +88,27 @@ class _Hero extends StatelessWidget {
         // image. The cover image always sits underneath as placeholder/fallback
         // so there's never a blank/black flash.
         Positioned.fill(
-          child: (trailer != null)
-              ? _HeroTrailer(
-                  trailer: trailer!,
-                  collapsed: collapsed,
-                  onTapFullscreen: onTapFullscreen,
-                  placeholder: _coverBackdrop(),
-                )
-              : _coverBackdrop(),
+          child: ValueListenableBuilder<double>(
+            valueListenable: stretch ?? _zeroStretch,
+            builder: (context, overscroll, child) {
+              final scale = 1.0 + (overscroll / 450.0).clamp(0.0, 0.50);
+              return ClipRect(
+                child: Transform.scale(
+                  alignment: Alignment.topCenter,
+                  scale: scale,
+                  child: child,
+                ),
+              );
+            },
+            child: (trailer != null)
+                ? _HeroTrailer(
+                    trailer: trailer!,
+                    collapsed: collapsed,
+                    onTapFullscreen: onTapFullscreen,
+                    placeholder: _coverBackdrop(),
+                  )
+                : _coverBackdrop(),
+          ),
         ),
         // One continuous cinematic treatment: a restrained top scrim plus a
         // single long bottom fade.
@@ -104,36 +117,51 @@ class _Hero extends StatelessWidget {
             decoration: BoxDecoration(gradient: AppColors.topScrim),
           ),
         ),
-        IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  Colors.transparent,
-                  AppColors.bg.withValues(alpha: 0.12),
-                  AppColors.bg.withValues(alpha: 0.40),
-                  AppColors.bg.withValues(alpha: 0.75),
-                  AppColors.bg,
-                ],
-                stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
-              ),
-            ),
+        Positioned.fill(
+          child: ValueListenableBuilder<double>(
+            valueListenable: stretch ?? _zeroStretch,
+            builder: (context, overscroll, _) {
+              return Transform.translate(
+                offset: Offset(0, overscroll),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.transparent,
+                              AppColors.bg.withValues(alpha: 0.12),
+                              AppColors.bg.withValues(alpha: 0.40),
+                              AppColors.bg.withValues(alpha: 0.75),
+                              AppColors.bg,
+                            ],
+                            stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (bottomContent != null)
+                      Positioned(
+                        left: 16,
+                        right: 16,
+                        bottom: 14,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 180),
+                          opacity: collapsed ? 0.0 : 1.0,
+                          child: bottomContent!,
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
-        if (bottomContent != null)
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 14,
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 180),
-              opacity: collapsed ? 0.0 : 1.0,
-              child: bottomContent!,
-            ),
-          ),
       ],
     );
   }

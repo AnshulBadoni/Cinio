@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/di/injector.dart';
-import '../../core/stremio/stremio_client.dart';
 import '../../core/stremio/stremio_manager.dart';
 import '../../core/stremio/stremio_store.dart';
 import '../../core/theme/app_colors.dart';

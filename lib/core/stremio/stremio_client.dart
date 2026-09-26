@@ -80,7 +80,7 @@ class StremioClient {
       final cleanBase = baseUrl.endsWith('/')
           ? baseUrl.substring(0, baseUrl.length - 1)
           : baseUrl;
-      final endpoint = '$cleanBase/stream/$type/${Uri.encodeComponent(id)}.json';
+      final endpoint = '$cleanBase/stream/$type/$id.json';
       final res = await _dio.get<dynamic>(
         endpoint,
         options: Options(

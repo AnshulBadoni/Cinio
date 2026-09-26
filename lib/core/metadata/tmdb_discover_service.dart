@@ -255,7 +255,7 @@ class TmdbDiscoverService {
       return _dio.get<dynamic>(
         '${Tmdb.base}/$k/$id',
         queryParameters: {
-          'append_to_response': k == 'tv' ? 'credits' : 'credits,release_dates',
+          'append_to_response': k == 'tv' ? 'credits,external_ids' : 'credits,release_dates,external_ids',
         },
         options: Options(
           receiveTimeout: const Duration(seconds: 14),
@@ -289,6 +289,8 @@ class TmdbDiscoverService {
     final overview = row['overview']?.toString();
     var date = (isTv ? row['first_air_date'] : row['release_date'])?.toString();
     final tmdbStatus = row['status']?.toString();
+    final extIds = row['external_ids'] is Map ? row['external_ids'] as Map : null;
+    final imdbId = (row['imdb_id'] ?? extIds?['imdb_id'])?.toString();
     var theatricalRelease = false;
 
     // TMDB release type: 2/3 = theatrical, 4 = digital/OTT, 5 = physical,
@@ -383,6 +385,7 @@ class TmdbDiscoverService {
           url: item.url, description: overview, year: date != null && date.length >= 4 ? date.substring(0,4) : null,
           rating: (row['vote_average'] as num?)?.toDouble(),
           type: ProviderType.movie, sourceId: 'tmdb:catalog', tmdbId: id, tmdbIsTv: item.tmdbIsTv,
+          imdbId: imdbId,
           isSeries: item.tmdbIsTv, genres: item.genres, cast: cast, episodes: episodes,
           releaseDate: date,
           tmdbStatus: tmdbStatus,
@@ -404,6 +407,7 @@ class TmdbDiscoverService {
       url: item.url, description: overview, year: date != null && date.length >= 4 ? date.substring(0,4) : null,
       rating: (row['vote_average'] as num?)?.toDouble(),
       type: ProviderType.movie, sourceId: 'tmdb:catalog', tmdbId: id, tmdbIsTv: item.tmdbIsTv,
+      imdbId: imdbId,
       isSeries: item.tmdbIsTv, genres: item.genres, cast: cast, episodes: episodes,
       releaseDate: date,
       tmdbStatus: tmdbStatus,

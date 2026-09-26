@@ -226,11 +226,13 @@ Widget cinioFallbackTitle({
   final hasSub = split.sub != null && split.sub!.isNotEmpty;
 
   // Auto-scale base font size according to main title length to prevent edge-to-edge overflow
-  var effectiveFontSize = fontSize;
-  if (split.main.length > 26) {
-    effectiveFontSize = fontSize * 0.74;
-  } else if (split.main.length > 16) {
-    effectiveFontSize = fontSize * 0.85;
+  var effectiveFontSize = fontSize * 0.95; // 5% base reduction
+  if (split.main.length > 28) {
+    effectiveFontSize *= 0.72;
+  } else if (split.main.length > 18) {
+    effectiveFontSize *= 0.82;
+  } else if (split.main.length > 12) {
+    effectiveFontSize *= 0.90;
   }
 
   final preset = CinioTitleStyle.presetFor(seed);
@@ -241,10 +243,11 @@ Widget cinioFallbackTitle({
   );
 
   final displayMain = cfg.uppercase ? split.main.toUpperCase() : split.main;
+  final mainFontSize = cfg.baseStyle.fontSize ?? effectiveFontSize;
 
   if (hasSub) {
     final subText = cfg.uppercase ? split.sub!.toUpperCase() : split.sub!;
-    final subFontSize = (effectiveFontSize * 0.44).clamp(10.0, 13.5);
+    final subFontSize = (mainFontSize * 0.44).clamp(9.5, 12.5);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -261,7 +264,7 @@ Widget cinioFallbackTitle({
               softWrap: true,
               overflow: TextOverflow.ellipsis,
               style: cfg.baseStyle.copyWith(
-                fontSize: effectiveFontSize,
+                fontSize: mainFontSize,
                 color: Colors.transparent,
                 shadows: cfg.shadows,
               ),
@@ -276,7 +279,7 @@ Widget cinioFallbackTitle({
                 softWrap: true,
                 overflow: TextOverflow.ellipsis,
                 style: cfg.baseStyle.copyWith(
-                  fontSize: effectiveFontSize,
+                  fontSize: mainFontSize,
                   color: Colors.white,
                   shadows: const [],
                 ),
@@ -322,7 +325,7 @@ Widget cinioFallbackTitle({
         softWrap: true,
         overflow: TextOverflow.ellipsis,
         style: cfg.baseStyle.copyWith(
-          fontSize: effectiveFontSize,
+          fontSize: mainFontSize,
           color: Colors.transparent,
           shadows: cfg.shadows,
         ),
@@ -338,7 +341,7 @@ Widget cinioFallbackTitle({
           softWrap: true,
           overflow: TextOverflow.ellipsis,
           style: cfg.baseStyle.copyWith(
-            fontSize: effectiveFontSize,
+            fontSize: mainFontSize,
             color: Colors.white,
             shadows: const [],
           ),

@@ -6,7 +6,7 @@ abstract class AppText {
   static const _f = 'Inter';
   static const largeTitle = TextStyle(
     fontFamily: _f,
-    fontSize: 32,
+    fontSize: 30.4,
     height: 1.1,
     fontWeight: FontWeight.w700,
     letterSpacing: -0.5,
@@ -16,7 +16,7 @@ abstract class AppText {
   /// Inter; Noto Sans is only used where a title needs more visual weight.
   static const display = TextStyle(
     fontFamily: 'Noto Sans',
-    fontSize: 30,
+    fontSize: 28.5,
     height: 1.08,
     fontWeight: FontWeight.w800,
     letterSpacing: -0.7,
@@ -25,7 +25,7 @@ abstract class AppText {
 
   static const title = TextStyle(
     fontFamily: _f,
-    fontSize: 22,
+    fontSize: 20.9,
     height: 1.15,
     fontWeight: FontWeight.w600,
     letterSpacing: -0.3,

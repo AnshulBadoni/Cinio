@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:dio/dio.dart';
+
 import '../aniyomi/aniyomi_filters.dart';
 import '../aniyomi/aniyomi_provider.dart';
+import '../metadata/tmdb.dart';
 import '../lnreader/lnreader_manager.dart';
 import '../download/chapter_download.dart';
 import '../download/chapter_download_store.dart';
@@ -530,12 +533,13 @@ class SourceRepository {
   Future<({MediaItem item, MediaDetail detail})?> resolveCatalogTitle(
     MediaItem catalog, {
     String category = 'sub',
+    String? sourceIdOverride,
   }) async {
     if (catalog.sourceId != 'tmdb:catalog' && !catalog.sourceId.startsWith('tpdb:')) {
       return null;
     }
 
-    final key = 'catalog|${catalog.sourceId}|${catalog.tmdbId ?? catalog.id}|${catalog.title}|$category';
+    final key = 'catalog|${catalog.sourceId}|${catalog.tmdbId ?? catalog.id}|${catalog.title}|$category|${sourceIdOverride ?? ''}';
     final cached = _catalogResolutionCache[key];
     if (cached != null && DateTime.now().difference(cached.at) < _catalogResolutionTtl) {
       return cached.value;
@@ -544,7 +548,12 @@ class SourceRepository {
     final inFlight = _inFlightResolutions[key];
     if (inFlight != null) return inFlight;
 
-    final future = _doResolveCatalogTitle(catalog, category: category, key: key);
+    final future = _doResolveCatalogTitle(
+      catalog,
+      category: category,
+      key: key,
+      sourceIdOverride: sourceIdOverride,
+    );
     _inFlightResolutions[key] = future;
     try {
       return await future;
@@ -557,12 +566,102 @@ class SourceRepository {
   final Map<String, ({DateTime at, ({MediaItem item, MediaDetail detail}) value})>
       _catalogResolutionCache = {};
   static const Duration _catalogResolutionTtl = Duration(minutes: 30);
+  final Map<String, String> _imdbIdCache = {};
+
+  Future<String?> _resolveImdbForCatalog(MediaItem catalog) async {
+    final cacheKey = '${catalog.sourceId}:${catalog.tmdbId ?? catalog.id}:${catalog.title}';
+    final cached = _imdbIdCache[cacheKey];
+    if (cached != null && cached.isNotEmpty) return cached;
+
+    if (catalog.imdbId != null && catalog.imdbId!.trim().isNotEmpty) {
+      final id = catalog.imdbId!.trim();
+      _imdbIdCache[cacheKey] = id;
+      return id;
+    }
+
+    final dio = sl<Dio>();
+    final tmdbId = catalog.tmdbId ?? int.tryParse(catalog.id);
+    if (tmdbId != null) {
+      try {
+        final path = catalog.tmdbIsTv
+            ? '${Tmdb.base}/tv/$tmdbId/external_ids'
+            : '${Tmdb.base}/movie/$tmdbId/external_ids';
+        final res = await dio.get<dynamic>(
+          path,
+          options: Options(
+            receiveTimeout: const Duration(seconds: 8),
+            sendTimeout: const Duration(seconds: 8),
+            validateStatus: (status) => status != null && status < 500,
+          ),
+        );
+        final raw = res.data;
+        if (raw is Map) {
+          final id = raw['imdb_id']?.toString()?.trim();
+          if (id != null && id.isNotEmpty) {
+            _imdbIdCache[cacheKey] = id;
+            return id;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Search TMDB by title if tmdbId was missing
+    if (catalog.title.trim().isNotEmpty) {
+      try {
+        final kind = catalog.tmdbIsTv ? 'tv' : 'movie';
+        final res = await dio.get<dynamic>(
+          '${Tmdb.base}/search/$kind',
+          queryParameters: {'query': catalog.title.trim()},
+          options: Options(
+            receiveTimeout: const Duration(seconds: 8),
+            sendTimeout: const Duration(seconds: 8),
+            validateStatus: (status) => status != null && status < 500,
+          ),
+        );
+        final raw = res.data;
+        final results = (raw is Map) ? (raw['results'] as List?) : null;
+        if (results != null && results.isNotEmpty && results.first is Map) {
+          final first = results.first as Map;
+          final foundId = (first['id'] as num?)?.toInt();
+          if (foundId != null) {
+            final extRes = await dio.get<dynamic>(
+              '${Tmdb.base}/$kind/$foundId/external_ids',
+              options: Options(
+                receiveTimeout: const Duration(seconds: 8),
+                sendTimeout: const Duration(seconds: 8),
+              ),
+            );
+            final extRaw = extRes.data;
+            if (extRaw is Map) {
+              final id = extRaw['imdb_id']?.toString()?.trim();
+              if (id != null && id.isNotEmpty) {
+                _imdbIdCache[cacheKey] = id;
+                return id;
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    return null;
+  }
 
   Future<({MediaItem item, MediaDetail detail})?> _doResolveCatalogTitle(
     MediaItem catalog, {
     required String category,
     required String key,
+    String? sourceIdOverride,
   }) async {
+    if (sourceIdOverride != null && sourceIdOverride.isNotEmpty) {
+      final hit = await _resolveCatalogOnSource(catalog, sourceIdOverride, category);
+      if (hit != null) {
+        _catalogResolutionCache[key] = (at: DateTime.now(), value: hit);
+        return hit;
+      }
+      return null;
+    }
+
     final isTpdb = catalog.sourceId.startsWith('tpdb:');
     final primaryPref = isTpdb ? _prefs.tpdbPrimaryProvider : _prefs.tmdbPrimaryProvider;
     final preferred = primaryPref.isNotEmpty ? primaryPref : sourceId;
@@ -670,11 +769,12 @@ class SourceRepository {
   ) async {
     try {
       if (_isStremio(providerId)) {
-        final imdbId = catalog.imdbId;
+        final imdbId = await _resolveImdbForCatalog(catalog);
         if (imdbId != null && imdbId.isNotEmpty) {
-          final streamTarget = catalog.tmdbIsTv ? '$imdbId:1:1' : imdbId;
+          final isTv = catalog.tmdbIsTv;
+          final streamTarget = isTv ? '$imdbId:1:1' : imdbId;
           final addonId = providerId.substring('stremio:'.length);
-          final stremioUrl = 'stremio://$addonId/stream/${catalog.tmdbIsTv ? 'series' : 'movie'}/$streamTarget';
+          final stremioUrl = 'stremio://$addonId/stream/${isTv ? 'series' : 'movie'}/$streamTarget';
           final synthesizedDetail = MediaDetail(
             id: catalog.id,
             title: catalog.title,
@@ -682,7 +782,8 @@ class SourceRepository {
             url: stremioUrl,
             type: ProviderType.movie,
             sourceId: providerId,
-            isSeries: catalog.tmdbIsTv,
+            imdbId: imdbId,
+            isSeries: isTv,
             episodes: [
               Episode(
                 id: streamTarget,
@@ -700,10 +801,11 @@ class SourceRepository {
             type: ProviderType.movie,
             sourceId: providerId,
             imdbId: imdbId,
-            tmdbIsTv: catalog.tmdbIsTv,
+            tmdbIsTv: isTv,
           );
           return (item: item, detail: synthesizedDetail);
         }
+        return null;
       }
 
       final isTpdb = catalog.sourceId.startsWith('tpdb:');

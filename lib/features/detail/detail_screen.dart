@@ -53,6 +53,7 @@ import '../../core/models/provider_info.dart';
 import '../../core/models/watch_status.dart';
 import '../../core/playback/filler_service.dart';
 import '../../core/playback/list_status_store.dart';
+import '../../core/metadata/metadata_enrichment.dart';
 import '../../core/privacy/incognito_mode.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/ui/episode_player_sheet.dart';
@@ -156,6 +157,25 @@ String? _repoLabelFromUrl(String? repoUrl) {
 }
 
 Episode _matchTargetEpisode(MediaDetail targetDetail, MediaItem targetItem, Episode origEp) {
+  if (targetDetail.sourceId.startsWith('stremio:')) {
+    final addonId = targetDetail.sourceId.substring('stremio:'.length);
+    final imdbId = targetDetail.imdbId ?? targetItem.imdbId;
+    if (imdbId != null && imdbId.isNotEmpty) {
+      final s = seasonOf(origEp) ?? 1;
+      final epNum = origEp.number?.toInt() ?? 1;
+      final isTv = targetDetail.isSeries || targetItem.tmdbIsTv || origEp.season != null;
+      final url = isTv
+          ? 'stremio://$addonId/stream/series/$imdbId:$s:$epNum'
+          : 'stremio://$addonId/stream/movie/$imdbId';
+      return Episode(
+        id: isTv ? '$imdbId:$s:$epNum' : imdbId,
+        number: origEp.number,
+        title: origEp.title.trim().isNotEmpty ? origEp.title : targetDetail.title,
+        url: url,
+        season: origEp.season,
+      );
+    }
+  }
   if (targetDetail.episodes.isNotEmpty) {
     for (final candidate in targetDetail.episodes) {
       if (candidate.id == origEp.id) return candidate;
@@ -283,12 +303,28 @@ class _DetailViewState extends State<_DetailView>
 
   Set<int> _fillerEps = const {};
   int? _fillerForMal;
-  void _ensureFiller(int? malId) {
-    if (malId == null || malId == _fillerForMal) return;
-    _fillerForMal = malId;
-    FillerService.instance.fillerEpisodes(malId).then((s) {
-      if (mounted && s.isNotEmpty) setState(() => _fillerEps = s);
-    });
+  void _ensureFiller(MediaDetail detail, MediaItem item) {
+    final malId = detail.malId ?? item.malId;
+    if (malId != null) {
+      if (malId == _fillerForMal) return;
+      _fillerForMal = malId;
+      FillerService.instance.fillerEpisodes(malId).then((s) {
+        if (mounted && s.isNotEmpty) setState(() => _fillerEps = s);
+      });
+      return;
+    }
+
+    if (detail.type == ProviderType.anime || item.type == ProviderType.anime) {
+      sl<MetadataEnrichment>().resolveMalId(detail).then((resolved) {
+        if (resolved != null && mounted) {
+          if (resolved == _fillerForMal) return;
+          _fillerForMal = resolved;
+          FillerService.instance.fillerEpisodes(resolved).then((s) {
+            if (mounted && s.isNotEmpty) setState(() => _fillerEps = s);
+          });
+        }
+      });
+    }
   }
 
   late final ScrollController _scrollController = ScrollController()
@@ -1129,6 +1165,29 @@ class _DetailViewState extends State<_DetailView>
           return (url: u, sourceId: detail.sourceId);
         }
         final targetSourceId = resolved.item.sourceId;
+
+        if (targetSourceId.startsWith('stremio:')) {
+          final addonId = targetSourceId.substring('stremio:'.length);
+          final imdbId = resolved.item.imdbId ?? detail.imdbId ?? widget.item.imdbId;
+          if (imdbId != null && imdbId.isNotEmpty) {
+            Episode? origEp;
+            for (final e in eps) {
+              if (e.url == u || e.id == u) {
+                origEp = e;
+                break;
+              }
+            }
+            final isTv = detail.isSeries || widget.item.tmdbIsTv || (origEp != null && origEp.season != null);
+            if (isTv) {
+              final s = (origEp != null ? seasonOf(origEp) : null) ?? 1;
+              final epNum = (origEp != null ? origEp.number?.toInt() : null) ?? 1;
+              return (url: 'stremio://$addonId/stream/series/$imdbId:$s:$epNum', sourceId: targetSourceId);
+            } else {
+              return (url: 'stremio://$addonId/stream/movie/$imdbId', sourceId: targetSourceId);
+            }
+          }
+        }
+
         if (resolved.detail.episodes.isEmpty) {
           return (url: resolved.item.url, sourceId: targetSourceId);
         }
@@ -1869,12 +1928,12 @@ class _DetailViewState extends State<_DetailView>
           fadeInDuration: const Duration(milliseconds: 220),
           placeholder: (_, _) => _styledFallbackTitle(
             detail,
-            fontSize: compact ? 17 : 28,
+            fontSize: compact ? 16 : 26.6,
             maxLines: compact ? 1 : 2,
           ),
           errorWidget: (_, _, _) => _styledFallbackTitle(
             detail,
-            fontSize: compact ? 17 : 28,
+            fontSize: compact ? 16 : 26.6,
             maxLines: compact ? 1 : 2,
           ),
         ),
@@ -1882,14 +1941,14 @@ class _DetailViewState extends State<_DetailView>
     }
     return _styledFallbackTitle(
       detail,
-      fontSize: compact ? 17 : 28,
+      fontSize: compact ? 16 : 26.6,
       maxLines: compact ? 1 : 2,
     );
   }
 
   Widget _styledFallbackTitle(
     MediaDetail detail, {
-    double fontSize = 26,
+    double fontSize = 24.7,
     int maxLines = 2,
   }) {
     final seed = detail.tmdbId ?? widget.item.tmdbId ?? detail.title;
@@ -1940,12 +1999,12 @@ class _DetailViewState extends State<_DetailView>
         ? eps
         : filteredBySeason;
 
-    final detailKey = '${detail.sourceId}:${detail.id}:$currentSeason';
+    final detailKey = '${detail.sourceId}:${detail.id}:$currentSeason:${detail.malId}';
     if (_postFrameForDetailKey != detailKey) {
       _postFrameForDetailKey = detailKey;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _ensureFiller(detail.malId ?? item.malId);
+        _ensureFiller(detail, item);
         _maybeFetchTrackerProgress(detail);
         _loadTitleAccent(detail);
         _loadSeasonPoster(detail, currentSeason);
@@ -2186,9 +2245,17 @@ class _DetailViewState extends State<_DetailView>
           ),
 
         SliverToBoxAdapter(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          child: ValueListenableBuilder<double>(
+            valueListenable: _heroStretch,
+            builder: (context, overscroll, child) {
+              return Transform.translate(
+                offset: Offset(0, overscroll),
+                child: child,
+              );
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 if (state.error == 'load_failed')
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -2346,6 +2413,7 @@ class _DetailViewState extends State<_DetailView>
               ],
             ),
           ),
+        ),
 
         SliverPersistentHeader(
           pinned: true,

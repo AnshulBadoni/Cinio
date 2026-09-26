@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 import 'stremio_client.dart';
-import 'stremio_manifest.dart';
 import 'stremio_provider.dart';
 import 'stremio_store.dart';
 

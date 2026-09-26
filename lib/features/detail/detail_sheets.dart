@@ -1702,6 +1702,23 @@ class _ProviderPickerSheetState extends State<_ProviderPickerSheet> {
 
     final futures = sources.map((s) async {
       try {
+        if (s.id.startsWith('stremio:')) {
+          final hit = await repo.resolveCatalogTitle(
+            widget.catalogItem,
+            category: widget.category,
+            sourceIdOverride: s.id,
+          );
+          if (hit != null && mounted) {
+            setState(() {
+              if (!_results.any((r) => r.item.sourceId == hit.item.sourceId)) {
+                _results.add((item: hit.item, providerName: s.name, score: 1.0));
+                _results.sort((a, b) => b.score.compareTo(a.score));
+              }
+            });
+          }
+          return;
+        }
+
         for (final q in queries) {
           final items = await repo
               .search(q, category: widget.category, sourceId: s.id)
@@ -1746,6 +1763,17 @@ class _ProviderPickerSheetState extends State<_ProviderPickerSheet> {
     setState(() => _resolvingItemUrl = entry.item.url);
     try {
       final repo = sl<SourceRepository>();
+      if (entry.item.sourceId.startsWith('stremio:')) {
+        final hit = await repo.resolveCatalogTitle(
+          widget.catalogItem,
+          category: widget.category,
+          sourceIdOverride: entry.item.sourceId,
+        );
+        if (hit != null && mounted) {
+          Navigator.of(context).pop((item: hit.item, detail: hit.detail));
+          return;
+        }
+      }
       final detail = await repo.detail(
         entry.item.url,
         category: widget.category,

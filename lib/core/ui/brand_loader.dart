@@ -32,7 +32,7 @@ class BrandLoader extends StatefulWidget {
     this.buffered,
     this.quality,
     this.progress,
-    this.fontSize = 26.0,
+    this.fontSize = 24.7,
   });
 
   final String? title;
