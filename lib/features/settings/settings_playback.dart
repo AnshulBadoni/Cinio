@@ -849,6 +849,17 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 },
               ),
               _toggleRow(
+                icon: Icons.label_outline_rounded,
+                title: 'Highlight filler episodes',
+                subtitle:
+                    'Display a "FILLER" tag badge on filler episodes in the episode list',
+                value: _prefs.highlightFiller,
+                onChanged: (v) async {
+                  await _prefs.setHighlightFiller(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
                 icon: Icons.movie_outlined,
                 title: 'Autoplay trailer',
                 subtitle: 'Play a title\'s trailer on its detail page',

@@ -33,6 +33,7 @@ import '../../core/download/chapter_download_store.dart';
 import '../../core/download/chapter_downloader.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
+import '../downloads/downloads_screen.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/episode.dart';
@@ -1263,12 +1264,46 @@ class _DetailViewState extends State<_DetailView>
     ).push(MaterialPageRoute(builder: (_) => TrailerScreen(title: widget.item.title, source: source)));
   }
 
+  DownloadRecord? _downloadedRecordFor(Episode? ep, MediaDetail detail) {
+    if (!sl.isRegistered<DownloadManager>()) return null;
+    final all = sl<DownloadManager>().all;
+    final itemTitle = widget.item.title.trim().toLowerCase();
+    final detailTitle = detail.title.trim().toLowerCase();
+    if (detail.isSeries && ep != null) {
+      for (final r in all) {
+        final rTitle = r.showTitle.trim().toLowerCase();
+        final matchShow = r.showId == widget.item.id ||
+            rTitle == itemTitle ||
+            rTitle == detailTitle;
+        final matchEp = r.episodeId == ep.id ||
+            (r.episodeNumber != null && ep.number != null && r.episodeNumber == ep.number);
+        if (matchShow && matchEp && r.status == DownloadStatus.done && r.filePath != null) {
+          return r;
+        }
+      }
+      return null;
+    }
+    // Movie / single
+    for (final r in all) {
+      final rTitle = r.showTitle.trim().toLowerCase();
+      final matchShow = r.showId == widget.item.id ||
+          rTitle == itemTitle ||
+          rTitle == detailTitle;
+      if (matchShow && r.status == DownloadStatus.done && r.filePath != null) {
+        return r;
+      }
+    }
+    return null;
+  }
+
   String _downloadLabel(
     MediaDetail detail,
     List<Episode> seasonEps,
     bool hasMultipleSeasons,
-    int currentSeason,
-  ) {
+    int currentSeason, {
+    bool isDownloaded = false,
+  }) {
+    if (isDownloaded) return 'Downloaded';
     if (!detail.isSeries || seasonEps.isEmpty) return 'Download';
     final first = seasonEps.first;
     final epNum = first.number?.toInt() ?? 1;
@@ -1956,11 +1991,16 @@ class _DetailViewState extends State<_DetailView>
       episodesBySeason[1] = eps;
     }
 
+    final currentEp = eps.isNotEmpty ? eps[resumeIdx] : null;
+    final downloadedRec = _downloadedRecordFor(currentEp, detail);
+    final isDownloaded = downloadedRec != null;
+
     final downloadLabel = _downloadLabel(
       detail,
       seasonEps,
       hasMultipleSeasons,
       currentSeason,
+      isDownloaded: isDownloaded,
     );
 
     final castNames = state.cast.isNotEmpty
@@ -2080,44 +2120,62 @@ class _DetailViewState extends State<_DetailView>
                         onPressed: (eps.isNotEmpty ||
                                 widget.item.sourceId == 'tmdb:catalog' ||
                                 widget.item.sourceId.startsWith('tpdb:'))
-                            ? () => _openPlayer(eps, resumeIdx, detail, category)
-                            : null,
-                        onLongPress: (widget.item.sourceId == 'tmdb:catalog' ||
-                                widget.item.sourceId.startsWith('tpdb:'))
-                            ? () async {
-                                final picked = await _showProviderPickerSheet(detail, category: category);
-                                if (picked != null && mounted) {
-                                  _openPlayer(picked.detail.episodes, 0, picked.detail, category);
+                            ? () {
+                                if (downloadedRec != null) {
+                                  launchDownloadedEpisode(context, downloadedRec);
+                                } else {
+                                  _openPlayer(eps, resumeIdx, detail, category);
                                 }
                               }
                             : null,
+                        onLongPress: () async {
+                          if (downloadedRec != null) {
+                            _openPlayer(eps, resumeIdx, detail, category);
+                          } else if (widget.item.sourceId == 'tmdb:catalog' ||
+                              widget.item.sourceId.startsWith('tpdb:')) {
+                            final picked = await _showProviderPickerSheet(detail, category: category);
+                            if (picked != null && mounted) {
+                              _openPlayer(picked.detail.episodes, 0, picked.detail, category);
+                            }
+                          }
+                        },
                       ),
                       if (!isReading) ...[
                         const SizedBox(height: 10),
                         _DownloadButton(
                           label: downloadLabel,
+                          icon: isDownloaded
+                              ? Icons.download_done_rounded
+                              : Icons.file_download_outlined,
                           onPressed: () => _openDownloadSheet(
                             detail: detail,
                             category: category,
                             episodesBySeason: episodesBySeason,
                             initialSeason: currentSeason,
                           ),
-                          onLongPress: (widget.item.sourceId == 'tmdb:catalog' ||
-                                  widget.item.sourceId.startsWith('tpdb:'))
-                              ? () async {
-                                  final picked = await _showProviderPickerSheet(detail, category: category);
-                                  if (picked != null && mounted) {
-                                    _openDownloadSheet(
-                                      detail: picked.detail,
-                                      category: category,
-                                      episodesBySeason: {
-                                        1: picked.detail.episodes,
-                                      },
-                                      initialSeason: 1,
-                                    );
-                                  }
-                                }
-                              : null,
+                          onLongPress: () async {
+                            if (widget.item.sourceId == 'tmdb:catalog' ||
+                                widget.item.sourceId.startsWith('tpdb:')) {
+                              final picked = await _showProviderPickerSheet(detail, category: category);
+                              if (picked != null && mounted) {
+                                _openDownloadSheet(
+                                  detail: picked.detail,
+                                  category: category,
+                                  episodesBySeason: {
+                                    1: picked.detail.episodes,
+                                  },
+                                  initialSeason: 1,
+                                );
+                              }
+                            } else {
+                              _openDownloadSheet(
+                                detail: detail,
+                                category: category,
+                                episodesBySeason: episodesBySeason,
+                                initialSeason: currentSeason,
+                              );
+                            }
+                          },
                         ),
                       ],
                     ],
@@ -2128,17 +2186,9 @@ class _DetailViewState extends State<_DetailView>
           ),
 
         SliverToBoxAdapter(
-          child: ValueListenableBuilder<double>(
-            valueListenable: _heroStretch,
-            builder: (context, overscroll, child) {
-              return Transform.translate(
-                offset: Offset(0, overscroll),
-                child: child,
-              );
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
                 if (state.error == 'load_failed')
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -2296,7 +2346,6 @@ class _DetailViewState extends State<_DetailView>
               ],
             ),
           ),
-        ),
 
         SliverPersistentHeader(
           pinned: true,

@@ -105,6 +105,12 @@ class PlaybackPrefs {
   bool get trailerHd => _box.get('trailerHd', defaultValue: false) as bool;
   Future<void> setTrailerHd(bool value) => _box.put('trailerHd', value);
 
+  /// Whether to highlight anime filler episodes with a "FILLER" tag badge.
+  bool get highlightFiller =>
+      _box.get('highlightFiller', defaultValue: true) as bool;
+  Future<void> setHighlightFiller(bool value) =>
+      _box.put('highlightFiller', value);
+
   /// Whether the optional alternate NSFW trailer source may be considered.
   /// Off by default. The source/matching rules are intentionally kept
   /// separate from CloudStream provider responses.

@@ -15,6 +15,7 @@ import '../playback/playback_prefs.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_manager.dart';
 import '../provider/provider_registry.dart';
+import '../stremio/stremio_manager.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'states.dart';
@@ -190,6 +191,24 @@ SourceBuckets categorizedSources() {
     }
   }
 
+  // Stremio providers — keyed by their `stremio:` sourceId.
+  if (sl.isRegistered<StremioManager>()) {
+    for (final p in sl<StremioManager>().providers) {
+      final stremioRow = (
+        id: p.sourceId,
+        label: 'Stremio · ${p.displayName}',
+        repo: 'Stremio',
+      );
+      if (p.manifest.types.contains('anime') &&
+          !p.manifest.types.contains('movie') &&
+          !p.manifest.types.contains('series')) {
+        anime.add(stremioRow);
+      } else {
+        movies.add(stremioRow);
+      }
+    }
+  }
+
   anime.sort(byRowLabel);
   movies.sort(byRowLabel);
   manga.sort(byRowLabel);
@@ -206,6 +225,18 @@ ProviderType sourceTypeOf(String id) {
   if (id.startsWith('cs:')) {
     final p = sl<CloudStreamManager>().get(id);
     return p is CloudStreamProvider ? p.providerType : ProviderType.anime;
+  }
+  if (id.startsWith('stremio:')) {
+    if (sl.isRegistered<StremioManager>()) {
+      final p = sl<StremioManager>().getProvider(id);
+      if (p != null &&
+          p.manifest.types.contains('anime') &&
+          !p.manifest.types.contains('movie') &&
+          !p.manifest.types.contains('series')) {
+        return ProviderType.anime;
+      }
+    }
+    return ProviderType.movie;
   }
   // LNReader novel extensions. Same reasoning as the Mihon line right below:
   // a dedicated `lnr:` prefix, checked first, types these as novel without
@@ -236,6 +267,18 @@ ProviderType _typeOfFromMap(String id, Map<String, String> typeMap) {
   if (id.startsWith('cs:')) {
     final p = sl<CloudStreamManager>().get(id);
     return p is CloudStreamProvider ? p.providerType : ProviderType.anime;
+  }
+  if (id.startsWith('stremio:')) {
+    if (sl.isRegistered<StremioManager>()) {
+      final p = sl<StremioManager>().getProvider(id);
+      if (p != null &&
+          p.manifest.types.contains('anime') &&
+          !p.manifest.types.contains('movie') &&
+          !p.manifest.types.contains('series')) {
+        return ProviderType.anime;
+      }
+    }
+    return ProviderType.movie;
   }
   // Must stay in lockstep with [sourceTypeOf]'s branches — this twin is what
   // filterBucketsForMode uses, so without them a `lnr:`/`mihon:` row would

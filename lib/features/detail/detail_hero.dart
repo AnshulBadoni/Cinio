@@ -57,7 +57,7 @@ class _Hero extends StatelessWidget {
           width: 1440,
         ),
         fit: BoxFit.cover,
-        alignment: const Alignment(0, -0.20),
+        alignment: Alignment.topCenter,
         filterQuality: FilterQuality.high,
         loadingBuilder: (_, child, progress) =>
             progress == null ? child : ColoredBox(color: AppColors.surface2),
@@ -70,7 +70,7 @@ class _Hero extends StatelessWidget {
       imageUrl: coverUrl,
       httpHeaders: effectiveHeaders,
       fit: BoxFit.cover,
-      alignment: const Alignment(0, -0.20),
+      alignment: Alignment.topCenter,
       memCacheWidth: 1440,
       filterQuality: FilterQuality.high,
       placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
@@ -88,32 +88,17 @@ class _Hero extends StatelessWidget {
         // image. The cover image always sits underneath as placeholder/fallback
         // so there's never a blank/black flash.
         Positioned.fill(
-          child: ValueListenableBuilder<double>(
-            valueListenable: stretch ?? _zeroStretch,
-            builder: (context, overscroll, child) {
-              final scale = 1.0 + (overscroll / 560.0).clamp(0.0, 0.50);
-              return ClipRect(
-                child: Transform.scale(
-                  alignment: Alignment.topCenter,
-                  scale: scale,
-                  child: child,
-                ),
-              );
-            },
-            child: (trailer != null)
-                ? _HeroTrailer(
-                    trailer: trailer!,
-                    collapsed: collapsed,
-                    onTapFullscreen: onTapFullscreen,
-                    placeholder: _coverBackdrop(),
-                  )
-                : _coverBackdrop(),
-          ),
+          child: (trailer != null)
+              ? _HeroTrailer(
+                  trailer: trailer!,
+                  collapsed: collapsed,
+                  onTapFullscreen: onTapFullscreen,
+                  placeholder: _coverBackdrop(),
+                )
+              : _coverBackdrop(),
         ),
         // One continuous cinematic treatment: a restrained top scrim plus a
-        // single long bottom fade. There is deliberately no second opaque
-        // scrim sitting between the artwork and the fade — that was the hard
-        // "image ends here" band visible on the detail page.
+        // single long bottom fade.
         IgnorePointer(
           child: DecoratedBox(
             decoration: BoxDecoration(gradient: AppColors.topScrim),
@@ -128,13 +113,12 @@ class _Hero extends StatelessWidget {
                 colors: [
                   Colors.transparent,
                   Colors.transparent,
-                  AppColors.bg.withValues(alpha: 0.15),
-                  AppColors.bg.withValues(alpha: 0.50),
-                  AppColors.bg.withValues(alpha: 0.88),
-                  AppColors.bg,
+                  AppColors.bg.withValues(alpha: 0.12),
+                  AppColors.bg.withValues(alpha: 0.40),
+                  AppColors.bg.withValues(alpha: 0.75),
                   AppColors.bg,
                 ],
-                stops: const [0.0, 0.28, 0.48, 0.68, 0.84, 0.94, 1.0],
+                stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
               ),
             ),
           ),
@@ -144,19 +128,10 @@ class _Hero extends StatelessWidget {
             left: 16,
             right: 16,
             bottom: 14,
-            child: ValueListenableBuilder<double>(
-              valueListenable: stretch ?? _zeroStretch,
-              builder: (context, overscroll, child) {
-                return Transform.translate(
-                  offset: Offset(0, overscroll),
-                  child: child,
-                );
-              },
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 180),
-                opacity: collapsed ? 0.0 : 1.0,
-                child: bottomContent!,
-              ),
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 180),
+              opacity: collapsed ? 0.0 : 1.0,
+              child: bottomContent!,
             ),
           ),
       ],
@@ -600,11 +575,13 @@ class _DownloadButton extends StatelessWidget {
     required this.onPressed,
     this.onLongPress,
     this.loading = false,
+    this.icon = Icons.file_download_outlined,
   });
   final String label;
   final VoidCallback? onPressed;
   final VoidCallback? onLongPress;
   final bool loading;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -633,8 +610,8 @@ class _DownloadButton extends StatelessWidget {
                 const SizedBox(width: 10),
                 Text('Finding sources...', style: AppText.button.copyWith(color: Colors.white)),
               ] else ...[
-                const Icon(
-                  Icons.file_download_outlined,
+                Icon(
+                  icon,
                   color: Colors.white,
                   size: 24,
                 ),

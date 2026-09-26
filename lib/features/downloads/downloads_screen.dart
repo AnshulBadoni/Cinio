@@ -475,16 +475,16 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                     const gap = 12.0;
                     final cardWidth =
                         (constraints.maxWidth - gap * (columns - 1)) / columns;
-                    final cardHeight = cardWidth / 0.68;
+                    final cardHeight = cardWidth / 0.58;
                     return GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: cardRecords.length,
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: columns,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 16,
-                        childAspectRatio: 0.68,
+                        childAspectRatio: 0.58,
                       ),
                       itemBuilder: (context, i) {
                         final showId = cardRecords[i].showId;

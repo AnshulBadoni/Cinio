@@ -21,45 +21,6 @@ class _StremioAddonsScreenState extends State<StremioAddonsScreen> {
   bool _loading = false;
   String? _errorMessage;
 
-  static const List<({String name, String description, String url, IconData icon})> _popularAddons = [
-    (
-      name: 'Torrentio (Streams)',
-      description: 'Scrapes torrents & Debrid streams (RD/AD/PM) for movies and series',
-      url: 'https://torrentio.strem.fun/manifest.json',
-      icon: CupertinoIcons.play_circle_fill,
-    ),
-    (
-      name: 'MediaFusion (Streams & Live)',
-      description: 'Multi-source streamer with Debrid support and live content',
-      url: 'https://mediafusion.elfhosted.com/manifest.json',
-      icon: CupertinoIcons.film_fill,
-    ),
-    (
-      name: 'Comet (Debrid Streamer)',
-      description: 'Fast Stremio addon for cached Real-Debrid / AllDebrid streams',
-      url: 'https://comet.elfhosted.com/manifest.json',
-      icon: CupertinoIcons.sparkles,
-    ),
-    (
-      name: 'OpenSubtitles v3',
-      description: 'Official multi-language subtitle streams for movies and TV shows',
-      url: 'https://opensubtitles-v3.strem.fun/manifest.json',
-      icon: CupertinoIcons.captions_bubble_fill,
-    ),
-    (
-      name: 'Anime Kitsu',
-      description: 'Anime catalog & metadata powered by Kitsu.io',
-      url: 'https://anime-kitsu.strem.fun/manifest.json',
-      icon: CupertinoIcons.tv,
-    ),
-    (
-      name: 'CyberFlix Catalog',
-      description: 'Curated Netflix, Disney+, Apple TV+, HBO Max catalogs',
-      url: 'https://cyberflix.elfhosted.com/manifest.json',
-      icon: CupertinoIcons.square_grid_2x2_fill,
-    ),
-  ];
-
   @override
   void dispose() {
     _urlController.dispose();
@@ -149,14 +110,15 @@ class _StremioAddonsScreenState extends State<StremioAddonsScreen> {
               const SizedBox(height: 8),
               if (installed.isEmpty)
                 Container(
-                  padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
                   decoration: BoxDecoration(
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.surface2),
                   ),
                   child: const Center(
                     child: Text(
-                      'No Stremio addons installed yet.\nPaste a manifest URL or select a preset below.',
+                      'No Stremio addons installed yet.\nPaste an addon manifest URL above to install.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: AppColors.textTertiary, height: 1.5),
                     ),
@@ -164,10 +126,6 @@ class _StremioAddonsScreenState extends State<StremioAddonsScreen> {
                 )
               else
                 ...installed.map((entry) => _buildAddonTile(entry)),
-              const SizedBox(height: 32),
-              _buildSectionHeader('POPULAR ADDONS'),
-              const SizedBox(height: 8),
-              ..._popularAddons.map((preset) => _buildPresetTile(preset, installed)),
               const SizedBox(height: 40),
             ],
           );
@@ -192,10 +150,10 @@ class _StremioAddonsScreenState extends State<StremioAddonsScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF7B5BF2).withValues(alpha: 0.15),
+                  color: AppColors.accent.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(CupertinoIcons.link, color: Color(0xFF9D84F7), size: 20),
+                child: Icon(CupertinoIcons.link, color: AppColors.accent, size: 20),
               ),
               const SizedBox(width: 12),
               const Expanded(
@@ -211,7 +169,7 @@ class _StremioAddonsScreenState extends State<StremioAddonsScreen> {
                       ),
                     ),
                     Text(
-                      'Paste any manifest URL (e.g. Torrentio, Comet, Debrid)',
+                      'Paste any Stremio manifest URL',
                       style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
                     ),
                   ],
@@ -249,7 +207,8 @@ class _StremioAddonsScreenState extends State<StremioAddonsScreen> {
               FilledButton(
                 onPressed: _loading ? null : () => _installFromInput(),
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF7B5BF2),
+                  backgroundColor: AppColors.accent,
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
@@ -311,7 +270,7 @@ class _StremioAddonsScreenState extends State<StremioAddonsScreen> {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: const Color(0xFF7B5BF2).withValues(alpha: 0.15),
+            color: AppColors.accent.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(10),
           ),
           child: manifest.logo != null && manifest.logo!.isNotEmpty
@@ -320,13 +279,13 @@ class _StremioAddonsScreenState extends State<StremioAddonsScreen> {
                   child: Image.network(
                     manifest.logo!,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const Icon(
+                    errorBuilder: (_, _, _) => Icon(
                       CupertinoIcons.cube_box_fill,
-                      color: Color(0xFF9D84F7),
+                      color: AppColors.accent,
                     ),
                   ),
                 )
-              : const Icon(CupertinoIcons.cube_box_fill, color: Color(0xFF9D84F7)),
+              : Icon(CupertinoIcons.cube_box_fill, color: AppColors.accent),
         ),
         title: Row(
           children: [
@@ -363,28 +322,30 @@ class _StremioAddonsScreenState extends State<StremioAddonsScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
             ],
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: badges.map((badge) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF7B5BF2).withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    badge,
-                    style: const TextStyle(
-                      color: Color(0xFFB5A4FA),
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600,
+            if (badges.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: badges.map((badge) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                  ),
-                );
-              }).toList(),
-            ),
+                    child: Text(
+                      badge,
+                      style: TextStyle(
+                        color: AppColors.accent,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
           ],
         ),
         trailing: Row(
@@ -392,7 +353,7 @@ class _StremioAddonsScreenState extends State<StremioAddonsScreen> {
           children: [
             CupertinoSwitch(
               value: entry.enabled,
-              activeTrackColor: const Color(0xFF7B5BF2),
+              activeTrackColor: AppColors.accent,
               onChanged: (val) => sl<StremioManager>().toggleAddon(entry.manifestUrl, val),
             ),
             IconButton(
@@ -401,73 +362,6 @@ class _StremioAddonsScreenState extends State<StremioAddonsScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildPresetTile(
-    ({String name, String description, String url, IconData icon}) preset,
-    List<StremioAddonEntry> installed,
-  ) {
-    final canon = StremioClient.canonicalizeManifestUrl(preset.url);
-    final isInstalled = installed.any((e) => e.manifestUrl == canon);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.surface2),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        leading: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: isInstalled
-                ? Colors.green.withValues(alpha: 0.15)
-                : AppColors.surface2,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            preset.icon,
-            color: isInstalled ? Colors.greenAccent : AppColors.textSecondary,
-            size: 20,
-          ),
-        ),
-        title: Text(
-          preset.name,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
-        ),
-        subtitle: Text(
-          preset.description,
-          style: const TextStyle(color: AppColors.textTertiary, fontSize: 12),
-        ),
-        trailing: isInstalled
-            ? Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'Installed',
-                  style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
-                ),
-              )
-            : OutlinedButton(
-                onPressed: _loading ? null : () => _installFromInput(preset.url),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFF7B5BF2)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                ),
-                child: const Text(
-                  'Add',
-                  style: TextStyle(color: Color(0xFF9D84F7), fontWeight: FontWeight.bold, fontSize: 12.5),
-                ),
-              ),
       ),
     );
   }

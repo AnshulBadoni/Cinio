@@ -514,12 +514,14 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             ),
           );
         }
+        final isFiller = (ep.filler || widget.fillerEps.contains(epNum)) &&
+            (!sl.isRegistered<PlaybackPrefs>() || sl<PlaybackPrefs>().highlightFiller);
         return RepaintBoundary(
           child: _EpisodeRow(
             ep: ep,
             epNum: epNum,
             displayTitle: displayTitle,
-            filler: widget.fillerEps.contains(epNum),
+            filler: isFiller,
             coverUrl: widget.coverUrl,
             coverHeaders: widget.coverHeaders,
             isWatched: st.watched,
@@ -562,12 +564,14 @@ class _EpisodesTabState extends State<_EpisodesTab> {
           final fullIndex = indexById[ep.id] ?? 0;
           final st = _stateFor(store, ep, fullIndex, resumeIdx);
           final epNum = ep.number?.toInt() ?? (offset + i + 1);
+          final isFiller = (ep.filler || widget.fillerEps.contains(epNum)) &&
+              (!sl.isRegistered<PlaybackPrefs>() || sl<PlaybackPrefs>().highlightFiller);
           return _EpisodeGridTile(
             number: epNum,
             isWatched: st.watched,
             isInProgress: st.inProgress,
             isResume: st.resume,
-            isFiller: ep.filler,
+            isFiller: isFiller,
             highlight: _highlightEpId == ep.id,
             fraction: st.fraction,
             onTap: () => widget.onOpen(fullIndex),
@@ -959,16 +963,26 @@ class _EpisodeGridTile extends StatelessWidget {
                 ),
               ),
             if (isFiller)
-              const Positioned(
-                top: 6,
-                left: 6,
-                child: SizedBox(
-                  width: 6,
-                  height: 6,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: AppColors.textTertiary,
-                      shape: BoxShape.circle,
+              Positioned(
+                top: 5,
+                left: 5,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.20),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.55),
+                      width: 0.5,
+                    ),
+                  ),
+                  child: const Text(
+                    'F',
+                    style: TextStyle(
+                      color: Color(0xFFF59E0B),
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w900,
+                      height: 1.1,
                     ),
                   ),
                 ),
@@ -1404,7 +1418,11 @@ class _EpisodeRow extends StatelessWidget {
                           children: [
                             if (isResume) const TagBadge(text: 'CONTINUE'),
                             if (isResume && filler) const SizedBox(width: 6),
-                            if (filler) const TagBadge(text: 'FILLER'),
+                            if (filler)
+                              const TagBadge(
+                                text: 'FILLER',
+                                color: Color(0xFFF59E0B),
+                              ),
                           ],
                         ),
                       ],
