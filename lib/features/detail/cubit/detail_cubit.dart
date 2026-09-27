@@ -566,9 +566,28 @@ String statusLabel(MediaStatus status) {
 /// Returns null if no such prefix exists.
 /// E.g. "S1 E3 - Attack" gives 1; "Episode 5" gives null.
 int? parseSeason(String title) {
-  final m = RegExp(r'^S(\d+)').firstMatch(title.trim());
-  if (m == null) return null;
-  return int.tryParse(m.group(1)!);
+  final t = title.trim();
+  // S1 E3, S01E03, S2
+  var m = RegExp(r'^S(\d+)', caseSensitive: false).firstMatch(t);
+  if (m != null) return int.tryParse(m.group(1)!);
+
+  // Season 2 Episode 3, Season 1
+  m = RegExp(r'^Season\s*(\d+)', caseSensitive: false).firstMatch(t);
+  if (m != null) return int.tryParse(m.group(1)!);
+
+  // 2x03
+  m = RegExp(r'^(\d+)x\d+', caseSensitive: false).firstMatch(t);
+  if (m != null) return int.tryParse(m.group(1)!);
+
+  // Embedded S02E03 anywhere in title
+  m = RegExp(r'\bS(\d+)\s*E\d+', caseSensitive: false).firstMatch(t);
+  if (m != null) return int.tryParse(m.group(1)!);
+
+  // Embedded "Season 2" anywhere in title
+  m = RegExp(r'\bSeason\s*(\d+)\b', caseSensitive: false).firstMatch(t);
+  if (m != null) return int.tryParse(m.group(1)!);
+
+  return null;
 }
 
 /// The season an episode belongs to: the source-reported field when present

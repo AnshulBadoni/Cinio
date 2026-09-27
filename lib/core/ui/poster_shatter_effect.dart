@@ -7,13 +7,13 @@ import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
 
-/// A wrapper widget that can shatter its child into broken polygon shards
-/// with physics-driven explosive dispersal and gravity.
+/// A wrapper widget that disintegrates its child into floating ash and dust
+/// particles with a sweeping erosion wave and wind drift (Thanos snap effect).
 class PosterShatterEffect extends StatefulWidget {
   const PosterShatterEffect({
     super.key,
     required this.child,
-    this.duration = const Duration(milliseconds: 700),
+    this.duration = const Duration(milliseconds: 850),
   });
 
   final Widget child;
@@ -23,34 +23,54 @@ class PosterShatterEffect extends StatefulWidget {
   State<PosterShatterEffect> createState() => PosterShatterEffectState();
 }
 
-class _Shard {
-  _Shard({
-    required this.path,
-    required this.centroid,
+class _AshFlake {
+  _AshFlake({
+    required this.srcRect,
+    required this.dstRect,
+    required this.center,
     required this.vx,
     required this.vy,
+    required this.lift,
+    required this.swayFreq,
+    required this.swayAmp,
+    required this.swayPhase,
     required this.rotSpeed,
+    required this.delay,
   });
 
-  final Path path;
-  final Offset centroid;
+  final Rect srcRect;
+  final Rect dstRect;
+  final Offset center;
   final double vx;
   final double vy;
+  final double lift;
+  final double swayFreq;
+  final double swayAmp;
+  final double swayPhase;
   final double rotSpeed;
+  final double delay;
 }
 
-class _Debris {
-  _Debris({
+class _Ember {
+  _Ember({
     required this.origin,
     required this.vx,
     required this.vy,
     required this.size,
+    required this.color,
+    required this.delay,
+    required this.swayFreq,
+    required this.swayAmp,
   });
 
   final Offset origin;
   final double vx;
   final double vy;
   final double size;
+  final Color color;
+  final double delay;
+  final double swayFreq;
+  final double swayAmp;
 }
 
 class PosterShatterEffectState extends State<PosterShatterEffect>
@@ -58,9 +78,17 @@ class PosterShatterEffectState extends State<PosterShatterEffect>
   final GlobalKey _boundaryKey = GlobalKey();
   late final AnimationController _controller;
   ui.Image? _snapshot;
-  List<_Shard> _shards = const [];
-  List<_Debris> _debris = const [];
+  List<_AshFlake> _flakes = const [];
+  List<_Ember> _embers = const [];
   bool _isShattering = false;
+
+  static const _emberPalette = [
+    Color(0xFFFFA726), // Amber glow
+    Color(0xFFFF7043), // Orange spark
+    Color(0xFFCFD8DC), // Light ash
+    Color(0xFF90A4AE), // Medium ash
+    Color(0xFF455A64), // Charcoal
+  ];
 
   @override
   void initState() {
@@ -78,8 +106,8 @@ class PosterShatterEffectState extends State<PosterShatterEffect>
     super.dispose();
   }
 
-  /// Trigger the shatter animation. Returns a Future that completes when the
-  /// pieces have finished scattering.
+  /// Trigger the Thanos snap ash disintegration animation.
+  /// Returns a Future that completes when all particles have faded away.
   Future<void> shatter() async {
     if (_isShattering) return;
     try {
@@ -93,9 +121,9 @@ class PosterShatterEffectState extends State<PosterShatterEffect>
       try {
         _snapshot = await boundary.toImage(pixelRatio: 2.0);
       } catch (_) {
-        // Fall back gracefully to color-shaded shards
+        // Fall back gracefully to color-shaded flakes
       }
-      _generateShards(size);
+      _generateAsh(size);
     }
 
     if (mounted) {
@@ -104,84 +132,89 @@ class PosterShatterEffectState extends State<PosterShatterEffect>
     }
   }
 
-  void _generateShards(Size size) {
-    final shards = <_Shard>[];
-    final debris = <_Debris>[];
+  /// Alias for [shatter] to match the disintegration theme.
+  Future<void> disintegrate() => shatter();
+
+  void _generateAsh(Size size) {
+    final flakes = <_AshFlake>[];
+    final embers = <_Ember>[];
     final rng = math.Random();
-    const cols = 5;
-    const rows = 7;
+
+    const cols = 16;
+    const rows = 24;
     final cellW = size.width / cols;
     final cellH = size.height / rows;
-    final center = Offset(size.width / 2, size.height / 2);
 
-    // Generate perturbed grid points
-    final points = List.generate(
-      rows + 1,
-      (r) => List.generate(cols + 1, (c) {
-        if (r == 0 || r == rows || c == 0 || c == cols) {
-          return Offset(c * cellW, r * cellH);
-        }
-        final jx = (rng.nextDouble() - 0.5) * cellW * 0.55;
-        final jy = (rng.nextDouble() - 0.5) * cellH * 0.55;
-        return Offset(c * cellW + jx, r * cellH + jy);
-      }),
-    );
+    final imgW = _snapshot?.width.toDouble() ?? (size.width * 2.0);
+    final imgH = _snapshot?.height.toDouble() ?? (size.height * 2.0);
+    final srcCellW = imgW / cols;
+    final srcCellH = imgH / rows;
 
     for (var r = 0; r < rows; r++) {
+      final ny = r / (rows - 1); // 0.0 (top) to 1.0 (bottom)
       for (var c = 0; c < cols; c++) {
-        final p00 = points[r][c];
-        final p10 = points[r][c + 1];
-        final p11 = points[r + 1][c + 1];
-        final p01 = points[r + 1][c];
+        final nx = c / (cols - 1); // 0.0 (left) to 1.0 (right)
 
-        // Split quad into two triangular shards
-        for (final tri in [
-          [p00, p10, p11],
-          [p00, p11, p01],
-        ]) {
-          final cx = (tri[0].dx + tri[1].dx + tri[2].dx) / 3;
-          final cy = (tri[0].dy + tri[1].dy + tri[2].dy) / 3;
-          final centroid = Offset(cx, cy);
+        final dstRect = Rect.fromLTWH(c * cellW, r * cellH, cellW, cellH);
+        final srcRect =
+            Rect.fromLTWH(c * srcCellW, r * srcCellH, srcCellW, srcCellH);
 
-          final path = Path()
-            ..moveTo(tri[0].dx, tri[0].dy)
-            ..lineTo(tri[1].dx, tri[1].dy)
-            ..lineTo(tri[2].dx, tri[2].dy)
-            ..close();
+        // Diagonal erosion wave: sweeps from bottom-left up towards top-right
+        final waveDist =
+            (1.0 - ny) * 0.42 + nx * 0.22 + (rng.nextDouble() - 0.5) * 0.08;
+        final delay = (waveDist / 0.70 * 0.48).clamp(0.0, 0.52);
 
-          final angle = math.atan2(cy - center.dy, cx - center.dx);
-          final dist = (centroid - center).distance;
-          final speed = 160.0 + rng.nextDouble() * 240.0 + dist * 0.4;
-          final vx = math.cos(angle) * speed + (rng.nextDouble() - 0.5) * 60;
-          final vy = math.sin(angle) * speed - 110.0 - rng.nextDouble() * 90;
-          final rotSpeed = (rng.nextDouble() - 0.5) * 12.0;
+        // Drift wind physics: blowing rightward and lifting gently
+        final vx = 75.0 + rng.nextDouble() * 150.0;
+        final vy = -35.0 - rng.nextDouble() * 70.0;
+        final lift = 20.0 + rng.nextDouble() * 35.0;
+        final swayFreq = 1.2 + rng.nextDouble() * 1.8;
+        final swayAmp = 8.0 + rng.nextDouble() * 16.0;
+        final swayPhase = rng.nextDouble() * math.pi * 2;
+        final rotSpeed = (rng.nextDouble() - 0.5) * 5.0;
 
-          shards.add(_Shard(
-            path: path,
-            centroid: centroid,
-            vx: vx,
-            vy: vy,
-            rotSpeed: rotSpeed,
-          ));
-        }
-
-        // Add 1-2 small debris particles per cell
-        if (rng.nextDouble() > 0.5) {
-          final dx = c * cellW + rng.nextDouble() * cellW;
-          final dy = r * cellH + rng.nextDouble() * cellH;
-          final angle = rng.nextDouble() * math.pi * 2;
-          debris.add(_Debris(
-            origin: Offset(dx, dy),
-            vx: math.cos(angle) * (100 + rng.nextDouble() * 180),
-            vy: math.sin(angle) * (100 + rng.nextDouble() * 180) - 130,
-            size: 1.5 + rng.nextDouble() * 2.5,
-          ));
-        }
+        flakes.add(_AshFlake(
+          srcRect: srcRect,
+          dstRect: dstRect,
+          center: dstRect.center,
+          vx: vx,
+          vy: vy,
+          lift: lift,
+          swayFreq: swayFreq,
+          swayAmp: swayAmp,
+          swayPhase: swayPhase,
+          rotSpeed: rotSpeed,
+          delay: delay,
+        ));
       }
     }
 
-    _shards = shards;
-    _debris = debris;
+    // Generate flying ember and dust specks along the erosion front
+    const emberCount = 95;
+    for (var i = 0; i < emberCount; i++) {
+      final ox = rng.nextDouble() * size.width;
+      final oy = rng.nextDouble() * size.height;
+      final nx = ox / size.width;
+      final ny = oy / size.height;
+
+      final waveDist =
+          (1.0 - ny) * 0.42 + nx * 0.22 + (rng.nextDouble() - 0.5) * 0.08;
+      final delay = (waveDist / 0.70 * 0.48).clamp(0.0, 0.52);
+
+      embers.add(_Ember(
+        origin: Offset(ox, oy),
+        vx: 110.0 + rng.nextDouble() * 190.0,
+        vy: -70.0 - rng.nextDouble() * 130.0,
+        size: 1.2 + rng.nextDouble() * 2.2,
+        color: _emberPalette[rng.nextInt(_emberPalette.length)],
+        delay: delay,
+        swayFreq: 1.5 + rng.nextDouble() * 2.0,
+        swayAmp: 10.0 + rng.nextDouble() * 16.0,
+      ));
+    }
+
+    _flakes = flakes;
+    _embers = embers;
   }
 
   @override
@@ -198,11 +231,11 @@ class PosterShatterEffectState extends State<PosterShatterEffect>
 
         return CustomPaint(
           size: Size.infinite,
-          painter: _ShatterPainter(
+          painter: _DisintegratePainter(
             progress: _controller.value,
             snapshot: _snapshot,
-            shards: _shards,
-            debris: _debris,
+            flakes: _flakes,
+            embers: _embers,
           ),
           child: Opacity(
             opacity: 0.0,
@@ -214,70 +247,116 @@ class PosterShatterEffectState extends State<PosterShatterEffect>
   }
 }
 
-class _ShatterPainter extends CustomPainter {
-  _ShatterPainter({
+class _DisintegratePainter extends CustomPainter {
+  _DisintegratePainter({
     required this.progress,
     required this.snapshot,
-    required this.shards,
-    required this.debris,
+    required this.flakes,
+    required this.embers,
   });
 
   final double progress;
   final ui.Image? snapshot;
-  final List<_Shard> shards;
-  final List<_Debris> debris;
+  final List<_AshFlake> flakes;
+  final List<_Ember> embers;
+
+  final Paint _intactPaint = Paint()
+    ..isAntiAlias = false
+    ..filterQuality = FilterQuality.low;
+
+  final Paint _flakePaint = Paint()
+    ..isAntiAlias = true
+    ..filterQuality = FilterQuality.low;
+
+  final Paint _fallbackPaint = Paint()..style = PaintingStyle.fill;
+  final Paint _emberPaint = Paint()..isAntiAlias = true;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (shards.isEmpty) return;
-    const gravity = 880.0; // px/s^2
-    final t = progress * 0.72; // time in seconds
-    final fade = (1.0 - progress * 1.15).clamp(0.0, 1.0);
+    if (flakes.isEmpty) return;
 
     final img = snapshot;
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: fade)
-      ..isAntiAlias = true
-      ..filterQuality = FilterQuality.medium;
 
-    final fallbackPaint = Paint()
-      ..color = AppColors.surface2.withValues(alpha: fade)
-      ..style = PaintingStyle.fill;
+    for (final flake in flakes) {
+      final localProgress =
+          flake.delay >= 1.0 ? 0.0 : ((progress - flake.delay) / (1.0 - flake.delay));
 
-    for (final shard in shards) {
-      final dx = shard.vx * t;
-      final dy = shard.vy * t + 0.5 * gravity * t * t;
-      final rot = shard.rotSpeed * t;
-      final scale = math.max(0.0, 1.0 - progress * 0.35);
+      if (localProgress <= 0.0) {
+        // Before the erosion wave reaches this patch, draw in place
+        if (img != null) {
+          canvas.drawImageRect(img, flake.srcRect, flake.dstRect, _intactPaint);
+        } else {
+          _fallbackPaint.color = AppColors.surface2;
+          canvas.drawRect(flake.dstRect, _fallbackPaint);
+        }
+      } else if (localProgress < 1.0) {
+        // Flake has detached: float, drift, char to ash, shrink and fade
+        final tau = localProgress;
+        final alpha = math.pow(1.0 - tau, 1.35).toDouble().clamp(0.0, 1.0);
+        if (alpha <= 0.01) continue;
 
-      canvas.save();
-      canvas.translate(shard.centroid.dx + dx, shard.centroid.dy + dy);
-      canvas.rotate(rot);
-      canvas.scale(scale);
-      canvas.translate(-shard.centroid.dx, -shard.centroid.dy);
+        final dx = flake.vx * tau +
+            math.sin(flake.swayFreq * tau * math.pi * 2 + flake.swayPhase) *
+                flake.swayAmp;
+        final dy = flake.vy * tau -
+            flake.lift * math.sin(tau * math.pi) +
+            (tau * tau * 35.0);
+        final scale = (1.0 - tau * 0.72).clamp(0.0, 1.0);
+        final rot = flake.rotSpeed * tau;
 
-      canvas.clipPath(shard.path);
-      if (img != null) {
-        final src = Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble());
-        final dst = Rect.fromLTWH(0, 0, size.width, size.height);
-        canvas.drawImageRect(img, src, dst, paint);
-      } else {
-        canvas.drawPath(shard.path, fallbackPaint);
+        canvas.save();
+        canvas.translate(flake.center.dx + dx, flake.center.dy + dy);
+        canvas.rotate(rot);
+        canvas.scale(scale);
+        canvas.translate(-flake.center.dx, -flake.center.dy);
+
+        // Char and darken as the flake turns to ash
+        final charFactor = (tau * 1.8).clamp(0.0, 0.88);
+        _flakePaint.color = Colors.white.withValues(alpha: alpha);
+        _flakePaint.colorFilter = ColorFilter.mode(
+          Color.lerp(Colors.transparent, const Color(0xFF212124), charFactor)!,
+          BlendMode.srcATop,
+        );
+
+        if (img != null) {
+          canvas.drawImageRect(img, flake.srcRect, flake.dstRect, _flakePaint);
+        } else {
+          _fallbackPaint.color = Color.lerp(
+            AppColors.surface2,
+            const Color(0xFF212124),
+            charFactor,
+          )!
+              .withValues(alpha: alpha);
+          canvas.drawRect(flake.dstRect, _fallbackPaint);
+        }
+        canvas.restore();
       }
-      canvas.restore();
+      // If localProgress >= 1.0, particle has completely dissolved into ash
     }
 
-    // Draw small flying debris particles
-    final debrisPaint = Paint()
-      ..color = Colors.white.withValues(alpha: (fade * 0.85).clamp(0.0, 1.0));
-    for (final d in debris) {
-      final dx = d.origin.dx + d.vx * t;
-      final dy = d.origin.dy + d.vy * t + 0.5 * (gravity * 1.1) * t * t;
-      canvas.drawCircle(Offset(dx, dy), d.size * (1.0 - progress * 0.5), debrisPaint);
+    // Draw floating embers and ash dust motes
+    for (final ember in embers) {
+      final localProgress =
+          ember.delay >= 1.0 ? 0.0 : ((progress - ember.delay) / (1.0 - ember.delay));
+      if (localProgress <= 0.0 || localProgress >= 1.0) continue;
+
+      final tau = localProgress;
+      final alpha = math.pow(1.0 - tau, 1.25).toDouble().clamp(0.0, 1.0);
+      final dx = ember.vx * tau +
+          math.sin(ember.swayFreq * tau * math.pi * 2) * ember.swayAmp;
+      final dy = ember.vy * tau + (tau * tau * 20.0);
+      final currentSize = ember.size * (1.0 - tau * 0.45);
+
+      _emberPaint.color = ember.color.withValues(alpha: alpha);
+      canvas.drawCircle(
+        Offset(ember.origin.dx + dx, ember.origin.dy + dy),
+        currentSize,
+        _emberPaint,
+      );
     }
   }
 
   @override
-  bool shouldRepaint(_ShatterPainter oldDelegate) =>
+  bool shouldRepaint(_DisintegratePainter oldDelegate) =>
       oldDelegate.progress != progress;
 }

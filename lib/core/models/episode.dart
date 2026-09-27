@@ -88,8 +88,31 @@ class Episode extends Equatable {
     this.runtimeMinutes,
   });
 
-  factory Episode.fromJson(Map<String, dynamic> json) =>
-      _$EpisodeFromJson(json);
+  factory Episode.fromJson(Map<String, dynamic> json) {
+    final ep = _$EpisodeFromJson(json);
+    final rawSeason = json['season'];
+    final s = rawSeason is num
+        ? rawSeason.toInt()
+        : (rawSeason is String ? int.tryParse(rawSeason) : null);
+    if (s != null) {
+      return Episode(
+        id: ep.id,
+        title: ep.title,
+        number: ep.number,
+        url: ep.url,
+        date: ep.date,
+        thumbnail: ep.thumbnail,
+        filler: ep.filler,
+        season: s,
+        scanlator: ep.scanlator,
+        description: ep.description,
+        metaTitle: ep.metaTitle,
+        rating: ep.rating,
+        runtimeMinutes: ep.runtimeMinutes,
+      );
+    }
+    return ep;
+  }
   Map<String, dynamic> toJson() => _$EpisodeToJson(this);
 
   Episode copyWith({

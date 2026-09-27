@@ -537,6 +537,11 @@ class _DetailViewState extends State<_DetailView>
     final key = '$tmdbId:$seasonNumber';
     if (_seasonPosterKey == key) return;
     _seasonPosterKey = key;
+    final cached = sl<TmdbDiscoverService>().getCachedSeasonPoster(tmdbId, seasonNumber);
+    if (cached != null && cached.isNotEmpty && _seasonPosterUrl != cached) {
+      setState(() => _seasonPosterUrl = cached);
+      return;
+    }
     sl<TmdbDiscoverService>().seasonPoster(tmdbId, seasonNumber).then((url) {
       if (!mounted || _seasonPosterKey != key) return;
       if (url != null && url.isNotEmpty) {
@@ -1867,24 +1872,51 @@ class _DetailViewState extends State<_DetailView>
   }
 
   Widget _heroMetaLine(MediaDetail detail) {
-    final parts = <String>[];
-    final year = detail.year ?? widget.item.year;
-    final rating = detail.rating ?? widget.item.rating;
-    if (year != null && year.trim().isNotEmpty) parts.add(year.trim());
-    if (rating != null && rating > 0) parts.add(rating.toStringAsFixed(1));
-    if (detail.genres.isNotEmpty) {
-      parts.addAll(detail.genres.take(3));
-    } else if (widget.item.genres.isNotEmpty) {
-      parts.addAll(widget.item.genres.take(3));
+    final items = <Widget>[];
+    final year = (detail.year ?? widget.item.year)?.trim();
+    if (year != null && year.isNotEmpty) {
+      items.add(
+        Text(
+          year,
+          style: AppText.caption.copyWith(
+            color: AppColors.textPrimary,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
     }
-    if (parts.isEmpty) return const SizedBox.shrink();
+
+    final rating = detail.rating ?? widget.item.rating;
+    if (rating != null && rating > 0) {
+      items.add(_buildImdbBadge(rating, fontSize: 12.0, badgeFontSize: 9.5));
+    }
+
+    final genres = detail.genres.isNotEmpty
+        ? detail.genres.take(3)
+        : widget.item.genres.take(3);
+    for (final genre in genres) {
+      items.add(
+        Text(
+          genre,
+          style: AppText.caption.copyWith(
+            color: AppColors.textPrimary,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+    }
+
+    if (items.isEmpty) return const SizedBox.shrink();
+
     return Wrap(
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 8,
       runSpacing: 4,
       children: [
-        for (var i = 0; i < parts.length; i++) ...[
+        for (var i = 0; i < items.length; i++) ...[
           if (i > 0)
             Container(
               width: 3,
@@ -1894,20 +1926,7 @@ class _DetailViewState extends State<_DetailView>
                 shape: BoxShape.circle,
               ),
             ),
-          if (i == 1 && rating != null)
-            const Icon(
-              Icons.star_rounded,
-              color: Color(0xFFFFC107),
-              size: 14,
-            ),
-          Text(
-            parts[i],
-            style: AppText.caption.copyWith(
-              color: AppColors.textSecondary,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          items[i],
         ],
       ],
     );
@@ -1999,9 +2018,7 @@ class _DetailViewState extends State<_DetailView>
     final filteredBySeason = hasMultipleSeasons
         ? eps.where((e) => (seasonOf(e) ?? 1) == currentSeason).toList()
         : eps;
-    final seasonEps = (filteredBySeason.isEmpty && eps.isNotEmpty)
-        ? eps
-        : filteredBySeason;
+    final seasonEps = filteredBySeason;
 
     final detailKey = '${detail.sourceId}:${detail.id}:$currentSeason:${detail.malId}';
     if (_postFrameForDetailKey != detailKey) {
@@ -2066,17 +2083,6 @@ class _DetailViewState extends State<_DetailView>
       isDownloaded: isDownloaded,
     );
 
-    final castNames = state.cast.isNotEmpty
-        ? state.cast.map((c) => c.name).toList()
-        : detail.cast;
-    final starring = castNames.isNotEmpty ? castNames.take(3).join(', ') : null;
-    final starringMore = castNames.length > 3;
-    final creators = detail.studios.isNotEmpty
-        ? detail.studios.join(', ')
-        : null;
-    final genresLine = (starring == null && detail.genres.isNotEmpty)
-        ? detail.genres.take(4).join(', ')
-        : null;
 
     final sourceName = _sourceLabel(item.sourceId);
 
@@ -2333,26 +2339,6 @@ class _DetailViewState extends State<_DetailView>
                     ),
                   ),
 
-                if (starring != null || creators != null || genresLine != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (starring != null)
-                          _CreditLine(
-                            label: 'Starring',
-                            value: starring,
-                            more: starringMore,
-                            onMore: starringMore ? () => _revealTab(showEpisodesTab ? 1 : 0) : null,
-                          ),
-                        if (genresLine != null)
-                          _CreditLine(label: 'Genres', value: genresLine),
-                        if (creators != null)
-                          _CreditLine(label: 'Creators', value: creators),
-                      ],
-                    ),
-                  ),
 
                 Padding(
                   padding: const EdgeInsets.fromLTRB(8, 20, 8, 8),
@@ -2461,7 +2447,7 @@ class _DetailViewState extends State<_DetailView>
             currentSeason: currentSeason,
             onSelectSeason: cubit.selectSeason,
             tmdbId: detail.tmdbId ?? item.tmdbId,
-            coverUrl: coverUrl,
+            coverUrl: detail.cover ?? item.cover ?? coverUrl,
             coverHeaders: coverHeaders,
             sourceId: item.sourceId,
             showId: item.id,

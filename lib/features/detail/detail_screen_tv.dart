@@ -888,7 +888,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     final currentSeason = hasMultipleSeasons
         ? (seasonSet.contains(state.selectedSeason) ? state.selectedSeason : seasonSet.first)
         : 1;
-    final seasonEps = hasMultipleSeasons ? eps.where((e) => seasonOf(e) == currentSeason).toList() : eps;
+    final seasonEps = hasMultipleSeasons ? eps.where((e) => (seasonOf(e) ?? 1) == currentSeason).toList() : eps;
 
     final episodesBySeason = <int, List<Episode>>{};
     if (hasMultipleSeasons) {

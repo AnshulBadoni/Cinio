@@ -147,7 +147,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   /// The chapters actually shown. Identical to the source list when no group
   /// is picked, so nothing changes for the titles that have only one.
   List<Episode> get _filteredEps {
-    final base = widget.seasonEps.isNotEmpty ? widget.seasonEps : widget.eps;
+    final base = widget.hasMultipleSeasons ? widget.seasonEps : widget.eps;
     final want = _scanlator;
     if (want == null) return base;
     final list = [
@@ -231,8 +231,8 @@ class _EpisodesTabState extends State<_EpisodesTab> {
 
   @override
   Widget build(BuildContext context) {
-    final baseEps = widget.seasonEps.isNotEmpty ? widget.seasonEps : widget.eps;
-    if (baseEps.isEmpty) {
+    final baseEps = widget.hasMultipleSeasons ? widget.seasonEps : widget.eps;
+    if (baseEps.isEmpty && !widget.hasMultipleSeasons) {
       return const EmptyState(
         icon: Icons.video_library_outlined,
         message: 'No episodes available from this source',
@@ -357,32 +357,58 @@ class _EpisodesTabState extends State<_EpisodesTab> {
                 ),
               ),
             ),
-          SliverToBoxAdapter(
-            child: _WideEpisodeCarousel(
-              visible: visible,
-              offset: slice.start,
-              indexById: indexById,
-              resumeIdx: resumeIdx,
-              stateFor: (ep, fullIdx) =>
-                  _stateFor(store, ep, fullIdx, resumeIdx),
-              currentSeason: widget.currentSeason,
-              hasMultipleSeasons: widget.hasMultipleSeasons,
-              defaultCoverUrl: widget.coverUrl,
-              coverHeaders: widget.coverHeaders,
-              onOpen: widget.onOpen,
-              onPickPlayer: widget.onPickPlayer,
-              onDownload: widget.onDownload,
-              fillerEps: widget.fillerEps,
-              sourceId: widget.sourceId,
-              showId: widget.showId,
-              isTv: isTv,
-              highlightEpId: _highlightEpId,
+          if (visible.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+                child: Center(
+                  child: Text(
+                    'No episodes available for Season ${widget.currentSeason}',
+                    style: AppText.body.copyWith(color: AppColors.textSecondary),
+                  ),
+                ),
+              ),
+            )
+          else
+            SliverToBoxAdapter(
+              child: _WideEpisodeCarousel(
+                visible: visible,
+                offset: slice.start,
+                indexById: indexById,
+                resumeIdx: resumeIdx,
+                stateFor: (ep, fullIdx) =>
+                    _stateFor(store, ep, fullIdx, resumeIdx),
+                currentSeason: widget.currentSeason,
+                hasMultipleSeasons: widget.hasMultipleSeasons,
+                defaultCoverUrl: widget.coverUrl,
+                coverHeaders: widget.coverHeaders,
+                onOpen: widget.onOpen,
+                onPickPlayer: widget.onPickPlayer,
+                onDownload: widget.onDownload,
+                fillerEps: widget.fillerEps,
+                sourceId: widget.sourceId,
+                showId: widget.showId,
+                isTv: isTv,
+                highlightEpId: _highlightEpId,
+              ),
             ),
-          ),
         ] else if (_grid && widget.isReading) ...[
           _buildGrid(store, visible, slice.start, indexById, resumeIdx),
         ] else ...[
-          _buildList(store, visible, slice.start, indexById, resumeIdx, isTv),
+          if (visible.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+                child: Center(
+                  child: Text(
+                    'No episodes available for Season ${widget.currentSeason}',
+                    style: AppText.body.copyWith(color: AppColors.textSecondary),
+                  ),
+                ),
+              ),
+            )
+          else
+            _buildList(store, visible, slice.start, indexById, resumeIdx, isTv),
         ],
         const SliverToBoxAdapter(child: SizedBox(height: 16)),
       ],
@@ -1796,7 +1822,7 @@ String? _formatEpisodeDate(String? raw) {
   return trimmed;
 }
 
-Widget _buildImdbBadge(double rating) {
+Widget _buildImdbBadge(double rating, {double fontSize = 11.5, double badgeFontSize = 9.5}) {
   return Row(
     mainAxisSize: MainAxisSize.min,
     children: [
@@ -1806,11 +1832,11 @@ Widget _buildImdbBadge(double rating) {
           color: const Color(0xFFF5C518),
           borderRadius: BorderRadius.circular(3),
         ),
-        child: const Text(
+        child: Text(
           'IMDb',
           style: TextStyle(
             color: Colors.black,
-            fontSize: 9.5,
+            fontSize: badgeFontSize,
             fontWeight: FontWeight.w900,
             letterSpacing: -0.3,
           ),
@@ -1819,9 +1845,9 @@ Widget _buildImdbBadge(double rating) {
       const SizedBox(width: 4),
       Text(
         rating.toStringAsFixed(1),
-        style: const TextStyle(
-          color: Color(0xFFF5C518),
-          fontSize: 11.5,
+        style: TextStyle(
+          color: const Color(0xFFF5C518),
+          fontSize: fontSize,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -1898,8 +1924,12 @@ class _SeasonPosterRowState extends State<_SeasonPosterRow> {
     if (!sl.isRegistered<TmdbDiscoverService>()) return;
     final tmdb = sl<TmdbDiscoverService>();
     for (final s in widget.seasons) {
+      final cached = tmdb.getCachedSeasonPoster(id, s);
+      if (cached != null && cached.isNotEmpty && _posters[s] != cached) {
+        _posters[s] = cached;
+      }
       tmdb.seasonPoster(id, s).then((url) {
-        if (mounted && url != null) {
+        if (mounted && url != null && _posters[s] != url) {
           setState(() => _posters[s] = url);
         }
       });

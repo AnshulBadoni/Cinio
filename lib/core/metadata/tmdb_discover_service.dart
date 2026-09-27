@@ -410,8 +410,19 @@ class TmdbDiscoverService {
       if (seasons is List) {
         final seasonNumbers = [
           for (final season in seasons)
-            if (season is Map) (season['season_number'] as num?)?.toInt(),
+            if (season is Map && ((season['episode_count'] as num?)?.toInt() ?? 0) > 0)
+              (season['season_number'] as num?)?.toInt(),
         ].whereType<int>().where((n) => n > 0).toList();
+
+        for (final season in seasons) {
+          if (season is Map) {
+            final sNum = (season['season_number'] as num?)?.toInt();
+            final pPath = season['poster_path'] as String?;
+            if (sNum != null && sNum > 0 && pPath != null && pPath.isNotEmpty) {
+              _seasonPosterCache['$id:$sNum'] = '${Tmdb.img}/w780$pPath';
+            }
+          }
+        }
 
         // Do not fetch episode lists as part of the metadata request. The
         // detail page can render immediately, then the cubit loads the selected
@@ -480,10 +491,37 @@ class TmdbDiscoverService {
 
   final Map<String, String?> _seasonPosterCache = {};
 
+  String? getCachedSeasonPoster(int id, int seasonNumber) =>
+      _seasonPosterCache['$id:$seasonNumber'];
+
   Future<String?> seasonPoster(int id, int seasonNumber) async {
     final key = '$id:$seasonNumber';
     if (_seasonPosterCache.containsKey(key)) return _seasonPosterCache[key];
     try {
+      // First try fetching the main TV show details if any season posters are missing.
+      // This populates all seasons in a single call.
+      final tvRes = await _dio.get<dynamic>(
+        '${Tmdb.base}/tv/$id',
+        options: Options(
+          receiveTimeout: const Duration(seconds: 8),
+          sendTimeout: const Duration(seconds: 8),
+        ),
+      );
+      final tvData = tvRes.data;
+      if (tvData is Map && tvData['seasons'] is List) {
+        for (final s in tvData['seasons']) {
+          if (s is Map) {
+            final sNum = (s['season_number'] as num?)?.toInt();
+            final pPath = s['poster_path'] as String?;
+            if (sNum != null && sNum > 0 && pPath != null && pPath.isNotEmpty) {
+              _seasonPosterCache['$id:$sNum'] = '${Tmdb.img}/w780$pPath';
+            }
+          }
+        }
+        if (_seasonPosterCache.containsKey(key)) return _seasonPosterCache[key];
+      }
+
+      // Fallback: season-specific endpoint
       final response = await _dio.get<dynamic>(
         '${Tmdb.base}/tv/$id/season/$seasonNumber',
         options: Options(
@@ -518,6 +556,9 @@ class TmdbDiscoverService {
       );
       final rawData = response.data;
       if (rawData is! Map) return const [];
+      if (rawData['poster_path'] is String && (rawData['poster_path'] as String).isNotEmpty) {
+        _seasonPosterCache['$id:$seasonNumber'] = '${Tmdb.img}/w780${rawData['poster_path']}';
+      }
       final rows = rawData['episodes'];
       if (rows is! List) return const [];
       return <Episode>[

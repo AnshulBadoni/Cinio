@@ -83,10 +83,6 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
                 box(double.infinity, 12), // synopsis line 2
                 const SizedBox(height: 9),
                 box(width * 0.55, 12), // synopsis line 3
-                const SizedBox(height: 22),
-                box(width * 0.5, 13), // starring
-                const SizedBox(height: 12),
-                box(width * 0.4, 13), // creators / genres
               ],
             ),
           ),
