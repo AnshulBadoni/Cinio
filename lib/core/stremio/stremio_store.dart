@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
@@ -40,8 +41,11 @@ class StremioAddonEntry extends Equatable {
     'installedAt': installedAt.toIso8601String(),
   };
 
-  factory StremioAddonEntry.fromJson(Map<String, dynamic> json) {
-    final manifestData = json['manifest'] as Map<String, dynamic>? ?? {};
+  factory StremioAddonEntry.fromJson(Map<dynamic, dynamic> json) {
+    final rawManifest = json['manifest'];
+    final Map<String, dynamic> manifestData = rawManifest is Map
+        ? rawManifest.map((k, v) => MapEntry(k.toString(), v))
+        : {};
     return StremioAddonEntry(
       manifestUrl: (json['manifestUrl'] ?? '').toString(),
       manifest: StremioManifest.fromJson(manifestData),
@@ -66,15 +70,25 @@ class StremioStore extends ChangeNotifier {
     return StremioStore._(box);
   }
 
+  static String _keyFor(String manifestUrl) {
+    final bytes = utf8.encode(manifestUrl);
+    if (bytes.length <= 220) return manifestUrl;
+    return sha256.convert(bytes).toString();
+  }
+
   List<StremioAddonEntry> all() {
     final result = <StremioAddonEntry>[];
     for (final raw in _box.values) {
       try {
         final decoded = jsonDecode(raw);
-        if (decoded is Map<String, dynamic>) {
-          result.add(StremioAddonEntry.fromJson(decoded));
+        if (decoded is Map) {
+          result.add(StremioAddonEntry.fromJson(
+            decoded.map((k, v) => MapEntry(k.toString(), v)),
+          ));
         }
-      } catch (_) {}
+      } catch (e, st) {
+        debugPrint('[StremioStore] Failed to parse addon entry: $e\n$st');
+      }
     }
     return result;
   }
@@ -84,20 +98,26 @@ class StremioStore extends ChangeNotifier {
   }
 
   StremioAddonEntry? get(String manifestUrl) {
-    final raw = _box.get(manifestUrl);
+    final key = _keyFor(manifestUrl);
+    final raw = _box.get(key) ?? _box.get(manifestUrl);
     if (raw == null) return null;
     try {
       final decoded = jsonDecode(raw);
-      if (decoded is Map<String, dynamic>) {
-        return StremioAddonEntry.fromJson(decoded);
+      if (decoded is Map) {
+        return StremioAddonEntry.fromJson(
+          decoded.map((k, v) => MapEntry(k.toString(), v)),
+        );
       }
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('[StremioStore] Failed to parse addon entry for $manifestUrl: $e\n$st');
+    }
     return null;
   }
 
   Future<void> save(StremioAddonEntry entry) async {
     final raw = jsonEncode(entry.toJson());
-    await _box.put(entry.manifestUrl, raw);
+    await _box.put(_keyFor(entry.manifestUrl), raw);
+    await _box.flush();
     notifyListeners();
   }
 
@@ -108,9 +128,15 @@ class StremioStore extends ChangeNotifier {
   }
 
   Future<void> delete(String manifestUrl) async {
-    await _box.delete(manifestUrl);
+    final key = _keyFor(manifestUrl);
+    await _box.delete(key);
+    if (key != manifestUrl && _box.containsKey(manifestUrl)) {
+      await _box.delete(manifestUrl);
+    }
+    await _box.flush();
     notifyListeners();
   }
 
-  bool contains(String manifestUrl) => _box.containsKey(manifestUrl);
+  bool contains(String manifestUrl) =>
+      _box.containsKey(_keyFor(manifestUrl)) || _box.containsKey(manifestUrl);
 }

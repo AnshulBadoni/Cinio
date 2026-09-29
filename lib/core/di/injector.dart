@@ -822,6 +822,13 @@ Future<void> initDependencies() async {
     }
   });
 
+  final stremioStore = await StremioStore.init();
+  final stremioClient = StremioClient(dio: dio);
+  final stremioManager = StremioManager(store: stremioStore, client: stremioClient);
+  sl.registerSingleton<StremioStore>(stremioStore);
+  sl.registerSingleton<StremioClient>(stremioClient);
+  sl.registerSingleton<StremioManager>(stremioManager);
+
   // Global cubit so any widget can read/write the active source id and
   // descendants can react via BlocBuilder/BlocListener. Persists the pick to a
   // Hive box and restores it on launch, validated against the providers that
@@ -830,19 +837,25 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ActiveSourceCubit>(
     ActiveSourceCubit(
       box: Hive.box(ActiveSourceCubit.boxName),
-      // Valid ids = JS providers + LNReader novel sources (both load on the
-      // boot path — lnrManager.installedSources is synchronous). CloudStream,
+      // Valid ids = JS providers + LNReader novel sources + Stremio addons
+      // (all load on the boot path — synchronous/stored locally). CloudStream,
       // Aniyomi and Mihon load off the boot path, so a saved `cs:`/`ani:`/
       // `mihon:` active source is restored a moment later via reapplySaved
-      // rather than being in this initial set. lnr had neither, so a saved
-      // novel source fell back to allanime on every restart — include it here.
+      // rather than being in this initial set.
       valid: {
         ...manager.installedIds,
         ...csManager.all.map((p) => p.sourceId),
         ...lnrManager.installedSources.map((s) => s.id),
+        ...stremioManager.providers.map((p) => p.sourceId),
       },
     ),
   );
+
+  stremioManager.addListener(() {
+    if (sl.isRegistered<ActiveSourceCubit>()) {
+      sl<ActiveSourceCubit>().reapplySaved((id) => stremioManager.hasProvider(id));
+    }
+  });
 
   // App-wide content mode (anime/manga/novel), persisted, with a separate
   // remembered active source per mode so switching modes never disturbs the
@@ -851,13 +864,6 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ContentModeCubit>(
     await ContentModeCubit.create(sl<ActiveSourceCubit>()),
   );
-
-  final stremioStore = await StremioStore.init();
-  final stremioClient = StremioClient(dio: dio);
-  final stremioManager = StremioManager(store: stremioStore, client: stremioClient);
-  sl.registerSingleton<StremioStore>(stremioStore);
-  sl.registerSingleton<StremioClient>(stremioClient);
-  sl.registerSingleton<StremioManager>(stremioManager);
 
   sl.registerSingleton<SourceRepository>(
     SourceRepository(

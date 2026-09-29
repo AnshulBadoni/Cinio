@@ -15,15 +15,16 @@ class StremioCatalogDescriptor extends Equatable {
     this.extraRequired,
   });
 
-  factory StremioCatalogDescriptor.fromJson(Map<String, dynamic> json) {
+  factory StremioCatalogDescriptor.fromJson(Map<dynamic, dynamic> json) {
+    final map = json.map((k, v) => MapEntry(k.toString(), v));
     return StremioCatalogDescriptor(
-      type: (json['type'] ?? 'movie').toString(),
-      id: (json['id'] ?? '').toString(),
-      name: json['name']?.toString(),
-      extraSupported: (json['extraSupported'] as List?)
+      type: (map['type'] ?? 'movie').toString(),
+      id: (map['id'] ?? '').toString(),
+      name: map['name']?.toString(),
+      extraSupported: (map['extraSupported'] as List?)
           ?.map((e) => e.toString())
           .toList(),
-      extraRequired: (json['extraRequired'] as List?)
+      extraRequired: (map['extraRequired'] as List?)
           ?.map((e) => e.toString())
           .toList(),
     );
@@ -59,13 +60,14 @@ class StremioResourceObject extends Equatable {
         types: const ['movie', 'series', 'anime'],
       );
     }
-    if (json is Map<String, dynamic>) {
-      final name = (json['name'] ?? '').toString();
-      final types = (json['types'] as List?)
+    if (json is Map) {
+      final map = json.map((k, v) => MapEntry(k.toString(), v));
+      final name = (map['name'] ?? '').toString();
+      final types = (map['types'] as List?)
               ?.map((e) => e.toString())
               .toList() ??
           const ['movie', 'series', 'anime'];
-      final idPrefixes = (json['idPrefixes'] as List?)
+      final idPrefixes = (map['idPrefixes'] as List?)
           ?.map((e) => e.toString())
           .toList();
       return StremioResourceObject(
@@ -135,11 +137,14 @@ class StremioManifest extends Equatable {
 
     final rawCatalogs = json['catalogs'] as List? ?? const [];
     final catalogs = rawCatalogs
-        .whereType<Map<String, dynamic>>()
+        .whereType<Map>()
         .map((c) => StremioCatalogDescriptor.fromJson(c))
         .toList();
 
-    final behaviorHints = json['behaviorHints'] as Map<String, dynamic>? ?? {};
+    final rawBehavior = json['behaviorHints'];
+    final behaviorHints = rawBehavior is Map
+        ? rawBehavior.map((k, v) => MapEntry(k.toString(), v))
+        : const <String, dynamic>{};
     final isAdult = (behaviorHints['adult'] == true) ||
         (json['adult'] == true);
     final isP2p = (behaviorHints['p2p'] == true) ||
