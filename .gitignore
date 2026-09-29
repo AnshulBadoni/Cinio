@@ -69,8 +69,3 @@ supabase/.env
 
 # Supabase CLI deploy scratch
 supabase/.temp/
-
-
-linux
-windows
-macos
