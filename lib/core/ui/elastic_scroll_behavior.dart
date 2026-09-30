@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
 /// App-wide scroll behavior: use native-feeling elastic overscroll instead of
@@ -5,6 +6,15 @@ import 'package:flutter/material.dart';
 /// the same interaction without every ListView/GridView needing custom code.
 class CinioScrollBehavior extends MaterialScrollBehavior {
   const CinioScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    PointerDeviceKind.touch,
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.trackpad,
+    PointerDeviceKind.stylus,
+    PointerDeviceKind.invertedStylus,
+  };
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) =>
@@ -25,9 +35,17 @@ class CinioScrollBehavior extends MaterialScrollBehavior {
   }
 }
 
-
 class CinioBounceOnlyScrollBehavior extends MaterialScrollBehavior {
   const CinioBounceOnlyScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    PointerDeviceKind.touch,
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.trackpad,
+    PointerDeviceKind.stylus,
+    PointerDeviceKind.invertedStylus,
+  };
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) =>

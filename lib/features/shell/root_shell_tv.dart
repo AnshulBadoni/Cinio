@@ -98,6 +98,8 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   /// delay the splash overlay from clearing.
   final Set<int> _mountedPages = {0};
   bool _navOpen = false; // drawer expanded ⇔ focus is in the rail zone
+  bool _navHovered = false; // mouse hover expansion on desktop
+  bool get _isRailExpanded => _navOpen || _navHovered;
   DateTime? _lastBackPress;
 
   final ValueNotifier<int> _searchFocusSignal = ValueNotifier<int>(0);
@@ -420,7 +422,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
             ),
           ),
         ),
-        if (_navOpen) ...[
+        if (_isRailExpanded) ...[
           Expanded(
             child: Image.asset(
               'assets/icon/wordmark.png',
@@ -473,7 +475,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                     ),
                   ),
                   Expanded(
-                    child: _navOpen
+                    child: _isRailExpanded
                         ? Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
@@ -502,7 +504,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                           )
                         : const SizedBox.shrink(),
                   ),
-                  if (_navOpen) const SizedBox(width: 12),
+                  if (_isRailExpanded) const SizedBox(width: 12),
                 ],
               ),
             );
@@ -542,7 +544,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                 ),
               ),
               Expanded(
-                child: _navOpen
+                child: _isRailExpanded
                     ? ExcludeSemantics(
                         child: Text(
                           item.label,
@@ -559,7 +561,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                       )
                     : const SizedBox.shrink(),
               ),
-              if (_navOpen) const SizedBox(width: 12),
+              if (_isRailExpanded) const SizedBox(width: 12),
             ],
           ),
         );
@@ -639,7 +641,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                   ),
                 ),
                 Expanded(
-                  child: _navOpen
+                  child: _isRailExpanded
                       ? Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
@@ -664,7 +666,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                         )
                       : const SizedBox.shrink(),
                 ),
-                if (_navOpen) const SizedBox(width: 12),
+                if (_isRailExpanded) const SizedBox(width: 12),
               ],
             ),
           ),
@@ -773,19 +775,26 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                 top: 0,
                 bottom: 0,
                 left: 0,
-                child: Focus(
-                  focusNode: _railScope,
-                  onKeyEvent: _onRailKey,
-                  // Expand while focus is anywhere in the rail zone; collapse
-                  // when it leaves (i.e. content is focused).
-                  onFocusChange: (hasFocus) {
-                    if (hasFocus != _navOpen) setState(() => _navOpen = hasFocus);
+                child: MouseRegion(
+                  onEnter: (_) {
+                    if (!_navHovered) setState(() => _navHovered = true);
                   },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOutCubic,
-                    width: _navOpen ? _kNavExpanded : _kNavCollapsed,
-                    margin: const EdgeInsets.all(14),
+                  onExit: (_) {
+                    if (_navHovered) setState(() => _navHovered = false);
+                  },
+                  child: Focus(
+                    focusNode: _railScope,
+                    onKeyEvent: _onRailKey,
+                    // Expand while focus is anywhere in the rail zone; collapse
+                    // when it leaves (i.e. content is focused).
+                    onFocusChange: (hasFocus) {
+                      if (hasFocus != _navOpen) setState(() => _navOpen = hasFocus);
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeOutCubic,
+                      width: _isRailExpanded ? _kNavExpanded : _kNavCollapsed,
+                      margin: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         begin: Alignment.topCenter,
@@ -814,7 +823,8 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                   ),
                 ),
               ),
-            ],
+            ),
+          ],
           ),
         ),
         ),

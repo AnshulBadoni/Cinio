@@ -179,14 +179,15 @@ Future<void> initDependencies() async {
   // Wrapped in try/catch: no native handler (tests, iOS, web) → phone behavior.
   // tvOS has no Android `isTv` channel; [isAppleTv] covers Apple TV.
   bool isTv = false;
+  final isDesktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
   try {
     isTv = (await _deviceChannel.invokeMethod<bool>('isTv')) ?? false;
   } catch (_) {
     isTv = false;
   }
-  if (!isTv && isAppleTv) isTv = true;
+  if (!isTv && (isAppleTv || isDesktop)) isTv = true;
   if (isAppleTv) tvosProvidersReady = false;
-  sl.registerSingleton<AppMode>(AppMode(isTv: isTv));
+  sl.registerSingleton<AppMode>(AppMode(isTv: isTv, isDesktop: isDesktop));
 
   await initHiveForApp();
   if (isAppleTv) await AppImageCache.init();

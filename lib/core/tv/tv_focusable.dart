@@ -370,12 +370,15 @@ class _TvFocusableState extends State<TvFocusable> {
           // scroll drag beats the tap in the gesture arena, so lists still
           // scroll. excludeFromSemantics: the outer Semantics already exposes
           // the tap to TalkBack, so this must not add a second, unlabeled node.
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            excludeFromSemantics: true,
-            onTap: _activate,
-            onLongPress: widget.onLongPress,
-            child: box,
+          child: MouseRegion(
+            cursor: widget.isButton ? SystemMouseCursors.click : MouseCursor.defer,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              excludeFromSemantics: true,
+              onTap: _activate,
+              onLongPress: widget.onLongPress,
+              child: box,
+            ),
           ),
         ),
       ),

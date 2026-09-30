@@ -162,6 +162,14 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
     widget.onBarChange(false);
   }
 
+  void _toggleBar() {
+    if (widget.barVisible) {
+      _hideBar();
+    } else {
+      _showBar();
+    }
+  }
+
   // ── D-pad key handler ─────────────────────────────────────────────────────
   //
   // This runs on the ROOT Focus node only; inner TvFocusable nodes handle OK
@@ -280,6 +288,10 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
         child: Stack(
           fit: StackFit.expand,
           children: [
+            GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _toggleBar,
+            ),
             // ── Bottom control bar ─────────────────────────────────────────
             AnimatedOpacity(
               opacity: widget.barVisible ? 1.0 : 0.0,

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
@@ -6,7 +7,9 @@ import '../../core/models/video_source.dart';
 import '../../core/platform/apple_tv.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
+import '../../core/playback/watch_history.dart';
 import '../../core/tv/tv_load_error_dialog.dart';
+import 'player_screen.dart';
 import 'tv_av_native_player.dart';
 import 'tv_exo_player_screen.dart';
 import 'tv_native_player.dart';
@@ -55,6 +58,33 @@ Future<void> launchTvPlayback({
   bool tmdbIsTv = false,
   String? imdbId,
 }) async {
+  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => PlayerScreen(
+          sourceId: sourceId,
+          episodes: episodes,
+          startIndex: startIndex,
+          resume: resume,
+          resolveSources: resolveSources,
+          history: sl.isRegistered<WatchHistory>() ? sl<WatchHistory>() : null,
+          showTitle: showTitle,
+          cover: cover,
+          coverHeaders: coverHeaders,
+          showUrl: showUrl,
+          category: category,
+          availableCategories: availableCategories,
+          malId: malId,
+          scrobbleTitle: scrobbleTitle,
+          tmdbId: tmdbId,
+          tmdbIsTv: tmdbIsTv,
+          imdbId: imdbId,
+        ),
+      ),
+    );
+    return;
+  }
+
   final prefs = sl<PlaybackPrefs>();
   final kind = tvPlayerKind(
     appleTv: isAppleTv,

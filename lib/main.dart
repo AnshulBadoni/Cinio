@@ -562,7 +562,8 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
               )
             : (child ?? const SizedBox.shrink());
         final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
-        return isTv ? TvViewport(child: content) : content;
+        final isDesktop = sl.isRegistered<AppMode>() && sl<AppMode>().isDesktop;
+        return (isTv && !isDesktop) ? TvViewport(child: content) : content;
       },
     );
   }

@@ -3,5 +3,9 @@
 /// On a phone this is always false, so every `if (isTv)` branch is skipped.
 class AppMode {
   final bool isTv;
-  const AppMode({required this.isTv});
+  final bool isDesktop;
+  const AppMode({
+    required this.isTv,
+    this.isDesktop = false,
+  });
 }
