@@ -91,7 +91,7 @@ class _AdaptiveContentRowState extends State<AdaptiveContentRow> {
           completer.complete(image.height == 0 ? null : image.width / image.height);
         }
         stream.removeListener(listener);
-      }, onError: (_, __) {
+      }, onError: (_, _) {
         if (!completer.isCompleted) completer.complete(null);
         stream.removeListener(listener);
       });

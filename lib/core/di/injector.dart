@@ -185,7 +185,7 @@ Future<void> initDependencies() async {
   } catch (_) {
     isTv = false;
   }
-  if (!isTv && (isAppleTv || isDesktop)) isTv = true;
+  if (!isTv && isAppleTv) isTv = true;
   if (isAppleTv) tvosProvidersReady = false;
   sl.registerSingleton<AppMode>(AppMode(isTv: isTv, isDesktop: isDesktop));
 

@@ -22,6 +22,7 @@ import '../home/search_screen.dart';
 import '../schedule/schedule_screen.dart';
 import '../settings/settings_screen.dart';
 import '../../core/ui/dock_visibility.dart';
+import 'desktop_shell.dart';
 import 'root_shell_tv.dart';
 
 /// The four pages used by both [RootShell] (phone bottom nav) and
@@ -201,6 +202,7 @@ class _RootShellState extends State<RootShell>
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const RootShellTv();
+    if (sl<AppMode>().isDesktop) return const DesktopShell();
     // Reading modes have no Schedule tab (it's omitted from the dock below).
     // If the mode flips to Manga/Novel while Schedule (tab 1) is showing,
     // bounce back to Home rather than leaving the user on a tab that no
