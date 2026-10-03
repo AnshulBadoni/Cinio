@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
+import '../models/episode_title.dart' show cleanTitle;
 import '../models/provider_info.dart';
 import 'nsfw_trailer_service.dart';
 
@@ -76,6 +77,8 @@ class TrailerService {
     String? year,
     TrailerAlternateContext? alternateContext,
     String? tpdbId,
+    int? tmdbId,
+    bool? isTv,
   }) async {
     if (alternateContext != null) {
       try {
@@ -99,6 +102,8 @@ class TrailerService {
       englishTitle: englishTitle,
       type: type,
       year: year,
+      tmdbId: tmdbId,
+      isTv: isTv,
     );
     if (ytId != null && ytId.isNotEmpty) {
       return TrailerSource.youtube(ytId);
@@ -113,6 +118,8 @@ class TrailerService {
     required ProviderType type,
     String? year,
     TrailerAlternateContext? alternateContext,
+    int? tmdbId,
+    bool? isTv,
   }) async {
     switch (type) {
       case ProviderType.anime:
@@ -122,6 +129,8 @@ class TrailerService {
           title: title,
           englishTitle: englishTitle,
           year: year,
+          tmdbId: tmdbId,
+          isTv: isTv,
         );
       case ProviderType.manga:
       case ProviderType.novel:
@@ -151,13 +160,22 @@ class TrailerService {
     try {
       final manifest = await yt.videos.streamsClient.getManifest(youtubeId);
       final muxed = manifest.muxed; // mp4 video+audio
-      if (muxed.isEmpty) return null;
-      // sortByVideoQuality() is descending (best first), so .last is the
-      // lowest muxed quality — the light pick for the banner.
-      final pick = low
-          ? muxed.sortByVideoQuality().last
-          : muxed.withHighestBitrate();
-      return pick.url.toString();
+      if (muxed.isNotEmpty) {
+        final pick = low
+            ? muxed.sortByVideoQuality().last
+            : muxed.withHighestBitrate();
+        return pick.url.toString();
+      }
+      // Modern YouTube fallback: videos often only expose separate video/audio
+      // adaptive streams. For muted hero banners or lightweight preview, use videoOnly.
+      final allVideo = manifest.videoOnly.toList();
+      if (allVideo.isNotEmpty) {
+        final mp4 = allVideo.where((s) => s.container.name.toLowerCase() == 'mp4').toList();
+        final list = mp4.isNotEmpty ? mp4 : allVideo;
+        list.sort((a, b) => a.videoResolution.height.compareTo(b.videoResolution.height));
+        return low ? list.first.url.toString() : list.last.url.toString();
+      }
+      return null;
     } catch (_) {
       return null;
     } finally {
@@ -241,10 +259,27 @@ class TrailerService {
     required String title,
     String? englishTitle,
     String? year,
+    int? tmdbId,
+    bool? isTv,
   }) async {
-    final query = (englishTitle != null && englishTitle.isNotEmpty)
+    // 1. Direct TMDB ID lookup if known (100% reliable, zero ambiguity)
+    if (tmdbId != null && tmdbId > 0) {
+      final primaryType = (isTv == true) ? 'tv' : 'movie';
+      final directKey = await _fetchTmdbVideos(primaryType, tmdbId.toString());
+      if (directKey != null && directKey.isNotEmpty) return directKey;
+
+      final fallbackType = primaryType == 'tv' ? 'movie' : 'tv';
+      final fallbackKey = await _fetchTmdbVideos(fallbackType, tmdbId.toString());
+      if (fallbackKey != null && fallbackKey.isNotEmpty) return fallbackKey;
+    }
+
+    // 2. Fallback to TMDB multi-search with title cleaning
+    final rawQuery = (englishTitle != null && englishTitle.isNotEmpty)
         ? englishTitle
         : title;
+    final cleaned = cleanTitle(rawQuery);
+    final query = cleaned.isNotEmpty ? cleaned : rawQuery;
+
     try {
       final search = await _dio.get<dynamic>(
         '$_tmdbBase/search/multi',
@@ -278,6 +313,14 @@ class TrailerService {
       final id = picked['id']?.toString();
       if (id == null || id.isEmpty || mediaType == null) return null;
 
+      return _fetchTmdbVideos(mediaType, id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _fetchTmdbVideos(String mediaType, String id) async {
+    try {
       final videos = await _dio.get<dynamic>(
         '$_tmdbBase/$mediaType/$id/videos',
       );
@@ -302,10 +345,8 @@ class TrailerService {
       );
       final key = best['key']?.toString();
       if (key != null && key.isNotEmpty) return key;
-      return null;
-    } catch (_) {
-      return null;
-    }
+    } catch (_) {}
+    return null;
   }
 
   /// Year from a TMDB result's release_date (movie) or first_air_date (tv).

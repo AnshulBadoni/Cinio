@@ -36,6 +36,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   void initState() {
     super.initState();
     _resolvedBackdropUrl = widget.item.heroImage;
+    _resolveTrailerForItem(widget.item);
     final detail = context.read<DetailCubit>().state.detail;
     if (detail != null) {
       _resolveExtrasIfNeeded(detail);
@@ -44,6 +45,33 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     if (_resolvedBackdropUrl == null || _resolvedBackdropUrl!.isEmpty) {
       _resolve16x9Backdrop();
     }
+  }
+
+  void _resolveTrailerForItem(MediaItem item) {
+    if (_trailerSource != null || _trailerResolving) return;
+    _trailerResolving = true;
+
+    final tmdbId = item.tmdbId;
+    final isTv = item.tmdbIsTv;
+
+    sl<TrailerService>()
+        .resolveTrailer(
+          title: item.title,
+          englishTitle: item.englishTitle,
+          type: item.type,
+          year: item.year,
+          tmdbId: tmdbId,
+          isTv: isTv,
+        )
+        .then((source) {
+      if (!mounted) return;
+      if (source != null && source != _trailerSource) {
+        setState(() => _trailerSource = source);
+      }
+    }).catchError((_) {
+    }).whenComplete(() {
+      if (mounted) _trailerResolving = false;
+    });
   }
 
   @override
@@ -107,34 +135,41 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
   void _resolveExtrasIfNeeded(MediaDetail detail) {
     final key = '${detail.sourceId}:${detail.id}:${detail.title}';
-    if (_trailerKey == key || _trailerResolving) return;
+    if (_trailerKey == key && _trailerSource != null) return;
     _trailerKey = key;
-    _trailerResolving = true;
 
-    sl<TrailerService>()
-        .resolveTrailer(
-          title: detail.title,
-          englishTitle: detail.englishTitle,
-          type: detail.type,
-          year: detail.year,
-        )
-        .then((source) {
-      if (!mounted) return;
-      if (source != null && source != _trailerSource) {
-        setState(() => _trailerSource = source);
-      }
-    }).catchError((_) {
-      // Optional fallback
-    }).whenComplete(() {
-      if (mounted) _trailerResolving = false;
-    });
+    final tmdbId = detail.tmdbId ?? widget.item.tmdbId;
+    final isTv = detail.isSeries || widget.item.tmdbIsTv;
+
+    if (_trailerSource == null && !_trailerResolving) {
+      _trailerResolving = true;
+      sl<TrailerService>()
+          .resolveTrailer(
+            title: detail.title,
+            englishTitle: detail.englishTitle,
+            type: detail.type,
+            year: detail.year ?? widget.item.year,
+            tmdbId: tmdbId,
+            isTv: isTv,
+          )
+          .then((source) {
+        if (!mounted) return;
+        if (source != null && source != _trailerSource) {
+          setState(() => _trailerSource = source);
+        }
+      }).catchError((_) {
+        // Optional fallback
+      }).whenComplete(() {
+        if (mounted) _trailerResolving = false;
+      });
+    }
 
     if (_titleLogoUrl == null) {
       sl<TitleLogoService>()
           .logoForDetail(
             title: detail.title,
-            tmdbId: detail.tmdbId ?? widget.item.tmdbId,
-            isTv: detail.isSeries || widget.item.tmdbIsTv,
+            tmdbId: tmdbId,
+            isTv: isTv,
             year: detail.year ?? widget.item.year,
           )
           .then((logo) {
@@ -147,6 +182,44 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     if (_resolvedBackdropUrl == null || _resolvedBackdropUrl!.isEmpty) {
       _resolve16x9Backdrop();
     }
+  }
+
+  void _openTrailerFullscreen(MediaDetail detail) {
+    if (_trailerSource != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => TrailerScreen(
+            title: detail.title,
+            source: _trailerSource!,
+          ),
+        ),
+      );
+      return;
+    }
+
+    final tmdbId = detail.tmdbId ?? widget.item.tmdbId;
+    final isTv = detail.isSeries || widget.item.tmdbIsTv;
+    sl<TrailerService>()
+        .resolveTrailer(
+          title: detail.title,
+          englishTitle: detail.englishTitle,
+          type: detail.type,
+          year: detail.year ?? widget.item.year,
+          tmdbId: tmdbId,
+          isTv: isTv,
+        )
+        .then((source) {
+      if (!mounted || source == null) return;
+      setState(() => _trailerSource = source);
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => TrailerScreen(
+            title: detail.title,
+            source: source,
+          ),
+        ),
+      );
+    });
   }
 
   void _playEpisode(MediaDetail detail, List<Episode> eps, int index) {
@@ -192,6 +265,13 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         },
         builder: (context, state) {
           final detail = state.detail;
+          if (detail != null && _trailerSource == null && !_trailerResolving) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _trailerSource == null && !_trailerResolving) {
+                _resolveExtrasIfNeeded(detail);
+              }
+            });
+          }
 
           if (state.status == DetailStatus.loading || detail == null) {
             return const Center(
@@ -326,9 +406,14 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   Widget _backdropView(String? backdropUrl) {
     if (_trailerSource != null) {
       return _HeroTrailer(
+        key: ValueKey(_trailerSource.hashCode),
         trailer: _trailerSource!,
         collapsed: false,
         placeholder: _staticBackdrop(backdropUrl),
+        onTapFullscreen: () {
+          final detail = context.read<DetailCubit>().state.detail;
+          if (detail != null) _openTrailerFullscreen(detail);
+        },
       );
     }
     return _staticBackdrop(backdropUrl);
@@ -610,11 +695,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         MouseRegion(
           cursor: SystemMouseCursors.click,
           child: GestureDetector(
-            onTap: () {
-              if (detail.episodes.isNotEmpty) {
-                _playEpisode(detail, detail.episodes, 0);
-              }
-            },
+            onTap: () => _openTrailerFullscreen(detail),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
               decoration: BoxDecoration(

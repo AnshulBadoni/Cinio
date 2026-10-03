@@ -218,16 +218,19 @@ class _Hero extends StatelessWidget {
 
 class _HeroTrailer extends StatefulWidget {
   const _HeroTrailer({
+    super.key,
     required this.trailer,
     required this.collapsed,
     required this.placeholder,
     this.onTapFullscreen,
+    this.initialMuted = true,
   });
 
   final TrailerSource trailer;
   final bool collapsed;
   final Widget placeholder;
   final VoidCallback? onTapFullscreen;
+  final bool initialMuted;
 
   TrailerSource get effectiveTrailer => trailer;
 
@@ -261,6 +264,7 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
   @override
   void initState() {
     super.initState();
+    _muted = widget.initialMuted;
     _paused = !sl<PlaybackPrefs>().autoplayTrailer;
     _resolveAndOpen();
   }
@@ -337,11 +341,15 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
     // Loop the single trailer media (Netflix-style).
     await player.setPlaylistMode(PlaylistMode.single);
 
-    // Reveal the player on the first "playing" event so we cross-fade in
-    // rather than showing a black first frame.
+    // Reveal the player on the first "playing" or position advance event so we
+    // cross-fade in rather than showing a black first frame.
     _playingSub = player.stream.playing.listen((playing) {
       if (!mounted) return;
       if (playing && !_ready) setState(() => _ready = true);
+    });
+    player.stream.position.listen((pos) {
+      if (!mounted) return;
+      if (pos > Duration.zero && !_ready) setState(() => _ready = true);
     });
     // Belt-and-braces loop: also restart on completion (covers engines where
     // PlaylistMode.single doesn't auto-restart a single media).
@@ -482,7 +490,7 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
         // the status bar. Play/pause shows as soon as the player exists (so a
         // paused-start trailer can be started); mute only once it's actually
         // playing (mute is meaningless before that).
-        if (controller != null && !_errored)
+        if (controller != null && !_errored && !sl<AppMode>().isDesktop)
           Positioned(
             right: 14,
             top: topInset + 8,
