@@ -51,7 +51,7 @@ class RootShell extends StatefulWidget {
 }
 
 class _RootShellState extends State<RootShell>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   /// The tab showing, by identity. Was an int index into a hardcoded five —
   /// which stopped meaning anything once the dock became reorderable.
   DockTab _tab = DockTab.home;
