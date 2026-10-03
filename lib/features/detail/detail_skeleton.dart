@@ -8,16 +8,19 @@ part of 'detail_screen.dart';
 /// One shared [AnimationController] (same pattern as RowSkeleton/SkeletonGrid).
 class _DetailSkeleton extends StatefulWidget {
   const _DetailSkeleton({
+    super.key,
     required this.heroHeight,
     this.coverUrl,
     this.coverHeaders,
     this.heroTag,
+    this.entranceAnimation,
   });
 
   final double heroHeight;
   final String? coverUrl;
   final Map<String, String>? coverHeaders;
   final String? heroTag;
+  final Animation<double>? entranceAnimation;
 
   @override
   State<_DetailSkeleton> createState() => _DetailSkeletonState();
@@ -167,25 +170,33 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
               children: [
                 _buildBackdropWithHero(),
                 IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(gradient: AppColors.topScrim),
+                  child: _HeroContentEntrance(
+                    animation: widget.entranceAnimation,
+                    fadeOnly: true,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(gradient: AppColors.topScrim),
+                    ),
                   ),
                 ),
                 IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.transparent,
-                          AppColors.bg.withValues(alpha: 0.12),
-                          AppColors.bg.withValues(alpha: 0.40),
-                          AppColors.bg.withValues(alpha: 0.75),
-                          AppColors.bg,
-                        ],
-                        stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
+                  child: _HeroContentEntrance(
+                    animation: widget.entranceAnimation,
+                    fadeOnly: true,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.transparent,
+                            AppColors.bg.withValues(alpha: 0.12),
+                            AppColors.bg.withValues(alpha: 0.40),
+                            AppColors.bg.withValues(alpha: 0.75),
+                            AppColors.bg,
+                          ],
+                          stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
+                        ),
                       ),
                     ),
                   ),
@@ -194,18 +205,22 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
                 Positioned(
                   top: MediaQuery.paddingOf(context).top + 4,
                   left: 16,
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.black.withValues(alpha: 0.55),
-                    ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: const Icon(CupertinoIcons.chevron_back,
-                          color: Colors.white, size: 19.5),
-                      onPressed: () => Navigator.of(context).maybePop(),
+                  child: _HeroContentEntrance(
+                    animation: widget.entranceAnimation,
+                    fadeOnly: true,
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withValues(alpha: 0.55),
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(CupertinoIcons.chevron_back,
+                            color: Colors.white, size: 19.5),
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
                     ),
                   ),
                 ),
@@ -214,7 +229,11 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 64),
-            child: shimmerContent,
+            child: _HeroContentEntrance(
+              animation: widget.entranceAnimation,
+              offsetY: 18.0,
+              child: shimmerContent,
+            ),
           ),
         ],
       ),

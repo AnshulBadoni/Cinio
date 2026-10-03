@@ -324,6 +324,50 @@ class _DetailViewState extends State<_DetailView>
 
   bool _showAppBarTitle = false;
   final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0.0);
+  AnimationController? _entranceController;
+  Animation<double>? _entranceAnimation;
+  bool _entranceInitialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_entranceInitialized) {
+      _entranceInitialized = true;
+      final hasHero = widget.heroTag != null && widget.heroTag!.isNotEmpty;
+      if (!hasHero) {
+        _entranceAnimation = kAlwaysCompleteAnimation;
+        return;
+      }
+
+      final route = ModalRoute.of(context);
+      final routeAnimation = route?.animation;
+      if (route == null || routeAnimation == null || routeAnimation.isCompleted) {
+        _entranceAnimation = kAlwaysCompleteAnimation;
+        return;
+      }
+
+      _entranceController = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 260),
+      );
+      _entranceAnimation = CurvedAnimation(
+        parent: _entranceController!,
+        curve: Curves.easeOutCubic,
+      );
+
+      void onRouteAnimationStatus(AnimationStatus status) {
+        if (status == AnimationStatus.completed) {
+          routeAnimation.removeStatusListener(onRouteAnimationStatus);
+          if (mounted && _entranceController != null) {
+            _entranceController!.forward();
+          }
+        }
+      }
+
+      routeAnimation.addStatusListener(onRouteAnimationStatus);
+    }
+  }
+
   String? _titleLogoUrl;
   String? _titleLogoKey;
   Color? _titleAccent;
@@ -473,6 +517,7 @@ class _DetailViewState extends State<_DetailView>
 
   @override
   void dispose() {
+    _entranceController?.dispose();
     if (sl.isRegistered<DiscordRpc>()) sl<DiscordRpc>().setBrowsing();
     _trailerDelayTimer?.cancel();
     _scrollController.dispose();
@@ -1868,6 +1913,7 @@ class _DetailViewState extends State<_DetailView>
               coverUrl: widget.item.heroImage ?? widget.item.cover,
               coverHeaders: widget.item.coverHeaders,
               heroTag: widget.heroTag,
+              entranceAnimation: _entranceAnimation,
             );
           }
           if (state.detail == null && state.status == DetailStatus.error) {
@@ -1907,7 +1953,12 @@ class _DetailViewState extends State<_DetailView>
               ),
             );
           }
-          if (state.detail == null) return const _DetailSkeleton(heroHeight: 450);
+          if (state.detail == null) {
+            return _DetailSkeleton(
+              heroHeight: 450,
+              entranceAnimation: _entranceAnimation,
+            );
+          }
           return _buildBody(context, state, state.detail!);
         },
       ),
@@ -2162,22 +2213,26 @@ class _DetailViewState extends State<_DetailView>
             stretchTriggerOffset: 80,
             clipBehavior: Clip.none,
             leadingWidth: 68,
-            leading: Padding(
-              padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
-              child: Center(
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _showAppBarTitle
-                        ? Colors.transparent
-                        : Colors.black.withValues(alpha: 0.55),
-                  ),
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 19.5),
-                    onPressed: () => Navigator.of(context).maybePop(),
+            leading: _HeroContentEntrance(
+              animation: _entranceAnimation,
+              fadeOnly: true,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
+                child: Center(
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _showAppBarTitle
+                          ? Colors.transparent
+                          : Colors.black.withValues(alpha: 0.55),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 19.5),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
                   ),
                 ),
               ),
@@ -2196,6 +2251,7 @@ class _DetailViewState extends State<_DetailView>
               trailer: _trailerSource,
               collapsed: _showAppBarTitle,
               stretch: _heroStretch,
+              entranceAnimation: _entranceAnimation,
               onTapFullscreen: _trailerSource != null
                   ? () => _openTrailer(_trailerSource!)
                   : null,
@@ -2302,9 +2358,12 @@ class _DetailViewState extends State<_DetailView>
                 child: child,
               );
             },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            child: _HeroContentEntrance(
+              animation: _entranceAnimation,
+              offsetY: 18.0,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 if (state.error == 'load_failed')
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -2477,11 +2536,15 @@ class _DetailViewState extends State<_DetailView>
               ],
             ),
           ),
+          ),
         ),
       ],
-      body: TabBarView(
-        controller: _tabController,
-        children: [
+      body: _HeroContentEntrance(
+        animation: _entranceAnimation,
+        offsetY: 18.0,
+        child: TabBarView(
+          controller: _tabController,
+          children: [
           if (showEpisodesTab) _EpisodesTab(
             eps: eps,
             seasonEps: seasonEps,

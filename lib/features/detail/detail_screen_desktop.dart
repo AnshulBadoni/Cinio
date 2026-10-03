@@ -1,10 +1,13 @@
 part of 'detail_screen.dart';
 
-/// Desktop-native Detail Screen:
-/// • 16:9 widescreen backdrop artwork / auto-playing muted trailer.
-/// • Official movie title logo (from TMDB) or dynamic Cinio archetype typography.
-/// • Multi-season detection via [seasonOf] with instant season switching.
-/// • Dedicated smooth scrolling episodes list with desktop scrollbar.
+/// Desktop-native Detail Screen precisely styled after the modern streaming reference:
+/// • Full-bleed 16:9 widescreen backdrop / auto-playing muted hero trailer.
+/// • Stylized official TMDB title logo with [cinioFallbackTitle] archetype fallback.
+/// • Refined metadata line: "2021 | 2 Seasons | 16+ | [IMDb] 9.0" with frosted genre pills.
+/// • Open middle layout with red accent dash and high-readability 3-line synopsis.
+/// • Action bar: solid white "[ ▶ Resume S1 E3 ]" pill + circular frosted buttons (⤓, +, ♡, ···).
+/// • Right-hand floating frosted Episodes Panel with season switching ("Season 1 ˅", "Season 2"),
+///   total episodes count, and episode cards with active coral outline, 16:9 thumbnails, and watched checkmarks.
 class DetailScreenDesktop extends StatefulWidget {
   const DetailScreenDesktop({super.key, required this.item});
   final MediaItem item;
@@ -16,7 +19,6 @@ class DetailScreenDesktop extends StatefulWidget {
 class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   final MyListStore _myList = sl<MyListStore>();
   final ResumeStore _resume = sl<ResumeStore>();
-  final TextEditingController _searchCtrl = TextEditingController();
   final ScrollController _episodesScrollCtrl = ScrollController();
 
   TrailerSource? _trailerSource;
@@ -27,56 +29,55 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   String? _resolvedBackdropUrl;
 
   int? _selectedSeason;
-  String _searchQuery = '';
-  bool _isLiked = false;
-  bool _isWatched = false;
   bool _isFavorited = false;
+
+  int _resumeIndex(List<Episode> eps) {
+    if (eps.isEmpty) return 0;
+    int? highestMarked;
+    for (int j = 0; j < eps.length; j++) {
+      final mark = _resume.get(widget.item.sourceId, widget.item.url, eps[j].id);
+      if (mark != null) {
+        highestMarked = j;
+      }
+    }
+    if (highestMarked == null) return 0;
+    final mark = _resume.get(
+      widget.item.sourceId,
+      widget.item.url,
+      eps[highestMarked].id,
+    )!;
+    if (!mark.finished) return highestMarked;
+    if (highestMarked + 1 < eps.length) return highestMarked + 1;
+    return highestMarked;
+  }
+
+  bool _hasResume(List<Episode> eps) {
+    if (eps.isEmpty) return false;
+    return eps.any(
+      (e) => _resume.get(widget.item.sourceId, widget.item.url, e.id) != null,
+    );
+  }
 
   @override
   void initState() {
     super.initState();
     _resolvedBackdropUrl = widget.item.heroImage;
-    _resolveTrailerForItem(widget.item);
-    final detail = context.read<DetailCubit>().state.detail;
-    if (detail != null) {
-      _resolveExtrasIfNeeded(detail);
-    }
     _loadTitleLogo();
+
     if (_resolvedBackdropUrl == null || _resolvedBackdropUrl!.isEmpty) {
       _resolve16x9Backdrop();
     }
-  }
 
-  void _resolveTrailerForItem(MediaItem item) {
-    if (_trailerSource != null || _trailerResolving) return;
-    _trailerResolving = true;
-
-    final tmdbId = item.tmdbId;
-    final isTv = item.tmdbIsTv;
-
-    sl<TrailerService>()
-        .resolveTrailer(
-          title: item.title,
-          englishTitle: item.englishTitle,
-          type: item.type,
-          year: item.year,
-          tmdbId: tmdbId,
-          isTv: isTv,
-        )
-        .then((source) {
-      if (!mounted) return;
-      if (source != null && source != _trailerSource) {
-        setState(() => _trailerSource = source);
-      }
-    }).catchError((_) {
-    }).whenComplete(() {
-      if (mounted) _trailerResolving = false;
-    });
+    final detail = context.read<DetailCubit>().state.detail;
+    if (detail != null) {
+      _resolveExtras(detail);
+    } else {
+      _resolveTrailerEagerly(widget.item);
+    }
   }
 
   @override
   void dispose() {
-    _searchCtrl.dispose();
     _episodesScrollCtrl.dispose();
     super.dispose();
   }
@@ -109,7 +110,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         }
       }
 
-      // Fallback search by title
+      // Fallback search by cleaned title
       final cleanTitle = widget.item.englishTitle ?? widget.item.title;
       final res = await dio.get<Map<String, dynamic>>(
         'https://${Tmdb.host}/3/search/multi',
@@ -133,7 +134,31 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     } catch (_) {}
   }
 
-  void _resolveExtrasIfNeeded(MediaDetail detail) {
+  void _resolveTrailerEagerly(MediaItem item) {
+    if (_trailerSource != null) return;
+    _trailerResolving = true;
+
+    sl<TrailerService>()
+        .resolveTrailer(
+          title: item.title,
+          englishTitle: item.englishTitle,
+          type: item.type,
+          year: item.year,
+          tmdbId: item.tmdbId,
+          isTv: item.tmdbIsTv,
+        )
+        .then((source) {
+      if (!mounted) return;
+      if (source != null && _trailerSource == null) {
+        setState(() => _trailerSource = source);
+      }
+    }).catchError((_) {
+    }).whenComplete(() {
+      if (mounted) _trailerResolving = false;
+    });
+  }
+
+  void _resolveExtras(MediaDetail detail) {
     final key = '${detail.sourceId}:${detail.id}:${detail.title}';
     if (_trailerKey == key && _trailerSource != null) return;
     _trailerKey = key;
@@ -141,7 +166,8 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     final tmdbId = detail.tmdbId ?? widget.item.tmdbId;
     final isTv = detail.isSeries || widget.item.tmdbIsTv;
 
-    if (_trailerSource == null && !_trailerResolving) {
+    // Resolve trailer with high priority using official detail TMDB ID
+    if (_trailerSource == null) {
       _trailerResolving = true;
       sl<TrailerService>()
           .resolveTrailer(
@@ -154,11 +180,10 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
           )
           .then((source) {
         if (!mounted) return;
-        if (source != null && source != _trailerSource) {
+        if (source != null) {
           setState(() => _trailerSource = source);
         }
       }).catchError((_) {
-        // Optional fallback
       }).whenComplete(() {
         if (mounted) _trailerResolving = false;
       });
@@ -260,15 +285,16 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         listener: (context, state) {
           final detail = state.detail;
           if (detail != null) {
-            _resolveExtrasIfNeeded(detail);
+            _resolveExtras(detail);
           }
         },
         builder: (context, state) {
           final detail = state.detail;
+
           if (detail != null && _trailerSource == null && !_trailerResolving) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted && _trailerSource == null && !_trailerResolving) {
-                _resolveExtrasIfNeeded(detail);
+                _resolveExtras(detail);
               }
             });
           }
@@ -292,13 +318,13 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
           return Stack(
             fit: StackFit.expand,
             children: [
-              // ── 1. Full-Screen 16:9 Backdrop Artwork / Trailer ────
+              // ── 1. Full-Screen 16:9 Backdrop Artwork / Auto-Playing Trailer ──
               Positioned.fill(
                 child: _backdropView(backdropUrl),
               ),
 
-              // ── 2. Atmospheric Gradients ───────────────────────────
-              // Left-to-right scrim for razor-sharp typography
+              // ── 2. Cinematic Atmospheric Scrims ────────────────────
+              // Left-to-right gradient for typography legibility while keeping center/right vivid
               Positioned.fill(
                 child: IgnorePointer(
                   child: DecoratedBox(
@@ -306,12 +332,12 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                       gradient: LinearGradient(
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
-                        stops: const [0.0, 0.44, 0.72, 1.0],
+                        stops: const [0.0, 0.35, 0.65, 1.0],
                         colors: [
-                          Colors.black.withValues(alpha: 0.94),
-                          Colors.black.withValues(alpha: 0.78),
-                          Colors.black.withValues(alpha: 0.32),
-                          Colors.black.withValues(alpha: 0.12),
+                          Colors.black.withValues(alpha: 0.88),
+                          Colors.black.withValues(alpha: 0.58),
+                          Colors.black.withValues(alpha: 0.15),
+                          Colors.transparent,
                         ],
                       ),
                     ),
@@ -319,7 +345,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                 ),
               ),
 
-              // Top and bottom vignettes
+              // Bottom and top ambient vignettes
               Positioned.fill(
                 child: IgnorePointer(
                   child: DecoratedBox(
@@ -327,12 +353,12 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        stops: const [0.0, 0.18, 0.82, 1.0],
+                        stops: const [0.0, 0.18, 0.70, 1.0],
                         colors: [
-                          Colors.black.withValues(alpha: 0.65),
+                          Colors.black.withValues(alpha: 0.55),
                           Colors.transparent,
                           Colors.transparent,
-                          Colors.black.withValues(alpha: 0.75),
+                          Colors.black.withValues(alpha: 0.85),
                         ],
                       ),
                     ),
@@ -340,23 +366,29 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                 ),
               ),
 
-              // ── 3. Top Header (< Back button) ──────────────────────
+              // ── 3. Top Navigation Header ───────────────────────────
               Positioned(
                 top: 24,
                 left: 36,
                 right: 36,
                 child: Row(
                   children: [
+                    // Minimal circular back button
                     MouseRegion(
                       cursor: SystemMouseCursors.click,
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () => Navigator.of(context).pop(),
                         child: Container(
-                          padding: const EdgeInsets.all(8),
+                          width: 38,
+                          height: 38,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: Colors.black.withValues(alpha: 0.40),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.14),
+                              width: 1,
+                            ),
                           ),
                           child: const Icon(
                             Icons.chevron_left_rounded,
@@ -372,25 +404,25 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                 ),
               ),
 
-              // ── 4. Main Two-Column Layout ──────────────────────────
+              // ── 4. Main Two-Column Layout (Matching Arcane Reference) ─
               Positioned.fill(
-                top: 78,
-                bottom: 24,
+                top: 76,
+                bottom: 28,
                 left: 48,
                 right: 48,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Left Column: Show Metadata, Summary & Action Bar
+                    // Left Column: Stylized Title, Meta Row, Genres, Open Artwork, Synopsis, Actions
                     Expanded(
                       child: _leftContentColumn(detail, episodes),
                     ),
 
-                    const SizedBox(width: 48),
+                    const SizedBox(width: 44),
 
                     // Right Column: Floating Frosted Episodes Panel
                     SizedBox(
-                      width: 410,
+                      width: 420,
                       child: _rightEpisodesPanel(detail, episodes),
                     ),
                   ],
@@ -409,6 +441,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         key: ValueKey(_trailerSource.hashCode),
         trailer: _trailerSource!,
         collapsed: false,
+        autoplay: true,
         placeholder: _staticBackdrop(backdropUrl),
         onTapFullscreen: () {
           final detail = context.read<DetailCubit>().state.detail;
@@ -426,6 +459,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         fit: BoxFit.cover,
         alignment: Alignment.center,
         memCacheWidth: 1920,
+        fadeInDuration: const Duration(milliseconds: 220),
         placeholder: (_, _) => Container(color: Colors.black),
         errorWidget: (_, _, _) => Container(color: Colors.black),
       );
@@ -440,16 +474,16 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         Icon(
           Icons.grid_view_rounded,
           size: 20,
-          color: Colors.white.withValues(alpha: 0.70),
+          color: Colors.white.withValues(alpha: 0.75),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 16),
         Container(
-          width: 32,
-          height: 32,
+          width: 34,
+          height: 34,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.20),
+              color: Colors.white.withValues(alpha: 0.25),
               width: 1,
             ),
           ),
@@ -467,126 +501,75 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Left Column (Movie Title Logo / Metadata / Action Bar)
+  // Left Column (Hero Title, Meta Row, Genres, Synopsis, Action Buttons)
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _leftContentColumn(MediaDetail detail, List<Episode> episodes) {
-    final genres = detail.genres;
-    final cast = detail.cast.isNotEmpty
-        ? detail.cast
-        : detail.castMembers.map((c) => c.name).toList();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 16),
+        // ── 1. Stylized Title Logo ─────────────────────────────────
+        _titleHeader(detail),
 
-                // ── Title: Official Movie Title Logo or Cinio Archetype ──
-                _titleHeader(detail),
+        const SizedBox(height: 18),
 
-                const SizedBox(height: 22),
+        // ── 2. Metadata Line: "2021 | 2 Seasons | 16+ | [IMDb] 9.0" ─
+        _metadataRow(detail, episodes),
 
-                // ── Runtime · Year · IMDb Rating ──────────────────
-                Row(
-                  children: [
-                    Text(
-                      detail.isSeries ? '44 min' : '128 min',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+        const SizedBox(height: 16),
 
-                    const SizedBox(width: 24),
+        // ── 3. Frosted Genre Pills Row ─────────────────────────────
+        _genresPillRow(detail),
 
-                    Text(
-                      detail.year != null && detail.year!.isNotEmpty
-                          ? '${detail.year}–'
-                          : '2011–',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+        // ── 4. Open Space Letting Background Artwork Shine ─────────
+        const Spacer(),
 
-                    const SizedBox(width: 24),
+        // ── 5. Red Accent Dash (Exact Match to Arcane Reference) ───
+        Container(
+          width: 26,
+          height: 3,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE50914),
+            borderRadius: BorderRadius.circular(1.5),
+          ),
+        ),
 
-                    _imdbRating(detail.rating),
-                  ],
+        const SizedBox(height: 10),
+
+        // ── 6. Editorial Synopsis ──────────────────────────────────
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 540),
+          child: Text(
+            detail.description != null && detail.description!.isNotEmpty
+                ? detail.description!
+                : 'An aspiring utopian regime clashes with a violent radical underground. At the heart of this revolution of magic and tech, a family\'s bond is tested.',
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.86),
+              fontSize: 14.5,
+              height: 1.52,
+              fontWeight: FontWeight.w400,
+              shadows: const [
+                Shadow(
+                  color: Colors.black87,
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
                 ),
-
-                const SizedBox(height: 28),
-
-                // ── GENRES ─────────────────────────────────────────
-                if (genres.isNotEmpty) ...[
-                  _sectionSubtitle('GENRES'),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 8,
-                    children: [
-                      for (final g in genres.take(4)) _frostedPill(g),
-                    ],
-                  ),
-                  const SizedBox(height: 26),
-                ],
-
-                // ── CAST ───────────────────────────────────────────
-                if (cast.isNotEmpty) ...[
-                  _sectionSubtitle('CAST'),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 8,
-                    children: [
-                      for (final c in cast.take(4)) _frostedPill(c),
-                    ],
-                  ),
-                  const SizedBox(height: 26),
-                ],
-
-                // ── SUMMARY ────────────────────────────────────────
-                _sectionSubtitle('SUMMARY'),
-                const SizedBox(height: 10),
-                Text(
-                  detail.description != null && detail.description!.isNotEmpty
-                      ? detail.description!
-                      : 'An anthology horror drama series centering on different characters and locations, showcasing different aspects of horror.',
-                  maxLines: 5,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    fontSize: 13.5,
-                    height: 1.55,
-                    letterSpacing: -0.05,
-                  ),
-                ),
-
-                const SizedBox(height: 20),
               ],
             ),
           ),
         ),
 
-        // ── Bottom Action Bar ──────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.only(top: 14),
-          child: _bottomActionBar(detail),
-        ),
+        const SizedBox(height: 22),
+
+        // ── 7. Primary Action Button & Circular Frosted Utilities ──
+        _bottomActionBar(detail, episodes),
       ],
     );
   }
 
   Widget _titleHeader(MediaDetail detail) {
-    // If official TMDB stylized title logo exists, display it
     if (_titleLogoUrl != null && _titleLogoUrl!.isNotEmpty) {
       return ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420, maxHeight: 110),
@@ -600,38 +583,104 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         ),
       );
     }
-
     return _titleTextFallback(detail);
   }
 
   Widget _titleTextFallback(MediaDetail detail) {
-    // Dynamic Cinio typography archetype matching movie style
     return cinioFallbackTitle(
       title: detail.title,
       seed: detail.id,
       accent: AppColors.accent,
-      fontSize: 42,
+      fontSize: 44,
       textAlign: TextAlign.left,
     );
   }
 
-  Widget _imdbRating(double? rating) {
-    final displayRating = (rating != null && rating > 0)
-        ? rating.toStringAsFixed(1)
-        : '7.9';
+  Widget _metadataRow(MediaDetail detail, List<Episode> episodes) {
+    final year = detail.year != null && detail.year!.isNotEmpty
+        ? detail.year!
+        : (widget.item.year ?? '2021');
+
+    final seasonsCount = episodes
+        .map((e) => seasonOf(e) ?? 1)
+        .toSet()
+        .length;
+    final seasonsText = detail.isSeries
+        ? (seasonsCount > 1 ? '$seasonsCount Seasons' : '1 Season')
+        : (episodes.isNotEmpty && episodes.first.runtimeMinutes != null
+            ? '${episodes.first.runtimeMinutes! ~/ 60}h ${episodes.first.runtimeMinutes! % 60}m'
+            : 'Movie');
+
+    final rating = (detail.rating != null && detail.rating! > 0)
+        ? detail.rating!
+        : (widget.item.rating ?? 9.0);
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Year
         Text(
-          displayRating,
+          year,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 15,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
           ),
         ),
-        const SizedBox(width: 7),
+
+        _metaDivider(),
+
+        // Seasons / Duration
+        Text(
+          seasonsText,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
+          ),
+        ),
+
+        _metaDivider(),
+
+        // Content age rating (e.g. 16+ / TV-MA / PG-13)
+        Text(
+          detail.isSeries ? '16+' : 'PG-13',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
+          ),
+        ),
+
+        _metaDivider(),
+
+        // IMDb Gold Badge + Rating
+        _imdbRatingBadge(rating),
+      ],
+    );
+  }
+
+  Widget _metaDivider() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Text(
+        '|',
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.35),
+          fontSize: 14,
+          fontWeight: FontWeight.w300,
+        ),
+      ),
+    );
+  }
+
+  Widget _imdbRatingBadge(double rating) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
           decoration: BoxDecoration(
@@ -642,86 +691,126 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
             'IMDb',
             style: TextStyle(
               color: Colors.black,
-              fontSize: 11,
+              fontSize: 10.5,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.3,
             ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          rating.toStringAsFixed(1),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ],
     );
   }
 
-  Widget _sectionSubtitle(String text) {
-    return Text(
-      text,
-      style: TextStyle(
-        color: Colors.white.withValues(alpha: 0.40),
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 1.0,
-      ),
+  Widget _genresPillRow(MediaDetail detail) {
+    final genres = detail.genres.isNotEmpty
+        ? detail.genres
+        : (widget.item.genres.isNotEmpty
+            ? widget.item.genres
+            : ['Animation', 'Action', 'Adventure', 'Drama']);
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      children: [
+        for (final g in genres.take(4))
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6.5),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.14),
+                width: 1,
+              ),
+            ),
+            child: Text(
+              g,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.90),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
-  Widget _frostedPill(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
-          width: 1,
-        ),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.90),
-          fontSize: 12.5,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-
-  Widget _bottomActionBar(MediaDetail detail) {
+  Widget _bottomActionBar(MediaDetail detail, List<Episode> episodes) {
     final isBookmarked = _myList.contains(widget.item);
+
+    // Determine resume or start episode
+    Episode? targetEp;
+    String playLabel = 'Watch Now';
+
+    if (detail.isSeries && episodes.isNotEmpty) {
+      final hasResume = _hasResume(episodes);
+      final rIndex = _resumeIndex(episodes);
+      targetEp = episodes[rIndex];
+      final sNum = seasonOf(targetEp) ?? 1;
+      final eNum = targetEp.number?.toInt() ?? (rIndex + 1);
+      playLabel = hasResume
+          ? 'Resume S$sNum E$eNum'
+          : 'Play S$sNum E$eNum';
+    } else {
+      final hasResume = _hasResume(episodes);
+      playLabel = hasResume ? 'Resume' : 'Watch Movie';
+      if (episodes.isNotEmpty) {
+        targetEp = episodes.first;
+      }
+    }
+
+    final targetIndex = targetEp != null ? episodes.indexOf(targetEp) : 0;
 
     return Row(
       children: [
-        // ── "🎬 Trailer" Pill Button ──────────────────────────────
+        // ── Primary Solid White Play / Resume Button ───────────────
         MouseRegion(
           cursor: SystemMouseCursors.click,
           child: GestureDetector(
-            onTap: () => _openTrailerFullscreen(detail),
+            onTap: () {
+              if (episodes.isNotEmpty) {
+                _playEpisode(detail, episodes, targetIndex >= 0 ? targetIndex : 0);
+              }
+            },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.20),
-                  width: 1,
-                ),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.movie_creation_outlined,
-                    color: Colors.white,
-                    size: 19,
+                  const Icon(
+                    Icons.play_arrow_rounded,
+                    color: Colors.black,
+                    size: 24,
                   ),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Text(
-                    'Trailer',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.1,
+                    playLabel,
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
                     ),
                   ),
                 ],
@@ -732,11 +821,22 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
         const SizedBox(width: 14),
 
-        // ── Bookmark / Add to List ────────────────────────────────
+        // ── Download Button [ ⤓ ] ─────────────────────────────────
         _circleUtility(
-          icon: isBookmarked
-              ? Icons.bookmark_added_rounded
-              : Icons.bookmark_add_outlined,
+          icon: Icons.download_rounded,
+          tooltip: 'Download',
+          onTap: () {
+            if (episodes.isNotEmpty) {
+              _playEpisode(detail, episodes, targetIndex >= 0 ? targetIndex : 0);
+            }
+          },
+        ),
+
+        const SizedBox(width: 10),
+
+        // ── My List / Watchlist [ + ] ─────────────────────────────
+        _circleUtility(
+          icon: isBookmarked ? Icons.check_rounded : Icons.add_rounded,
           active: isBookmarked,
           tooltip: isBookmarked ? 'In My List' : 'Add to List',
           onTap: () {
@@ -752,31 +852,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
         const SizedBox(width: 10),
 
-        // ── Watched Status ────────────────────────────────────────
-        _circleUtility(
-          icon: _isWatched
-              ? Icons.visibility_rounded
-              : Icons.remove_red_eye_outlined,
-          active: _isWatched,
-          tooltip: 'Mark as Watched',
-          onTap: () => setState(() => _isWatched = !_isWatched),
-        ),
-
-        const SizedBox(width: 10),
-
-        // ── Like / Thumbs Up ──────────────────────────────────────
-        _circleUtility(
-          icon: _isLiked
-              ? Icons.thumb_up_rounded
-              : Icons.thumb_up_alt_outlined,
-          active: _isLiked,
-          tooltip: 'Like',
-          onTap: () => setState(() => _isLiked = !_isLiked),
-        ),
-
-        const SizedBox(width: 10),
-
-        // ── Favorite / Heart ──────────────────────────────────────
+        // ── Favorite / Heart [ ♡ ] ────────────────────────────────
         _circleUtility(
           icon: _isFavorited
               ? Icons.favorite_rounded
@@ -788,16 +864,11 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
         const SizedBox(width: 10),
 
-        // ── Share ─────────────────────────────────────────────────
+        // ── More Options / Trailer [ ··· ] ────────────────────────
         _circleUtility(
-          icon: Icons.share_outlined,
-          tooltip: 'Share',
-          onTap: () {
-            Clipboard.setData(ClipboardData(text: detail.url));
-            SharePlus.instance.share(
-              ShareParams(text: ShareLink.shareText(widget.item)),
-            );
-          },
+          icon: Icons.more_horiz_rounded,
+          tooltip: 'Trailer & More Options',
+          onTap: () => _openTrailerFullscreen(detail),
         ),
       ],
     );
@@ -816,17 +887,17 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         child: GestureDetector(
           onTap: onTap,
           child: Container(
-            width: 42,
-            height: 42,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: active
-                  ? AppColors.defaultAccent.withValues(alpha: 0.25)
-                  : Colors.white.withValues(alpha: 0.08),
+                  ? AppColors.defaultAccent.withValues(alpha: 0.22)
+                  : Colors.white.withValues(alpha: 0.10),
               border: Border.all(
                 color: active
                     ? AppColors.defaultAccent
-                    : Colors.white.withValues(alpha: 0.15),
+                    : Colors.white.withValues(alpha: 0.18),
                 width: 1,
               ),
             ),
@@ -834,7 +905,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
               child: Icon(
                 icon,
                 color: active ? AppColors.defaultAccent : Colors.white,
-                size: 20,
+                size: 21,
               ),
             ),
           ),
@@ -844,7 +915,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Right Column (Multi-Season Navigation & Scrollable Episodes)
+  // Right Column (Floating Frosted Episodes Panel - Matching Reference)
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _rightEpisodesPanel(MediaDetail detail, List<Episode> episodes) {
@@ -852,7 +923,6 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
       return _movieFallbackPanel(detail);
     }
 
-    // Extract all unique seasons using the global seasonOf helper
     final seasons = episodes
         .map((e) => seasonOf(e) ?? 1)
         .toSet()
@@ -861,27 +931,21 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
     final currentSeason = _selectedSeason ?? (seasons.isNotEmpty ? seasons.first : 1);
 
-    final filtered = episodes.where((e) {
-      if (_searchQuery.isNotEmpty) {
-        final q = _searchQuery.toLowerCase();
-        final title = (e.metaTitle ?? e.title).toLowerCase();
-        final numStr = e.number?.toInt().toString() ?? '';
-        return title.contains(q) || numStr.contains(q);
-      }
-      return (seasonOf(e) ?? 1) == currentSeason;
-    }).toList();
+    final filteredEpisodes = episodes
+        .where((e) => (seasonOf(e) ?? 1) == currentSeason)
+        .toList();
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.68),
-        borderRadius: BorderRadius.circular(18),
+        color: const Color(0xFF0F0F14).withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.08),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.65),
+            color: Colors.black.withValues(alpha: 0.60),
             blurRadius: 28,
             offset: const Offset(0, 10),
           ),
@@ -891,223 +955,163 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Season Controls Header ──────────────────────────────
+          // ── Season Tabs Header: "Season 1 ˅    Season 2       Episodes 9" ─
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // < Prev Button
-              _seasonNavButton(
-                label: 'Prev',
-                hasLeading: true,
-                enabled: seasons.indexOf(currentSeason) > 0,
-                onTap: () {
-                  final idx = seasons.indexOf(currentSeason);
-                  if (idx > 0) {
-                    setState(() => _selectedSeason = seasons[idx - 1]);
-                  }
-                },
-              ),
-
-              // Season N ▾ Dropdown
+              // Active Season Selector
               _seasonDropdown(seasons, currentSeason),
 
-              // Next > Button
-              _seasonNavButton(
-                label: 'Next',
-                hasLeading: false,
-                enabled: seasons.indexOf(currentSeason) < seasons.length - 1,
-                onTap: () {
-                  final idx = seasons.indexOf(currentSeason);
-                  if (idx < seasons.length - 1) {
-                    setState(() => _selectedSeason = seasons[idx + 1]);
-                  }
-                },
+              if (seasons.length > 1) ...[
+                const SizedBox(width: 16),
+                for (final s in seasons.where((s) => s != currentSeason).take(2))
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => setState(() => _selectedSeason = s),
+                        child: Text(
+                          'Season $s',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.45),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+
+              const Spacer(),
+
+              // Episodes Count Badge (e.g. "Episodes 9")
+              Text(
+                'Episodes ${filteredEpisodes.length}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.45),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
 
-          // ── "search videos 🔍" Input Pill ────────────────────────
-          Container(
-            height: 38,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
-                width: 1,
+          // ── Episodes List (Active item highlighted with red outline) ─
+          Expanded(
+            child: RawScrollbar(
+              controller: _episodesScrollCtrl,
+              thumbVisibility: false,
+              thickness: 4,
+              radius: const Radius.circular(4),
+              thumbColor: Colors.white.withValues(alpha: 0.20),
+              child: ListView.separated(
+                controller: _episodesScrollCtrl,
+                physics: const BouncingScrollPhysics(),
+                itemCount: filteredEpisodes.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final ep = filteredEpisodes[index];
+                  final hasResume = _hasResume(episodes);
+                  final resumeEpIndex = _resumeIndex(episodes);
+                  final isActive = hasResume
+                      ? (ep.id == episodes[resumeEpIndex].id)
+                      : (index == 0);
+                  final isWatched = _resume.get(
+                        widget.item.sourceId,
+                        widget.item.url,
+                        ep.id,
+                      )?.finished ??
+                      false;
+
+                  return _EpisodeRowItem(
+                    ep: ep,
+                    index: index,
+                    isActive: isActive,
+                    isWatched: isWatched,
+                    onTap: () => _playEpisode(detail, filteredEpisodes, index),
+                  );
+                },
               ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchCtrl,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'search videos',
-                      hintStyle: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.40),
-                        fontSize: 12.5,
-                      ),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    onChanged: (val) => setState(() => _searchQuery = val.trim()),
-                  ),
-                ),
-                Icon(
-                  Icons.search_rounded,
-                  size: 18,
-                  color: Colors.white.withValues(alpha: 0.50),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 14),
-
-          // ── Scrollable Episodes List with Desktop Scrollbar ──────
-          Expanded(
-            child: filtered.isEmpty
-                ? Center(
-                    child: Text(
-                      'No episodes found',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.45),
-                        fontSize: 13,
-                      ),
-                    ),
-                  )
-                : RawScrollbar(
-                    controller: _episodesScrollCtrl,
-                    thumbVisibility: true,
-                    trackVisibility: false,
-                    thickness: 6,
-                    radius: const Radius.circular(3),
-                    thumbColor: Colors.white.withValues(alpha: 0.25),
-                    child: ListView.separated(
-                      controller: _episodesScrollCtrl,
-                      physics: const AlwaysScrollableScrollPhysics(
-                        parent: BouncingScrollPhysics(),
-                      ),
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final ep = filtered[index];
-                        final fullIndex = episodes.indexOf(ep);
-                        return _EpisodeCardItem(
-                          episode: ep,
-                          index: fullIndex >= 0 ? fullIndex : index,
-                          onTap: () => _playEpisode(
-                            detail,
-                            episodes,
-                            fullIndex >= 0 ? fullIndex : index,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _seasonNavButton({
-    required String label,
-    required bool hasLeading,
-    required bool enabled,
-    required VoidCallback onTap,
-  }) {
-    return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
-      child: GestureDetector(
-        onTap: enabled ? onTap : null,
-        child: Opacity(
-          opacity: enabled ? 1.0 : 0.35,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (hasLeading)
-                const Icon(
-                  Icons.chevron_left_rounded,
-                  size: 16,
-                  color: Colors.white,
-                ),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              if (!hasLeading)
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  size: 16,
-                  color: Colors.white,
-                ),
-            ],
-          ),
+  Widget _seasonDropdown(List<int> seasons, int currentSeason) {
+    if (seasons.length <= 1) {
+      return Text(
+        'Season $currentSeason',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+    }
+
+    return PopupMenuButton<int>(
+      initialValue: currentSeason,
+      tooltip: 'Select Season',
+      color: const Color(0xFF181820),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: Colors.white.withValues(alpha: 0.12),
         ),
       ),
-    );
-  }
-
-  Widget _seasonDropdown(List<int> seasons, int currentSeason) {
-    return PopupMenuButton<int>(
-      color: const Color(0xFF1E222D),
-      initialValue: currentSeason,
       onSelected: (season) {
-        setState(() {
-          _selectedSeason = season;
-          _searchQuery = '';
-          _searchCtrl.clear();
-        });
+        setState(() => _selectedSeason = season);
       },
       itemBuilder: (context) => [
         for (final s in seasons)
           PopupMenuItem<int>(
             value: s,
-            child: Text(
-              'Season $s',
-              style: TextStyle(
-                color: s == currentSeason ? AppColors.defaultAccent : Colors.white,
-                fontWeight: s == currentSeason ? FontWeight.w700 : FontWeight.w400,
-                fontSize: 13,
-              ),
+            child: Row(
+              children: [
+                Text(
+                  'Season $s',
+                  style: TextStyle(
+                    color: s == currentSeason ? Colors.white : Colors.white70,
+                    fontWeight: s == currentSeason
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                  ),
+                ),
+                if (s == currentSeason) ...[
+                  const Spacer(),
+                  const Icon(
+                    Icons.check_rounded,
+                    color: AppColors.defaultAccent,
+                    size: 18,
+                  ),
+                ],
+              ],
             ),
           ),
       ],
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Season $currentSeason',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Season $currentSeason',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.arrow_drop_down_rounded,
-              color: Colors.white.withValues(alpha: 0.70),
-              size: 20,
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 4),
+          const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: Colors.white,
+            size: 20,
+          ),
+        ],
       ),
     );
   }
@@ -1115,109 +1119,95 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   Widget _movieFallbackPanel(MediaDetail detail) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.68),
-        borderRadius: BorderRadius.circular(18),
+        color: const Color(0xFF0F0F14).withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.08),
           width: 1,
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      padding: const EdgeInsets.all(22),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 68,
-            height: 68,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.defaultAccent.withValues(alpha: 0.2),
-              border: Border.all(color: AppColors.defaultAccent, width: 2),
-            ),
-            child: const Center(
-              child: Icon(
-                Icons.play_arrow_rounded,
-                color: AppColors.defaultAccent,
-                size: 40,
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            detail.title,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+          const Text(
+            'FEATURE FILM',
+            style: TextStyle(
               color: Colors.white,
-              fontSize: 19,
+              fontSize: 15,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Full Movie · ${detail.year ?? ''}',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.55),
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 26),
-          FilledButton.icon(
-            onPressed: () {
-              if (detail.episodes.isNotEmpty) {
-                _playEpisode(detail, detail.episodes, 0);
-              }
-            },
-            icon: const Icon(Icons.play_arrow_rounded, size: 22),
-            label: const Text(
-              'Watch Movie',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-            ),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.black,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          const SizedBox(height: 16),
+          if (detail.cast.isNotEmpty) ...[
+            Text(
+              'STARRING',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.40),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.0,
               ),
             ),
-          ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final c in detail.cast.take(6))
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      c,
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Subcomponent: Episode Card Item (16:9 Thumbnail + Clean Typography)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _EpisodeCardItem extends StatefulWidget {
-  const _EpisodeCardItem({
-    required this.episode,
+/// Episode row component exactly matching the Arcane reference:
+/// • 16:9 thumbnail on left.
+/// • Middle: Episode number (red if active), title, duration · rating.
+/// • Trailing: Circular checkmark [✓] if watched, or circular play [▷] if unwatched.
+/// • Active item has a subtle red/coral border highlight.
+class _EpisodeRowItem extends StatefulWidget {
+  const _EpisodeRowItem({
+    required this.ep,
     required this.index,
+    required this.isActive,
+    required this.isWatched,
     required this.onTap,
   });
 
-  final Episode episode;
+  final Episode ep;
   final int index;
+  final bool isActive;
+  final bool isWatched;
   final VoidCallback onTap;
 
   @override
-  State<_EpisodeCardItem> createState() => _EpisodeCardItemState();
+  State<_EpisodeRowItem> createState() => _EpisodeRowItemState();
 }
 
-class _EpisodeCardItemState extends State<_EpisodeCardItem> {
+class _EpisodeRowItemState extends State<_EpisodeRowItem> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final ep = widget.episode;
-    final epNumber = ep.number != null ? ep.number!.toInt() : widget.index + 1;
-    final displayTitle = ep.metaTitle ??
-        (ep.title.isNotEmpty ? ep.title : 'Episode $epNumber');
-    final date = ep.date ?? '';
+    final ep = widget.ep;
+    final epNumber = ep.number?.toInt() ?? (widget.index + 1);
+    final displayTitle = ep.metaTitle ?? ep.title;
+    final isActive = widget.isActive;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -1227,21 +1217,31 @@ class _EpisodeCardItemState extends State<_EpisodeCardItem> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.all(6),
+          padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
-            color: _hovered
-                ? Colors.white.withValues(alpha: 0.08)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isActive
+                  ? const Color(0xFFE50914).withValues(alpha: 0.75)
+                  : (_hovered
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.04)),
+              width: isActive ? 1.2 : 0.8,
+            ),
+            color: isActive
+                ? Colors.white.withValues(alpha: 0.06)
+                : (_hovered
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.transparent),
           ),
           child: Row(
             children: [
-              // 16:9 Thumbnail (104 × 62)
+              // 16:9 Thumbnail (106 × 60)
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: SizedBox(
-                  width: 104,
-                  height: 62,
+                  width: 106,
+                  height: 60,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -1250,9 +1250,7 @@ class _EpisodeCardItemState extends State<_EpisodeCardItem> {
                           imageUrl: ep.thumbnail!,
                           fit: BoxFit.cover,
                           memCacheWidth: 220,
-                          memCacheHeight: 130,
-                          placeholder: (_, _) =>
-                              Container(color: AppColors.surface2),
+                          placeholder: (_, _) => Container(color: AppColors.surface2),
                           errorWidget: (_, _, _) => Container(
                             color: AppColors.surface2,
                             child: const Icon(
@@ -1272,15 +1270,14 @@ class _EpisodeCardItemState extends State<_EpisodeCardItem> {
                           ),
                         ),
 
-                      // Hover play overlay
                       if (_hovered)
                         Container(
-                          color: Colors.black.withValues(alpha: 0.40),
+                          color: Colors.black.withValues(alpha: 0.35),
                           child: const Center(
                             child: Icon(
                               Icons.play_arrow_rounded,
                               color: Colors.white,
-                              size: 26,
+                              size: 24,
                             ),
                           ),
                         ),
@@ -1291,42 +1288,102 @@ class _EpisodeCardItemState extends State<_EpisodeCardItem> {
 
               const SizedBox(width: 12),
 
-              // Title & Date
+              // Number + Title + Duration · Rating
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    Row(
+                      children: [
+                        Text(
+                          '$epNumber',
+                          style: TextStyle(
+                            color: isActive
+                                ? const Color(0xFFE50914)
+                                : Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            displayTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
                     Text(
-                      '$epNumber. $displayTitle',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      ep.runtimeMinutes != null
+                          ? '${ep.runtimeMinutes} min'
+                          : 'Episode',
                       style: TextStyle(
-                        color: _hovered
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.90),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.42),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
-                    if (date.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        date,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.42),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
+
+              const SizedBox(width: 8),
+
+              // Trailing circular checkmark [✓] or play outline [▷]
+              _trailingActionIcon(),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _trailingActionIcon() {
+    if (widget.isWatched) {
+      return Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.45),
+            width: 1.2,
+          ),
+        ),
+        child: const Center(
+          child: Icon(
+            Icons.check_rounded,
+            color: Colors.white,
+            size: 16,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.45),
+          width: 1.2,
+        ),
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.play_arrow_rounded,
+          color: Colors.white,
+          size: 18,
         ),
       ),
     );

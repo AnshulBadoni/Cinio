@@ -4,6 +4,53 @@ part of 'detail_screen.dart';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Staggered entrance animation for hero foreground elements (scrims, title,
+// action buttons) so they don't abruptly pop over the flying hero image.
+// Pure GPU compositing (FadeTransition + Transform.translate) with zero
+// re-layouts. Once completed, it seamlessly returns [child] directly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HeroContentEntrance extends StatelessWidget {
+  const _HeroContentEntrance({
+    super.key,
+    required this.animation,
+    required this.child,
+    this.offsetY = 18.0,
+    this.fadeOnly = false,
+  });
+
+  final Animation<double>? animation;
+  final Widget child;
+  final double offsetY;
+  final bool fadeOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    final anim = animation;
+    if (anim == null || anim.isCompleted) return child;
+
+    if (fadeOnly || offsetY == 0.0) {
+      return FadeTransition(
+        opacity: anim,
+        child: child,
+      );
+    }
+
+    return FadeTransition(
+      opacity: anim,
+      child: AnimatedBuilder(
+        animation: anim,
+        builder: (context, c) => Transform.translate(
+          offset: Offset(0, offsetY * (1.0 - anim.value)),
+          child: c,
+        ),
+        child: child,
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Hero — full-width backdrop with a portrait poster overlapping the bottom-right
 // and a back arrow over the top-left.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -19,6 +66,7 @@ class _Hero extends StatelessWidget {
     this.onTapFullscreen,
     this.stretch,
     this.bottomContent,
+    this.entranceAnimation,
   });
 
   static final ValueNotifier<double> _zeroStretch = ValueNotifier<double>(0);
@@ -29,6 +77,7 @@ class _Hero extends StatelessWidget {
   final bool hasCover;
   final ValueListenable<double>? stretch;
   final Widget? bottomContent;
+  final Animation<double>? entranceAnimation;
 
   /// Resolved trailer source (YouTube or direct stream with headers).
   final TrailerSource? trailer;
@@ -146,8 +195,12 @@ class _Hero extends StatelessWidget {
         // One continuous cinematic treatment: a restrained top scrim plus a
         // single long bottom fade.
         IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(gradient: AppColors.topScrim),
+          child: _HeroContentEntrance(
+            animation: entranceAnimation,
+            fadeOnly: true,
+            child: DecoratedBox(
+              decoration: BoxDecoration(gradient: AppColors.topScrim),
+            ),
           ),
         ),
         Positioned.fill(
@@ -156,20 +209,24 @@ class _Hero extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.transparent,
-                        AppColors.bg.withValues(alpha: 0.12),
-                        AppColors.bg.withValues(alpha: 0.40),
-                        AppColors.bg.withValues(alpha: 0.75),
-                        AppColors.bg,
-                      ],
-                      stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
+                child: _HeroContentEntrance(
+                  animation: entranceAnimation,
+                  fadeOnly: true,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.transparent,
+                          AppColors.bg.withValues(alpha: 0.12),
+                          AppColors.bg.withValues(alpha: 0.40),
+                          AppColors.bg.withValues(alpha: 0.75),
+                          AppColors.bg,
+                        ],
+                        stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
+                      ),
                     ),
                   ),
                 ),
@@ -188,7 +245,11 @@ class _Hero extends StatelessWidget {
                     child: AnimatedOpacity(
                       duration: const Duration(milliseconds: 180),
                       opacity: collapsed ? 0.0 : 1.0,
-                      child: bottomContent!,
+                      child: _HeroContentEntrance(
+                        animation: entranceAnimation,
+                        offsetY: 18.0,
+                        child: bottomContent!,
+                      ),
                     ),
                   ),
                 ),
@@ -224,6 +285,7 @@ class _HeroTrailer extends StatefulWidget {
     required this.placeholder,
     this.onTapFullscreen,
     this.initialMuted = true,
+    this.autoplay,
   });
 
   final TrailerSource trailer;
@@ -231,6 +293,7 @@ class _HeroTrailer extends StatefulWidget {
   final Widget placeholder;
   final VoidCallback? onTapFullscreen;
   final bool initialMuted;
+  final bool? autoplay;
 
   TrailerSource get effectiveTrailer => trailer;
 
@@ -265,7 +328,7 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
   void initState() {
     super.initState();
     _muted = widget.initialMuted;
-    _paused = !sl<PlaybackPrefs>().autoplayTrailer;
+    _paused = widget.autoplay != null ? !widget.autoplay! : !sl<PlaybackPrefs>().autoplayTrailer;
     _resolveAndOpen();
   }
 
@@ -316,7 +379,11 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
       } else {
         url = await svc.streamUrl(t.youtubeId!, low: true);
       }
-      headers = null;
+      headers = const {
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.youtube.com/',
+      };
     } else {
       url = null;
       headers = null;
@@ -350,6 +417,12 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
     player.stream.position.listen((pos) {
       if (!mounted) return;
       if (pos > Duration.zero && !_ready) setState(() => _ready = true);
+    });
+    player.stream.videoParams.listen((params) {
+      if (!mounted) return;
+      if (params.w != null && params.w! > 0 && !_ready) {
+        setState(() => _ready = true);
+      }
     });
     // Belt-and-braces loop: also restart on completion (covers engines where
     // PlaylistMode.single doesn't auto-restart a single media).
