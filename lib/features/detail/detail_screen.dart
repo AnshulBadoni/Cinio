@@ -324,47 +324,40 @@ class _DetailViewState extends State<_DetailView>
 
   bool _showAppBarTitle = false;
   final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0.0);
-  AnimationController? _entranceController;
-  Animation<double>? _entranceAnimation;
-  bool _entranceInitialized = false;
+  late final AnimationController _entranceController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+  );
+  late final Animation<double> _entranceAnimation = CurvedAnimation(
+    parent: _entranceController,
+    curve: Curves.easeOutCubic,
+  );
+  bool _hasStartedContentEntrance = false;
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_entranceInitialized) {
-      _entranceInitialized = true;
-      final hasHero = widget.heroTag != null && widget.heroTag!.isNotEmpty;
-      if (!hasHero) {
-        _entranceAnimation = kAlwaysCompleteAnimation;
-        return;
-      }
+  void _triggerContentEntrance() {
+    if (_hasStartedContentEntrance) return;
+    final route = ModalRoute.of(context);
+    final routeAnimation = route?.animation;
 
-      final route = ModalRoute.of(context);
-      final routeAnimation = route?.animation;
-      if (route == null || routeAnimation == null || routeAnimation.isCompleted) {
-        _entranceAnimation = kAlwaysCompleteAnimation;
-        return;
-      }
-
-      _entranceController = AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 320),
-      );
-      _entranceAnimation = CurvedAnimation(
-        parent: _entranceController!,
-        curve: Curves.easeOutCubic,
-      );
-
-      void onRouteAnimationStatus(AnimationStatus status) {
+    if (routeAnimation != null && !routeAnimation.isCompleted) {
+      void onRouteStatus(AnimationStatus status) {
         if (status == AnimationStatus.completed) {
-          routeAnimation.removeStatusListener(onRouteAnimationStatus);
-          if (mounted && _entranceController != null) {
-            _entranceController!.forward();
+          routeAnimation.removeStatusListener(onRouteStatus);
+          if (mounted && !_hasStartedContentEntrance) {
+            _hasStartedContentEntrance = true;
+            _entranceController.forward(from: 0.0);
           }
         }
       }
 
-      routeAnimation.addStatusListener(onRouteAnimationStatus);
+      routeAnimation.addStatusListener(onRouteStatus);
+    } else {
+      _hasStartedContentEntrance = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _entranceController.forward(from: 0.0);
+        }
+      });
     }
   }
 
@@ -1913,7 +1906,7 @@ class _DetailViewState extends State<_DetailView>
               coverUrl: widget.item.heroImage ?? widget.item.cover,
               coverHeaders: widget.item.coverHeaders,
               heroTag: widget.heroTag,
-              entranceAnimation: _entranceAnimation,
+              entranceAnimation: kAlwaysCompleteAnimation,
             );
           }
           if (state.detail == null && state.status == DetailStatus.error) {
@@ -1956,7 +1949,7 @@ class _DetailViewState extends State<_DetailView>
           if (state.detail == null) {
             return _DetailSkeleton(
               heroHeight: 450,
-              entranceAnimation: _entranceAnimation,
+              entranceAnimation: kAlwaysCompleteAnimation,
             );
           }
           return _buildBody(context, state, state.detail!);
@@ -2085,6 +2078,7 @@ class _DetailViewState extends State<_DetailView>
     DetailState state,
     MediaDetail detail,
   ) {
+    _triggerContentEntrance();
     final item = widget.item;
     final cubit = context.read<DetailCubit>();
     _loadTitleLogo(detail);
