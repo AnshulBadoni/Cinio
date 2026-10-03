@@ -85,9 +85,16 @@ class _Hero extends StatelessWidget {
       duration: const Duration(milliseconds: 280),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
+      layoutBuilder: (currentChild, previousChildren) => Stack(
+        fit: StackFit.expand,
+        children: [
+          ...previousChildren,
+          ?currentChild,
+        ],
+      ),
       child: KeyedSubtree(
         key: ValueKey(coverUrl),
-        child: image,
+        child: SizedBox.expand(child: image),
       ),
     );
   }
@@ -448,12 +455,16 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
                 opacity: _ready ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 350),
                 curve: Curves.easeOut,
-                child: Video(
-                  controller: controller,
-                  controls: NoVideoControls,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.topCenter,
-                  fill: Colors.transparent,
+                child: SizedBox.expand(
+                  child: Video(
+                    controller: controller,
+                    width: double.infinity,
+                    height: double.infinity,
+                    controls: NoVideoControls,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                    fill: Colors.transparent,
+                  ),
                 ),
               ),
             ),
