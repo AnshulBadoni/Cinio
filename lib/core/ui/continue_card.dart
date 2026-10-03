@@ -101,7 +101,9 @@ class _ContinueCardState extends State<ContinueCard> {
                     httpHeaders: widget.headers,
                     memCacheWidth: memW,
                     fit: BoxFit.cover,
-                    fadeInDuration: const Duration(milliseconds: 180),
+                    fadeInDuration: Duration.zero,
+                    fadeOutDuration: Duration.zero,
+                    useOldImageOnUrlChange: true,
                     placeholder: (context, url) =>
                         ColoredBox(color: AppColors.surface2),
                     errorWidget: (context, url, err) =>
@@ -322,7 +324,9 @@ class _ContinueReadingCardState extends State<ContinueReadingCard> {
       httpHeaders: widget.headers,
       memCacheWidth: memW,
       fit: BoxFit.cover,
-      fadeInDuration: const Duration(milliseconds: 180),
+      fadeInDuration: Duration.zero,
+      fadeOutDuration: Duration.zero,
+      useOldImageOnUrlChange: true,
       placeholder: (_, _) => ColoredBox(color: AppColors.surface),
       errorWidget: (_, _, _) => ColoredBox(color: AppColors.surface),
     );

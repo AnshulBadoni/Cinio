@@ -107,6 +107,9 @@ Widget posterHeroFlightShuttle(
     return w;
   }
 
+  // During push: fromHero is poster, toHero is detail.
+  // During pop: fromHero is detail, toHero is poster.
+  // We want the poster thumbnail underneath and the detail backdrop fading over it.
   final posterChild = unwrap(isPush ? fromHero.child : toHero.child);
   final targetChild = unwrap(isPush ? toHero.child : fromHero.child);
 
@@ -140,6 +143,7 @@ Widget posterHeroFlightShuttle(
 }
 
 class _CompletionBadge extends StatelessWidget {
+
   const _CompletionBadge();
 
   @override
@@ -221,7 +225,9 @@ class _PosterCardState extends State<PosterCard> {
         httpHeaders: widget.headers,
         memCacheWidth: memW,
         fit: BoxFit.cover,
-        fadeInDuration: const Duration(milliseconds: 180),
+        fadeInDuration: Duration.zero,
+        fadeOutDuration: Duration.zero,
+        useOldImageOnUrlChange: true,
         placeholder: (context, url) => ColoredBox(color: AppColors.surface2),
         errorWidget: (context, url, err) => ColoredBox(color: AppColors.surface2),
       );
