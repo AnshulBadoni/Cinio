@@ -61,48 +61,73 @@ enum CinioTitlePreset {
 class CinioTitleStyle {
   const CinioTitleStyle._();
 
-  /// Resolves the optimal title preset:
-  /// 1. Prioritizes matching provided genres to their best-fit typography archetype.
-  /// 2. Falls back to a deterministic seed hash across all 10 presets when genres are
-  ///    unspecified or mixed.
+  /// Resolves the optimal title preset with balanced distribution:
+  /// 1. Prioritizes natural genre affinity without letting broad genres (Action/Drama)
+  ///    monopolize the selection.
+  /// 2. Uses deterministic seed hashing within genre clusters to distribute across
+  ///    multiple matching styles.
+  /// 3. Falls back to equal 1-in-10 seed hash distribution when genres are omitted.
   static CinioTitlePreset presetFor(Object seed, {List<String> genres = const []}) {
+    final hash = seed.hashCode.abs();
+
     if (genres.isNotEmpty) {
       final joined = genres.map((g) => g.toLowerCase()).join(' ');
 
+      // 1. Anime / Manga / Animation
       if (joined.contains('anime') || joined.contains('manga') || joined.contains('animation')) {
-        if (joined.contains('superhero') || joined.contains('comic')) {
-          return CinioTitlePreset.comicBook;
+        if (joined.contains('superhero') || joined.contains('comic') || joined.contains('comedy') || joined.contains('family')) {
+          return (hash % 2 == 0) ? CinioTitlePreset.comicBook : CinioTitlePreset.animeGraphic;
         }
-        return CinioTitlePreset.animeGraphic;
+        return (hash % 3 == 0) ? CinioTitlePreset.comicBook : CinioTitlePreset.animeGraphic;
       }
+
+      // 2. Horror / Supernatural / Psychological
       if (joined.contains('horror') || joined.contains('supernatural') || joined.contains('psychological')) {
         return CinioTitlePreset.horrorDistressed;
       }
+
+      // 3. Western / Frontier
       if (joined.contains('western') || joined.contains('cowboy') || joined.contains('frontier')) {
         return CinioTitlePreset.westernAmericana;
       }
-      if (joined.contains('sci-fi') || joined.contains('science fiction') || joined.contains('space') || joined.contains('cyberpunk')) {
-        final hash = seed.hashCode.abs();
+
+      // 4. Sci-Fi / Science Fiction / Space / Fantasy
+      if (joined.contains('sci-fi') || joined.contains('science fiction') || joined.contains('space') || joined.contains('cyberpunk') || joined.contains('fantasy')) {
         return (hash % 2 == 0) ? CinioTitlePreset.futuristicSciFi : CinioTitlePreset.retro80s;
       }
-      if (joined.contains('superhero') || joined.contains('comic')) {
-        return CinioTitlePreset.comicBook;
+
+      // 5. Romance / Comedy / Family
+      if (joined.contains('romance') || joined.contains('comedy') || joined.contains('coming-of-age') || joined.contains('family')) {
+        return (hash % 2 == 0) ? CinioTitlePreset.handwrittenIndie : CinioTitlePreset.elegantLuxury;
       }
-      if (joined.contains('romance') || joined.contains('coming-of-age') || joined.contains('indie')) {
+
+      // 6. Mystery / Crime / Thriller
+      if (joined.contains('mystery') || joined.contains('crime') || joined.contains('thriller')) {
+        final mod = hash % 3;
+        if (mod == 0) return CinioTitlePreset.blockbusterHeavySans;
+        if (mod == 1) return CinioTitlePreset.cinematicPrestige;
+        return CinioTitlePreset.horrorDistressed;
+      }
+
+      // 7. Drama / History / Biography / War
+      if (joined.contains('drama') || joined.contains('history') || joined.contains('historical') || joined.contains('biography') || joined.contains('war')) {
+        final mod = hash % 3;
+        if (mod == 0) return CinioTitlePreset.cinematicPrestige;
+        if (mod == 1) return CinioTitlePreset.elegantLuxury;
         return CinioTitlePreset.handwrittenIndie;
       }
-      if (joined.contains('luxury') || joined.contains('fashion')) {
-        return CinioTitlePreset.elegantLuxury;
-      }
-      if (joined.contains('action') || joined.contains('thriller') || joined.contains('blockbuster') || joined.contains('adventure')) {
-        return CinioTitlePreset.blockbusterHeavySans;
-      }
-      if (joined.contains('drama') || joined.contains('history') || joined.contains('historical') || joined.contains('mystery') || joined.contains('biography') || joined.contains('war')) {
-        return CinioTitlePreset.cinematicPrestige;
+
+      // 8. Action / Adventure
+      if (joined.contains('action') || joined.contains('adventure')) {
+        final mod = hash % 4;
+        if (mod == 0) return CinioTitlePreset.blockbusterHeavySans;
+        if (mod == 1) return CinioTitlePreset.cinematicPrestige;
+        if (mod == 2) return CinioTitlePreset.retro80s;
+        return CinioTitlePreset.westernAmericana;
       }
     }
 
-    final hash = seed.hashCode.abs();
+    // Default: Uniform 10-way hash distribution across all archetypes
     return CinioTitlePreset.values[hash % CinioTitlePreset.values.length];
   }
 
@@ -115,6 +140,7 @@ class CinioTitleStyle {
     required CinioTitlePreset preset,
     required Color accent,
     double fontSize = 30.0,
+    int titleLength = 0,
   }) {
     // 5% global reduction for balanced cinematic proportions
     final effSize = fontSize * 0.95;
@@ -124,6 +150,19 @@ class CinioTitleStyle {
     final tintMid = Color.lerp(const Color(0xFFE2E8F0), accent, 0.28) ?? const Color(0xFFE2E8F0);
     final tintDark = Color.lerp(const Color(0xFF94A3B8), accent, 0.38) ?? const Color(0xFF94A3B8);
 
+    // Tracking compression factor for long titles so wide-spaced styles
+    // (Sci-Fi, Luxury, Horror) don't overflow the container width.
+    final double trackingScale;
+    if (titleLength <= 12) {
+      trackingScale = 1.0;
+    } else if (titleLength <= 24) {
+      trackingScale = 0.55;
+    } else if (titleLength <= 36) {
+      trackingScale = 0.28;
+    } else {
+      trackingScale = 0.12;
+    }
+
     return switch (preset) {
       // 01 — CINEMATIC — PRESTIGE (e.g. The Last of Us, Apple TV+, HBO)
       CinioTitlePreset.cinematicPrestige => (
@@ -132,7 +171,7 @@ class CinioTitleStyle {
           fontSize: effSize * 1.04,
           fontWeight: FontWeight.w700,
           height: 0.95,
-          letterSpacing: 1.6,
+          letterSpacing: (1.8 * trackingScale).clamp(-0.4, 2.0),
         ),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -145,8 +184,8 @@ class CinioTitleStyle {
           stops: const [0.0, 0.55, 1.0],
         ),
         shadows: const [
-          Shadow(color: Colors.black87, offset: Offset(0, 3), blurRadius: 8),
-          Shadow(color: Colors.black54, offset: Offset(0, 1), blurRadius: 2),
+          Shadow(color: Colors.black, offset: Offset(0, 3), blurRadius: 8),
+          Shadow(color: Colors.black87, offset: Offset(0, 1), blurRadius: 2),
         ],
         uppercase: true,
       ),
@@ -158,7 +197,7 @@ class CinioTitleStyle {
           fontSize: effSize * 1.08,
           fontWeight: FontWeight.w900,
           height: 0.88,
-          letterSpacing: -0.8,
+          letterSpacing: (-0.8 * trackingScale).clamp(-1.2, 0.0),
         ),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -186,7 +225,7 @@ class CinioTitleStyle {
           fontWeight: FontWeight.w900,
           fontStyle: FontStyle.italic,
           height: 0.92,
-          letterSpacing: 0.4,
+          letterSpacing: (0.4 * trackingScale).clamp(-0.2, 0.8),
         ),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -211,8 +250,9 @@ class CinioTitleStyle {
           fontFamily: 'serif',
           fontSize: effSize * 0.94,
           fontWeight: FontWeight.w600,
+          fontStyle: FontStyle.italic,
           height: 1.04,
-          letterSpacing: 4.8,
+          letterSpacing: (4.8 * trackingScale).clamp(0.2, 4.8),
         ),
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
@@ -238,7 +278,7 @@ class CinioTitleStyle {
           fontSize: effSize * 0.96,
           fontWeight: FontWeight.w800,
           height: 0.95,
-          letterSpacing: 3.2,
+          letterSpacing: (3.2 * trackingScale).clamp(0.2, 3.2),
         ),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -265,7 +305,7 @@ class CinioTitleStyle {
           fontSize: effSize * 0.88,
           fontWeight: FontWeight.w400,
           height: 1.06,
-          letterSpacing: 6.5,
+          letterSpacing: (6.5 * trackingScale).clamp(0.4, 6.5),
         ),
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
@@ -291,7 +331,7 @@ class CinioTitleStyle {
           fontWeight: FontWeight.w600,
           fontStyle: FontStyle.italic,
           height: 1.02,
-          letterSpacing: 0.6,
+          letterSpacing: (0.6 * trackingScale).clamp(0.0, 1.0),
         ),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -315,7 +355,7 @@ class CinioTitleStyle {
           fontSize: effSize * 0.94,
           fontWeight: FontWeight.w900,
           height: 0.96,
-          letterSpacing: 2.8,
+          letterSpacing: (2.8 * trackingScale).clamp(0.2, 2.8),
         ),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -341,7 +381,7 @@ class CinioTitleStyle {
           fontSize: effSize * 0.88,
           fontWeight: FontWeight.w300,
           height: 1.10,
-          letterSpacing: 7.5,
+          letterSpacing: (7.5 * trackingScale).clamp(0.4, 7.5),
         ),
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
@@ -366,7 +406,7 @@ class CinioTitleStyle {
           fontWeight: FontWeight.w900,
           fontStyle: FontStyle.italic,
           height: 0.88,
-          letterSpacing: -0.3,
+          letterSpacing: (-0.3 * trackingScale).clamp(-0.6, 0.0),
         ),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -398,18 +438,18 @@ class CinioTitleStyle {
     final idx = trimmed.indexOf(':');
     final p1 = trimmed.substring(0, idx).trim();
     final p2 = trimmed.substring(idx + 1).trim();
-    if (p1.isNotEmpty && p2.isNotEmpty && p1.length <= 40) {
+    if (p1.isNotEmpty && p2.isNotEmpty && p1.length <= 48) {
       return (main: p1, sub: p2);
     }
   }
 
-  // Check " - " or " — "
+  // Check " - " or " — " or " – "
   for (final sep in const [' — ', ' – ', ' - ']) {
     if (trimmed.contains(sep)) {
       final idx = trimmed.indexOf(sep);
       final p1 = trimmed.substring(0, idx).trim();
       final p2 = trimmed.substring(idx + sep.length).trim();
-      if (p1.isNotEmpty && p2.isNotEmpty && p1.length <= 40) {
+      if (p1.isNotEmpty && p2.isNotEmpty && p1.length <= 48) {
         return (main: p1, sub: p2);
       }
     }
@@ -426,103 +466,145 @@ Widget cinioFallbackTitle({
   double fontSize = 26.6,
   int maxLines = 2,
   TextAlign textAlign = TextAlign.center,
+  double? maxWidth,
 }) {
   final split = _splitCompoundTitle(title);
   final hasSub = split.sub != null && split.sub!.isNotEmpty;
 
-  // Use the passed-in fontSize directly (already 5% reduced upstream).
-  // FittedBox handles shrinking for long titles automatically — no more
-  // manual length-bucket heuristics.
-  final effectiveFontSize = fontSize;
+  // Adaptive font size scaling: gracefully scales down longer titles
+  // so they fit within the header bounds without truncating.
+  final double lengthScale;
+  final int maxDisplayLines;
+  final mainLen = split.main.length;
+
+  if (mainLen <= 14) {
+    lengthScale = 1.0;
+    maxDisplayLines = maxLines;
+  } else if (mainLen <= 26) {
+    lengthScale = 0.84;
+    maxDisplayLines = maxLines.clamp(2, 3);
+  } else if (mainLen <= 40) {
+    lengthScale = 0.72;
+    maxDisplayLines = 3;
+  } else {
+    lengthScale = 0.62;
+    maxDisplayLines = 3;
+  }
+
+  final effectiveFontSize = fontSize * lengthScale;
 
   final preset = CinioTitleStyle.presetFor(seed, genres: genres);
   final cfg = CinioTitleStyle.configFor(
     preset: preset,
     accent: accent,
     fontSize: effectiveFontSize,
+    titleLength: mainLen,
   );
 
   final displayMain = cfg.uppercase ? split.main.toUpperCase() : split.main;
   final mainFontSize = cfg.baseStyle.fontSize ?? effectiveFontSize;
+  final stackAlign = (textAlign == TextAlign.left)
+      ? Alignment.centerLeft
+      : (textAlign == TextAlign.right ? Alignment.centerRight : Alignment.center);
+  final crossAlign = (textAlign == TextAlign.left)
+      ? CrossAxisAlignment.start
+      : (textAlign == TextAlign.right ? CrossAxisAlignment.end : CrossAxisAlignment.center);
+  final fittedAlign = (textAlign == TextAlign.left)
+      ? Alignment.centerLeft
+      : (textAlign == TextAlign.right ? Alignment.centerRight : Alignment.center);
 
-  // Builds the shadow + gradient double-layer text, wrapped in a FittedBox
-  // so it scales down only when it would otherwise overflow — short titles
-  // stay at full size, long titles shrink smoothly to fit.
-  Widget buildMainText(double fs, int lines) => FittedBox(
+  Widget buildMainText(double fs, int lines, double maxW) => FittedBox(
     fit: BoxFit.scaleDown,
-    child: Stack(
-      alignment: Alignment.center,
-      children: [
-        Text(
-          displayMain,
-          textAlign: textAlign,
-          maxLines: lines,
-          softWrap: true,
-          overflow: TextOverflow.ellipsis,
-          style: cfg.baseStyle.copyWith(
-            fontSize: fs,
-            color: Colors.transparent,
-            shadows: cfg.shadows,
-          ),
-        ),
-        ShaderMask(
-          blendMode: BlendMode.srcIn,
-          shaderCallback: (bounds) => cfg.gradient.createShader(bounds),
-          child: Text(
+    alignment: fittedAlign,
+    child: ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxW),
+      child: Stack(
+        alignment: stackAlign,
+        children: [
+          Text(
             displayMain,
             textAlign: textAlign,
             maxLines: lines,
             softWrap: true,
-            overflow: TextOverflow.ellipsis,
             style: cfg.baseStyle.copyWith(
               fontSize: fs,
-              color: Colors.white,
-              shadows: const [],
+              color: Colors.transparent,
+              shadows: cfg.shadows,
             ),
           ),
-        ),
-      ],
+          ShaderMask(
+            blendMode: BlendMode.srcIn,
+            shaderCallback: (bounds) => cfg.gradient.createShader(bounds),
+            child: Text(
+              displayMain,
+              textAlign: textAlign,
+              maxLines: lines,
+              softWrap: true,
+              style: cfg.baseStyle.copyWith(
+                fontSize: fs,
+                color: Colors.white,
+                shadows: const [],
+              ),
+            ),
+          ),
+        ],
+      ),
     ),
   );
 
-  if (hasSub) {
-    final subText = cfg.uppercase ? split.sub!.toUpperCase() : split.sub!;
-    final subFontSize = (mainFontSize * 0.44).clamp(9.5, 12.5);
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      final effectiveMaxW = (maxWidth != null && maxWidth > 0 && maxWidth.isFinite)
+          ? maxWidth
+          : (constraints.maxWidth.isFinite && constraints.maxWidth > 0
+              ? constraints.maxWidth
+              : 320.0);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        buildMainText(mainFontSize, 2),
-        const SizedBox(height: 3),
-        // Subtitle (Secondary Refined Tier)
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            subText,
-            textAlign: textAlign,
-            maxLines: 2,
-            softWrap: true,
-            overflow: TextOverflow.ellipsis,
-            style: AppText.caption.copyWith(
-              fontFamily: cfg.baseStyle.fontFamily ?? 'Rubik',
-              fontSize: subFontSize,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.6,
-              color: Color.lerp(Colors.white70, accent, 0.20) ?? Colors.white70,
-              shadows: const [
-                Shadow(
-                  color: Color(0xFF000000),
-                  offset: Offset(0, 1.5),
-                  blurRadius: 4,
+      if (hasSub) {
+        final subText = cfg.uppercase ? split.sub!.toUpperCase() : split.sub!;
+        final subLen = subText.length;
+        final double subScale = (subLen <= 20) ? 1.0 : (subLen <= 35 ? 0.85 : 0.75);
+        final subFontSize = (mainFontSize * 0.44 * subScale).clamp(9.0, 12.5);
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: crossAlign,
+          children: [
+            buildMainText(mainFontSize, 2, effectiveMaxW),
+            const SizedBox(height: 3),
+            // Subtitle (Secondary Refined Tier)
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: fittedAlign,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: effectiveMaxW),
+                child: Text(
+                  subText,
+                  textAlign: textAlign,
+                  maxLines: 2,
+                  softWrap: true,
+                  style: AppText.caption.copyWith(
+                    fontFamily: cfg.baseStyle.fontFamily ?? 'Rubik',
+                    fontSize: subFontSize,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: (1.6 * (subLen <= 20 ? 1.0 : 0.5)).clamp(0.4, 1.6),
+                    color: Color.lerp(Colors.white70, accent, 0.20) ?? Colors.white70,
+                    shadows: const [
+                      Shadow(
+                        color: Color(0xFF000000),
+                        offset: Offset(0, 1.5),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-      ],
-    );
-  }
+          ],
+        );
+      }
 
-  return buildMainText(mainFontSize, maxLines);
+      return buildMainText(mainFontSize, maxDisplayLines, effectiveMaxW);
+    },
+  );
 }

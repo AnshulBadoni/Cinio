@@ -510,7 +510,7 @@ class _DetailViewState extends State<_DetailView>
 
   @override
   void dispose() {
-    _entranceController?.dispose();
+    _entranceController.dispose();
     if (sl.isRegistered<DiscordRpc>()) sl<DiscordRpc>().setBrowsing();
     _trailerDelayTimer?.cancel();
     _scrollController.dispose();
@@ -2021,7 +2021,7 @@ class _DetailViewState extends State<_DetailView>
 
   Widget _titleHeader(MediaDetail detail, {bool compact = false}) {
     final logo = _titleLogoUrl;
-    final maxW = compact ? 200.0 : 280.0;
+    final maxW = compact ? 200.0 : 310.0;
     if (logo != null && logo.isNotEmpty) {
       return ConstrainedBox(
         constraints: BoxConstraints(
@@ -2036,12 +2036,12 @@ class _DetailViewState extends State<_DetailView>
           placeholder: (_, _) => _styledFallbackTitle(
             detail,
             fontSize: compact ? 16 : 26.6,
-            maxLines: compact ? 1 : 2,
+            maxLines: compact ? 1 : 3,
           ),
           errorWidget: (_, _, _) => _styledFallbackTitle(
             detail,
             fontSize: compact ? 16 : 26.6,
-            maxLines: compact ? 1 : 2,
+            maxLines: compact ? 1 : 3,
           ),
         ),
       );
@@ -2051,7 +2051,7 @@ class _DetailViewState extends State<_DetailView>
       child: _styledFallbackTitle(
         detail,
         fontSize: compact ? 16 : 26.6,
-        maxLines: compact ? 1 : 2,
+        maxLines: compact ? 1 : 3,
       ),
     );
   }
@@ -2059,7 +2059,7 @@ class _DetailViewState extends State<_DetailView>
   Widget _styledFallbackTitle(
     MediaDetail detail, {
     double fontSize = 24.7,
-    int maxLines = 2,
+    int maxLines = 3,
   }) {
     final seed = detail.tmdbId ?? widget.item.tmdbId ?? detail.title;
     final accent = _titleAccent ?? AppColors.textPrimary;
@@ -2262,7 +2262,7 @@ class _DetailViewState extends State<_DetailView>
                         ),
                       ),
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 280),
+                        constraints: const BoxConstraints(maxWidth: 310),
                         child: _titleHeader(detail),
                       ),
                     ),
