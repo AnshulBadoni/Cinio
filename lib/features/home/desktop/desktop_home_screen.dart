@@ -90,6 +90,40 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
     return filtered.isNotEmpty ? filtered : raw;
   }
 
+  List<MediaItem> _buildCarouselItems(
+    List<HomeSection> sections,
+    List<MediaItem> heroItems,
+  ) {
+    final result = <MediaItem>[];
+    final seenIds = <String>{};
+
+    void add(MediaItem item) {
+      if (item.title.isNotEmpty && seenIds.add(item.id)) {
+        result.add(item);
+      }
+    }
+
+    // 1. Take distinct top items from heroItems
+    for (final it in heroItems) {
+      add(it);
+      if (result.length >= 4) break;
+    }
+
+    // 2. Interleave from diverse sections (TV Shows, Movies, Trending) to guarantee variety
+    for (final sec in sections) {
+      for (final it in sec.items) {
+        add(it);
+        if (result.length >= 8) break;
+      }
+      if (result.length >= 8) break;
+    }
+
+    if (result.isEmpty && heroItems.isNotEmpty) {
+      return heroItems.take(6).toList();
+    }
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -108,22 +142,19 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
           }
 
           final sections = _filterSections(rawSections);
-
-          final featured = state.heroItems.isNotEmpty
-              ? state.heroItems.first
-              : sections.first.items.firstOrNull;
+          final carouselItems = _buildCarouselItems(sections, state.heroItems);
 
           return CustomScrollView(
             controller: _scrollController,
             physics: const ClampingScrollPhysics(),
             slivers: [
-              // ── Full-Bleed Hero Banner at Top ─────────────────────
-              if (featured != null)
+              // ── Full-Bleed Hero Carousel at Top ─────────────────────
+              if (carouselItems.isNotEmpty)
                 SliverToBoxAdapter(
                   child: DesktopHeroBanner(
-                    item: featured,
-                    onPlay: () => _openDetail(featured),
-                    onMoreInfo: () => _openDetail(featured),
+                    items: carouselItems,
+                    onPlay: _openDetail,
+                    onMoreInfo: _openDetail,
                   ),
                 )
               else
