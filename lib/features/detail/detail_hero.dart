@@ -14,7 +14,7 @@ class _HeroContentEntrance extends StatelessWidget {
   const _HeroContentEntrance({
     required this.animation,
     required this.child,
-    this.offsetY = 18.0,
+    this.offsetY = 32.0,
     this.fadeOnly = false,
   });
 
@@ -129,7 +129,7 @@ class _Hero extends StatelessWidget {
         errorWidget: (c, u, e) => ColoredBox(color: AppColors.surface2),
       );
     }
-    return AnimatedSwitcher(
+    final imageWidget = AnimatedSwitcher(
       duration: const Duration(milliseconds: 280),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
@@ -144,6 +144,37 @@ class _Hero extends StatelessWidget {
         key: ValueKey(coverUrl),
         child: SizedBox.expand(child: image),
       ),
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        imageWidget,
+        IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(gradient: AppColors.topScrim),
+          ),
+        ),
+        IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.transparent,
+                  AppColors.bg.withValues(alpha: 0.12),
+                  AppColors.bg.withValues(alpha: 0.40),
+                  AppColors.bg.withValues(alpha: 0.75),
+                  AppColors.bg,
+                ],
+                stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -191,70 +222,28 @@ class _Hero extends StatelessWidget {
                 : _buildCoverBackdrop(),
           ),
         ),
-        // One continuous cinematic treatment: a restrained top scrim plus a
-        // single long bottom fade.
-        IgnorePointer(
-          child: _HeroContentEntrance(
-            animation: entranceAnimation,
-            fadeOnly: true,
-            child: DecoratedBox(
-              decoration: BoxDecoration(gradient: AppColors.topScrim),
-            ),
-          ),
-        ),
-        Positioned.fill(
-          child: Stack(
-            fit: StackFit.expand,
-            clipBehavior: Clip.none,
-            children: [
-              IgnorePointer(
+        if (bottomContent != null)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 14,
+            child: ValueListenableBuilder<double>(
+              valueListenable: stretch ?? _zeroStretch,
+              builder: (context, overscroll, child) => Transform.translate(
+                offset: Offset(0, overscroll),
+                child: child,
+              ),
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: collapsed ? 0.0 : 1.0,
                 child: _HeroContentEntrance(
                   animation: entranceAnimation,
-                  fadeOnly: true,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.transparent,
-                          AppColors.bg.withValues(alpha: 0.12),
-                          AppColors.bg.withValues(alpha: 0.40),
-                          AppColors.bg.withValues(alpha: 0.75),
-                          AppColors.bg,
-                        ],
-                        stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
-                      ),
-                    ),
-                  ),
+                  offsetY: 32.0,
+                  child: bottomContent!,
                 ),
               ),
-              if (bottomContent != null)
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 14,
-                  child: ValueListenableBuilder<double>(
-                    valueListenable: stretch ?? _zeroStretch,
-                    builder: (context, overscroll, child) => Transform.translate(
-                      offset: Offset(0, overscroll),
-                      child: child,
-                    ),
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 180),
-                      opacity: collapsed ? 0.0 : 1.0,
-                      child: _HeroContentEntrance(
-                        animation: entranceAnimation,
-                        offsetY: 18.0,
-                        child: bottomContent!,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -535,16 +524,45 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
                 opacity: _ready ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 350),
                 curve: Curves.easeOut,
-                child: SizedBox.expand(
-                  child: Video(
-                    controller: controller,
-                    width: double.infinity,
-                    height: double.infinity,
-                    controls: NoVideoControls,
-                    fit: BoxFit.cover,
-                    alignment: Alignment.topCenter,
-                    fill: Colors.transparent,
-                  ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    SizedBox.expand(
+                      child: Video(
+                        controller: controller,
+                        width: double.infinity,
+                        height: double.infinity,
+                        controls: NoVideoControls,
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                        fill: Colors.transparent,
+                      ),
+                    ),
+                    IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(gradient: AppColors.topScrim),
+                      ),
+                    ),
+                    IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.transparent,
+                              AppColors.bg.withValues(alpha: 0.12),
+                              AppColors.bg.withValues(alpha: 0.40),
+                              AppColors.bg.withValues(alpha: 0.75),
+                              AppColors.bg,
+                            ],
+                            stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

@@ -348,7 +348,7 @@ class _DetailViewState extends State<_DetailView>
 
       _entranceController = AnimationController(
         vsync: this,
-        duration: const Duration(milliseconds: 260),
+        duration: const Duration(milliseconds: 320),
       );
       _entranceAnimation = CurvedAnimation(
         parent: _entranceController!,
@@ -2360,7 +2360,7 @@ class _DetailViewState extends State<_DetailView>
             },
             child: _HeroContentEntrance(
               animation: _entranceAnimation,
-              offsetY: 18.0,
+              offsetY: 32.0,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -2541,7 +2541,7 @@ class _DetailViewState extends State<_DetailView>
       ],
       body: _HeroContentEntrance(
         animation: _entranceAnimation,
-        offsetY: 18.0,
+        offsetY: 32.0,
         child: TabBarView(
           controller: _tabController,
           children: [

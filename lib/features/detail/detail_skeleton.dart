@@ -53,8 +53,9 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
     }
     final aniSrcId = widget.coverHeaders?['x-ani-src'];
     final mihonSrcId = widget.coverHeaders?['x-mihon-src'];
+    final Widget imageWidget;
     if (aniSrcId != null || mihonSrcId != null) {
-      return Image(
+      imageWidget = Image(
         image: ResizeImage(
           aniSrcId != null
               ? AniyomiImage(int.parse(aniSrcId), url)
@@ -67,19 +68,51 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
         errorBuilder: (context, error, stackTrace) =>
             ColoredBox(color: AppColors.surface2),
       );
+    } else {
+      final effectiveHeaders =
+          resolveEffectiveCoverHeaders(url, widget.coverHeaders);
+      imageWidget = CachedNetworkImage(
+        imageUrl: url,
+        httpHeaders: effectiveHeaders,
+        fit: BoxFit.cover,
+        alignment: const Alignment(0, -0.20),
+        memCacheWidth: 1440,
+        filterQuality: FilterQuality.high,
+        fadeInDuration: const Duration(milliseconds: 200),
+        placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
+        errorWidget: (c, u, e) => ColoredBox(color: AppColors.surface2),
+      );
     }
-    final effectiveHeaders =
-        resolveEffectiveCoverHeaders(url, widget.coverHeaders);
-    return CachedNetworkImage(
-      imageUrl: url,
-      httpHeaders: effectiveHeaders,
-      fit: BoxFit.cover,
-      alignment: const Alignment(0, -0.20),
-      memCacheWidth: 1440,
-      filterQuality: FilterQuality.high,
-      fadeInDuration: const Duration(milliseconds: 200),
-      placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
-      errorWidget: (c, u, e) => ColoredBox(color: AppColors.surface2),
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        imageWidget,
+        IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(gradient: AppColors.topScrim),
+          ),
+        ),
+        IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.transparent,
+                  AppColors.bg.withValues(alpha: 0.12),
+                  AppColors.bg.withValues(alpha: 0.40),
+                  AppColors.bg.withValues(alpha: 0.75),
+                  AppColors.bg,
+                ],
+                stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -168,38 +201,6 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
               fit: StackFit.expand,
               children: [
                 _buildBackdropWithHero(),
-                IgnorePointer(
-                  child: _HeroContentEntrance(
-                    animation: widget.entranceAnimation,
-                    fadeOnly: true,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(gradient: AppColors.topScrim),
-                    ),
-                  ),
-                ),
-                IgnorePointer(
-                  child: _HeroContentEntrance(
-                    animation: widget.entranceAnimation,
-                    fadeOnly: true,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.transparent,
-                            AppColors.bg.withValues(alpha: 0.12),
-                            AppColors.bg.withValues(alpha: 0.40),
-                            AppColors.bg.withValues(alpha: 0.75),
-                            AppColors.bg,
-                          ],
-                          stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
                 // Top-left back button so user can pop back even while loading
                 Positioned(
                   top: MediaQuery.paddingOf(context).top + 4,
@@ -230,7 +231,7 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 64),
             child: _HeroContentEntrance(
               animation: widget.entranceAnimation,
-              offsetY: 18.0,
+              offsetY: 32.0,
               child: shimmerContent,
             ),
           ),
