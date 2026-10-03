@@ -6,13 +6,19 @@ import '../../../core/models/home_section.dart';
 import '../../../core/models/media_item.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../detail/detail_screen.dart';
+import '../../shell/desktop_nav_bar.dart';
 import '../cubit/home_cubit.dart';
 import '../see_all_screen.dart';
 import 'desktop_hero_banner.dart';
 import 'desktop_media_row.dart';
 
 class DesktopHomeScreen extends StatefulWidget {
-  const DesktopHomeScreen({super.key});
+  const DesktopHomeScreen({
+    super.key,
+    this.selectedCategory = DesktopNavCategory.home,
+  });
+
+  final DesktopNavCategory selectedCategory;
 
   @override
   State<DesktopHomeScreen> createState() => _DesktopHomeScreenState();
@@ -54,6 +60,36 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
     );
   }
 
+  List<HomeSection> _filterSections(List<HomeSection> raw) {
+    final filtered = switch (widget.selectedCategory) {
+      DesktopNavCategory.home || DesktopNavCategory.collections => raw,
+      DesktopNavCategory.tvShows => raw.where((s) {
+          final t = s.title.toLowerCase();
+          return t.contains('tv') ||
+              t.contains('series') ||
+              t.contains('show') ||
+              t.contains('anime') ||
+              t.contains('drama');
+        }).toList(),
+      DesktopNavCategory.movies => raw.where((s) {
+          final t = s.title.toLowerCase();
+          return t.contains('movie') ||
+              t.contains('film') ||
+              t.contains('cinema');
+        }).toList(),
+      DesktopNavCategory.newAndPopular => raw.where((s) {
+          final t = s.title.toLowerCase();
+          return t.contains('popular') ||
+              t.contains('trending') ||
+              t.contains('latest') ||
+              t.contains('top') ||
+              t.contains('featured');
+        }).toList(),
+      _ => raw,
+    };
+    return filtered.isNotEmpty ? filtered : raw;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -61,55 +97,55 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
       body: BlocBuilder<HomeCubit, HomeState>(
         bloc: _homeCubit,
         builder: (context, state) {
-          final sections = state.sections ?? const <HomeSection>[];
+          final rawSections = state.sections ?? const <HomeSection>[];
 
-          if (state.loading && sections.isEmpty) {
+          if (state.loading && rawSections.isEmpty) {
             return const _FullScreenLoader();
           }
 
-          if (sections.isEmpty) {
-            // Removed 'const' here because onRetry is a function
+          if (rawSections.isEmpty) {
             return _EmptyState(onRetry: () => _homeCubit.load(reset: true));
           }
+
+          final sections = _filterSections(rawSections);
 
           final featured = state.heroItems.isNotEmpty
               ? state.heroItems.first
               : sections.first.items.firstOrNull;
 
-          return Stack(
-            children: [
-              Positioned.fill(
-                child: CustomScrollView(
-                  controller: _scrollController,
-                  physics: const ClampingScrollPhysics(),
-                  slivers: [
-                    if (featured != null)
-                      SliverToBoxAdapter(
-                        child: DesktopHeroBanner(
-                          item: featured,
-                          onPlay: () => _openDetail(featured),
-                          onMoreInfo: () => _openDetail(featured),
-                        ),
-                      )
-                    else
-                      const SliverToBoxAdapter(child: SizedBox(height: 84)),
-                    const SliverToBoxAdapter(child: SizedBox(height: 2)),
-                    SliverList.builder(
-                      itemCount: sections.length,
-                      itemBuilder: (context, index) {
-                        final section = sections[index];
-                        return DesktopMediaRow(
-                          title: section.title,
-                          items: section.items,
-                          onTap: _openDetail,
-                          onSeeAll: () => _openSeeAll(section),
-                        );
-                      },
-                    ),
-                    const SliverToBoxAdapter(child: _Footer()),
-                  ],
-                ),
+          return CustomScrollView(
+            controller: _scrollController,
+            physics: const ClampingScrollPhysics(),
+            slivers: [
+              // ── Full-Bleed Hero Banner at Top ─────────────────────
+              if (featured != null)
+                SliverToBoxAdapter(
+                  child: DesktopHeroBanner(
+                    item: featured,
+                    onPlay: () => _openDetail(featured),
+                    onMoreInfo: () => _openDetail(featured),
+                  ),
+                )
+              else
+                const SliverToBoxAdapter(child: SizedBox(height: 80)),
+
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+              // ── Media Rows with Portrait Posters & Clean Titles ───
+              SliverList.builder(
+                itemCount: sections.length,
+                itemBuilder: (context, index) {
+                  final section = sections[index];
+                  return DesktopMediaRow(
+                    title: section.title,
+                    items: section.items,
+                    onTap: _openDetail,
+                    onSeeAll: () => _openSeeAll(section),
+                  );
+                },
               ),
+
+              const SliverToBoxAdapter(child: _Footer()),
             ],
           );
         },
@@ -118,7 +154,7 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // Helper Widgets
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -127,7 +163,6 @@ class _FullScreenLoader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Removed 'const' from Center because AppColors.accent is not a compile-time constant
     return Center(
       child: SizedBox(
         width: 34,
@@ -220,7 +255,7 @@ class _Footer extends StatelessWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(56, 16, 56, 56),
+      padding: const EdgeInsets.fromLTRB(56, 40, 56, 56),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -255,7 +290,7 @@ class _Footer extends StatelessWidget {
           ),
           const SizedBox(height: 26),
           Text(
-            '© ${DateTime.now().year} Streamly. All rights reserved.',
+            '© ${DateTime.now().year} Cinio. All rights reserved.',
             style: const TextStyle(
               color: AppColors.textTertiary,
               fontSize: 12,

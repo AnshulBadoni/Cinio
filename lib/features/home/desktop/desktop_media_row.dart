@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/models/media_item.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_text.dart';
 import 'desktop_media_card.dart';
 
-/// Desktop-only landscape content rail, intentionally closer to modern
-/// streaming-service desktop layouts than a poster grid.
+/// Desktop content rail matching the reference design: clean section title
+/// with "See All >", portrait 2:3 posters with title underneath, and smooth
+/// hover chevron buttons for fast browsing.
 class DesktopMediaRow extends StatefulWidget {
   const DesktopMediaRow({
     super.key,
@@ -76,24 +75,25 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
   Widget build(BuildContext context) {
     if (widget.items.isEmpty) return const SizedBox.shrink();
 
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final cardWidth = (screenWidth * 0.19).clamp(245.0, 315.0).toDouble();
-    final cardHeight = cardWidth * 9 / 16;
-    final rowHeight = cardHeight + 24;
+    // Responsive portrait card sizing (approx 2:3 ratio)
+    const cardWidth = 165.0;
+    const cardHeight = 248.0;
+    const rowHeight = cardHeight + 54.0; // poster + 9px gap + 2 lines of text
 
     return Padding(
-      padding: const EdgeInsets.only(top: 18, bottom: 14),
+      padding: const EdgeInsets.only(top: 24, bottom: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Section Title & "See All >" ───────────────────────────
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 56),
             child: Row(
               children: [
                 Text(
                   widget.title,
-                  style: AppText.title.copyWith(
-                    color: AppColors.textPrimary,
+                  style: const TextStyle(
+                    color: Colors.white,
                     fontSize: 21,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.2,
@@ -101,35 +101,14 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
                 ),
                 const Spacer(),
                 if (widget.onSeeAll != null)
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: widget.onSeeAll,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Explore all',
-                            style: AppText.caption.copyWith(
-                              color: AppColors.textTertiary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(width: 2),
-                          const Icon(
-                            Icons.chevron_right_rounded,
-                            size: 17,
-                            color: AppColors.textTertiary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  _SeeAllButton(onTap: widget.onSeeAll!),
               ],
             ),
           ),
-          const SizedBox(height: 10),
+
+          const SizedBox(height: 14),
+
+          // ── Scrollable Row with Hover Chevrons ────────────────────
           MouseRegion(
             onEnter: (_) => setState(() => _hovered = true),
             onExit: (_) => setState(() => _hovered = false),
@@ -140,12 +119,9 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
                   ListView.separated(
                     controller: _scrollController,
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 56,
-                      vertical: 5,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 56),
                     itemCount: widget.items.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 14),
+                    separatorBuilder: (_, _) => const SizedBox(width: 16),
                     itemBuilder: (context, index) {
                       final item = widget.items[index];
                       return DesktopMediaCard(
@@ -156,26 +132,32 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
                       );
                     },
                   ),
+
+                  // Left Chevron
                   if (_hovered && _canScrollLeft)
                     Positioned(
-                      left: 0,
+                      left: 12,
                       top: 0,
-                      bottom: 0,
-                      child: _scrollArrow(
-                        icon: Icons.chevron_left_rounded,
-                        onTap: () => _scroll(-cardWidth * 2.3),
-                        isLeft: true,
+                      bottom: 50,
+                      child: Center(
+                        child: _RowChevron(
+                          icon: Icons.chevron_left_rounded,
+                          onTap: () => _scroll(-cardWidth * 3.5),
+                        ),
                       ),
                     ),
+
+                  // Right Chevron
                   if (_hovered && _canScrollRight)
                     Positioned(
-                      right: 0,
+                      right: 12,
                       top: 0,
-                      bottom: 0,
-                      child: _scrollArrow(
-                        icon: Icons.chevron_right_rounded,
-                        onTap: () => _scroll(cardWidth * 2.3),
-                        isLeft: false,
+                      bottom: 50,
+                      child: Center(
+                        child: _RowChevron(
+                          icon: Icons.chevron_right_rounded,
+                          onTap: () => _scroll(cardWidth * 3.5),
+                        ),
                       ),
                     ),
                 ],
@@ -186,43 +168,98 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
       ),
     );
   }
+}
 
-  Widget _scrollArrow({
-    required IconData icon,
-    required VoidCallback onTap,
-    required bool isLeft,
-  }) {
-    return SizedBox(
-      width: 62,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: isLeft ? Alignment.centerLeft : Alignment.centerRight,
-            end: isLeft ? Alignment.centerRight : Alignment.centerLeft,
-            colors: [
-              Colors.black.withValues(alpha: 0.72),
-              Colors.transparent,
+class _SeeAllButton extends StatefulWidget {
+  const _SeeAllButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_SeeAllButton> createState() => _SeeAllButtonState();
+}
+
+class _SeeAllButtonState extends State<_SeeAllButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 160),
+          style: TextStyle(
+            color: _hovered
+                ? Colors.white
+                : Colors.white.withValues(alpha: 0.55),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('See All'),
+              const SizedBox(width: 3),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 16,
+                color: _hovered
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.55),
+              ),
             ],
           ),
         ),
-        child: Center(
-          child: MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: onTap,
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.58),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.16),
-                  ),
-                ),
-                child: Icon(icon, color: Colors.white, size: 23),
+      ),
+    );
+  }
+}
+
+class _RowChevron extends StatefulWidget {
+  const _RowChevron({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  State<_RowChevron> createState() => _RowChevronState();
+}
+
+class _RowChevronState extends State<_RowChevron> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _hovered ? 1.08 : 1.0,
+          duration: const Duration(milliseconds: 140),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: _hovered ? 0.85 : 0.65),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: _hovered ? 0.35 : 0.15),
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 10,
+                ),
+              ],
             ),
+            child: Icon(widget.icon, color: Colors.white, size: 24),
           ),
         ),
       ),
