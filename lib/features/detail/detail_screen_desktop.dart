@@ -1,12 +1,10 @@
 part of 'detail_screen.dart';
 
 /// Desktop-native Detail Screen:
-/// • Edge-to-edge full-bleed backdrop artwork with auto-playing muted trailer.
-/// • High-contrast atmospheric left scrim for crystal-clear typography.
-/// • Left column: Title, runtime, year, IMDb badge, GENRES pills, CAST pills,
-///   SUMMARY synopsis, and bottom action bar (Trailer pill + utility icons).
-/// • Right column: Floating frosted glass panel with season controls,
-///   real-time episode search, and 16:9 thumbnail episode list.
+/// • 16:9 widescreen backdrop artwork / auto-playing muted trailer.
+/// • Official movie title logo (from TMDB) or dynamic Cinio archetype typography.
+/// • Multi-season detection via [seasonOf] with instant season switching.
+/// • Dedicated smooth scrolling episodes list with desktop scrollbar.
 class DetailScreenDesktop extends StatefulWidget {
   const DetailScreenDesktop({super.key, required this.item});
   final MediaItem item;
@@ -19,10 +17,14 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   final MyListStore _myList = sl<MyListStore>();
   final ResumeStore _resume = sl<ResumeStore>();
   final TextEditingController _searchCtrl = TextEditingController();
+  final ScrollController _episodesScrollCtrl = ScrollController();
 
   TrailerSource? _trailerSource;
   bool _trailerResolving = false;
   String? _trailerKey;
+
+  String? _titleLogoUrl;
+  String? _resolvedBackdropUrl;
 
   int? _selectedSeason;
   String _searchQuery = '';
@@ -33,19 +35,77 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   @override
   void initState() {
     super.initState();
+    _resolvedBackdropUrl = widget.item.heroImage;
     final detail = context.read<DetailCubit>().state.detail;
     if (detail != null) {
-      _resolveTrailerIfNeeded(detail);
+      _resolveExtrasIfNeeded(detail);
+    }
+    _loadTitleLogo();
+    if (_resolvedBackdropUrl == null || _resolvedBackdropUrl!.isEmpty) {
+      _resolve16x9Backdrop();
     }
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _episodesScrollCtrl.dispose();
     super.dispose();
   }
 
-  void _resolveTrailerIfNeeded(MediaDetail detail) {
+  Future<void> _loadTitleLogo() async {
+    try {
+      final logo = await sl<TitleLogoService>().logoFor(widget.item);
+      if (mounted && logo != null && logo.isNotEmpty) {
+        setState(() => _titleLogoUrl = logo);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _resolve16x9Backdrop() async {
+    try {
+      final dio = sl<Dio>();
+      final tmdbId = widget.item.tmdbId;
+      final isTv = widget.item.tmdbIsTv;
+
+      if (tmdbId != null && tmdbId > 0) {
+        final path = isTv ? 'tv/$tmdbId' : 'movie/$tmdbId';
+        final res = await dio.get<Map<String, dynamic>>(
+          'https://${Tmdb.host}/3/$path',
+          queryParameters: {'api_key': Tmdb.apiKey},
+        );
+        final bg = res.data?['backdrop_path']?.toString();
+        if (mounted && bg != null && bg.isNotEmpty) {
+          setState(() => _resolvedBackdropUrl = '${Tmdb.img}/original$bg');
+          return;
+        }
+      }
+
+      // Fallback search by title
+      final cleanTitle = widget.item.englishTitle ?? widget.item.title;
+      final res = await dio.get<Map<String, dynamic>>(
+        'https://${Tmdb.host}/3/search/multi',
+        queryParameters: {
+          'api_key': Tmdb.apiKey,
+          'query': cleanTitle,
+        },
+      );
+      final results = res.data?['results'] as List?;
+      if (results != null && results.isNotEmpty) {
+        for (final r in results) {
+          if (r is Map && r['backdrop_path'] != null) {
+            final bg = r['backdrop_path'].toString();
+            if (mounted && bg.isNotEmpty) {
+              setState(() => _resolvedBackdropUrl = '${Tmdb.img}/original$bg');
+              return;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _resolveExtrasIfNeeded(MediaDetail detail) {
     final key = '${detail.sourceId}:${detail.id}:${detail.title}';
     if (_trailerKey == key || _trailerResolving) return;
     _trailerKey = key;
@@ -64,10 +124,29 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         setState(() => _trailerSource = source);
       }
     }).catchError((_) {
-      // Optional fallback to static backdrop
+      // Optional fallback
     }).whenComplete(() {
       if (mounted) _trailerResolving = false;
     });
+
+    if (_titleLogoUrl == null) {
+      sl<TitleLogoService>()
+          .logoForDetail(
+            title: detail.title,
+            tmdbId: detail.tmdbId ?? widget.item.tmdbId,
+            isTv: detail.isSeries || widget.item.tmdbIsTv,
+            year: detail.year ?? widget.item.year,
+          )
+          .then((logo) {
+        if (mounted && logo != null && logo.isNotEmpty) {
+          setState(() => _titleLogoUrl = logo);
+        }
+      }).catchError((_) {});
+    }
+
+    if (_resolvedBackdropUrl == null || _resolvedBackdropUrl!.isEmpty) {
+      _resolve16x9Backdrop();
+    }
   }
 
   void _playEpisode(MediaDetail detail, List<Episode> eps, int index) {
@@ -108,7 +187,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         listener: (context, state) {
           final detail = state.detail;
           if (detail != null) {
-            _resolveTrailerIfNeeded(detail);
+            _resolveExtrasIfNeeded(detail);
           }
         },
         builder: (context, state) {
@@ -124,18 +203,22 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
           }
 
           final episodes = detail.episodes;
-          final backdropUrl = detail.cover ?? widget.item.cover;
+          // Prefer resolved 16:9 backdrop, then heroImage, then cover
+          final backdropUrl = _resolvedBackdropUrl ??
+              widget.item.heroImage ??
+              detail.cover ??
+              widget.item.cover;
 
           return Stack(
             fit: StackFit.expand,
             children: [
-              // ── 1. Full-Screen Backdrop Artwork / Trailer ──────────
+              // ── 1. Full-Screen 16:9 Backdrop Artwork / Trailer ────
               Positioned.fill(
                 child: _backdropView(backdropUrl),
               ),
 
-              // ── 2. Cinematic Atmospheric Gradients ─────────────────
-              // Left-to-right scrim so text is razor-sharp readable
+              // ── 2. Atmospheric Gradients ───────────────────────────
+              // Left-to-right scrim for razor-sharp typography
               Positioned.fill(
                 child: IgnorePointer(
                   child: DecoratedBox(
@@ -143,7 +226,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                       gradient: LinearGradient(
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
-                        stops: const [0.0, 0.42, 0.70, 1.0],
+                        stops: const [0.0, 0.44, 0.72, 1.0],
                         colors: [
                           Colors.black.withValues(alpha: 0.94),
                           Colors.black.withValues(alpha: 0.78),
@@ -177,7 +260,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                 ),
               ),
 
-              // ── 3. Top Minimal Header (< Back chevron & Utilities) ─
+              // ── 3. Top Header (< Back button) ──────────────────────
               Positioned(
                 top: 24,
                 left: 36,
@@ -227,7 +310,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
                     // Right Column: Floating Frosted Episodes Panel
                     SizedBox(
-                      width: 400,
+                      width: 410,
                       child: _rightEpisodesPanel(detail, episodes),
                     ),
                   ],
@@ -299,7 +382,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Left Column
+  // Left Column (Movie Title Logo / Metadata / Action Bar)
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _leftContentColumn(MediaDetail detail, List<Episode> episodes) {
@@ -317,33 +400,16 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
-                // ── Stylized Title ────────────────────────────────
-                Text(
-                  detail.title.toUpperCase(),
-                  style: const TextStyle(
-                    color: Color(0xFFE50914),
-                    fontSize: 48,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.5,
-                    height: 1.05,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black,
-                        blurRadius: 16,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                ),
+                // ── Title: Official Movie Title Logo or Cinio Archetype ──
+                _titleHeader(detail),
 
                 const SizedBox(height: 22),
 
                 // ── Runtime · Year · IMDb Rating ──────────────────
                 Row(
                   children: [
-                    // Runtime
                     Text(
                       detail.isSeries ? '44 min' : '128 min',
                       style: const TextStyle(
@@ -355,7 +421,6 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
                     const SizedBox(width: 24),
 
-                    // Year
                     Text(
                       detail.year != null && detail.year!.isNotEmpty
                           ? '${detail.year}–'
@@ -369,7 +434,6 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
                     const SizedBox(width: 24),
 
-                    // Rating with IMDb pill
                     _imdbRating(detail.rating),
                   ],
                 ),
@@ -427,12 +491,42 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
           ),
         ),
 
-        // ── Bottom Action Bar (Trailer & Utility Icons) ───────────
+        // ── Bottom Action Bar ──────────────────────────────────────
         Padding(
           padding: const EdgeInsets.only(top: 14),
           child: _bottomActionBar(detail),
         ),
       ],
+    );
+  }
+
+  Widget _titleHeader(MediaDetail detail) {
+    // If official TMDB stylized title logo exists, display it
+    if (_titleLogoUrl != null && _titleLogoUrl!.isNotEmpty) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 110),
+        child: CachedNetworkImage(
+          imageUrl: _titleLogoUrl!,
+          fit: BoxFit.contain,
+          alignment: Alignment.centerLeft,
+          filterQuality: FilterQuality.high,
+          placeholder: (_, _) => _titleTextFallback(detail),
+          errorWidget: (_, _, _) => _titleTextFallback(detail),
+        ),
+      );
+    }
+
+    return _titleTextFallback(detail);
+  }
+
+  Widget _titleTextFallback(MediaDetail detail) {
+    // Dynamic Cinio typography archetype matching movie style
+    return cinioFallbackTitle(
+      title: detail.title,
+      seed: detail.id,
+      accent: AppColors.accent,
+      fontSize: 42,
+      textAlign: TextAlign.left,
     );
   }
 
@@ -669,7 +763,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Right Column (Floating Frosted Episodes Panel)
+  // Right Column (Multi-Season Navigation & Scrollable Episodes)
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _rightEpisodesPanel(MediaDetail detail, List<Episode> episodes) {
@@ -677,8 +771,9 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
       return _movieFallbackPanel(detail);
     }
 
+    // Extract all unique seasons using the global seasonOf helper
     final seasons = episodes
-        .map((e) => e.season ?? 1)
+        .map((e) => seasonOf(e) ?? 1)
         .toSet()
         .toList()
       ..sort();
@@ -692,7 +787,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         final numStr = e.number?.toInt().toString() ?? '';
         return title.contains(q) || numStr.contains(q);
       }
-      return (e.season ?? 1) == currentSeason;
+      return (seasonOf(e) ?? 1) == currentSeason;
     }).toList();
 
     return Container(
@@ -797,7 +892,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
           const SizedBox(height: 14),
 
-          // ── Scrollable Episodes List ────────────────────────────
+          // ── Scrollable Episodes List with Desktop Scrollbar ──────
           Expanded(
             child: filtered.isEmpty
                 ? Center(
@@ -809,22 +904,34 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                       ),
                     ),
                   )
-                : ListView.separated(
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final ep = filtered[index];
-                      final fullIndex = episodes.indexOf(ep);
-                      return _EpisodeCardItem(
-                        episode: ep,
-                        index: fullIndex >= 0 ? fullIndex : index,
-                        onTap: () => _playEpisode(
-                          detail,
-                          episodes,
-                          fullIndex >= 0 ? fullIndex : index,
-                        ),
-                      );
-                    },
+                : RawScrollbar(
+                    controller: _episodesScrollCtrl,
+                    thumbVisibility: true,
+                    trackVisibility: false,
+                    thickness: 6,
+                    radius: const Radius.circular(3),
+                    thumbColor: Colors.white.withValues(alpha: 0.25),
+                    child: ListView.separated(
+                      controller: _episodesScrollCtrl,
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final ep = filtered[index];
+                        final fullIndex = episodes.indexOf(ep);
+                        return _EpisodeCardItem(
+                          episode: ep,
+                          index: fullIndex >= 0 ? fullIndex : index,
+                          onTap: () => _playEpisode(
+                            detail,
+                            episodes,
+                            fullIndex >= 0 ? fullIndex : index,
+                          ),
+                        );
+                      },
+                    ),
                   ),
           ),
         ],
@@ -878,7 +985,13 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     return PopupMenuButton<int>(
       color: const Color(0xFF1E222D),
       initialValue: currentSeason,
-      onSelected: (season) => setState(() => _selectedSeason = season),
+      onSelected: (season) {
+        setState(() {
+          _selectedSeason = season;
+          _searchQuery = '';
+          _searchCtrl.clear();
+        });
+      },
       itemBuilder: (context) => [
         for (final s in seasons)
           PopupMenuItem<int>(

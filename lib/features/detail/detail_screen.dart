@@ -11,8 +11,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:dio/dio.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/metadata/tmdb.dart';
 
 import '../../core/ui/native_cover_provider.dart';
 import '../../core/ui/jump_prompt.dart';
