@@ -8,7 +8,6 @@ part of 'detail_screen.dart';
 /// One shared [AnimationController] (same pattern as RowSkeleton/SkeletonGrid).
 class _DetailSkeleton extends StatefulWidget {
   const _DetailSkeleton({
-    super.key,
     required this.heroHeight,
     this.coverUrl,
     this.coverHeaders,

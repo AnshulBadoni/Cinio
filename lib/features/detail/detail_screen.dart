@@ -2502,6 +2502,7 @@ class _DetailViewState extends State<_DetailView>
             ),
           ),
         ),
+        ),
 
         SliverPersistentHeader(
           pinned: true,
@@ -2535,7 +2536,6 @@ class _DetailViewState extends State<_DetailView>
                 const Tab(text: 'Details'),
               ],
             ),
-          ),
           ),
         ),
       ],
@@ -2603,6 +2603,7 @@ class _DetailViewState extends State<_DetailView>
             description: detail.description,
           ),
         ],
+      ),
       ),
     ),
     );

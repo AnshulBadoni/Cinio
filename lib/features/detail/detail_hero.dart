@@ -12,7 +12,6 @@ part of 'detail_screen.dart';
 
 class _HeroContentEntrance extends StatelessWidget {
   const _HeroContentEntrance({
-    super.key,
     required this.animation,
     required this.child,
     this.offsetY = 18.0,
