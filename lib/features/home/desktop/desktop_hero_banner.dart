@@ -162,8 +162,8 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
   Widget build(BuildContext context) {
     if (widget.items.isEmpty) return const SizedBox.shrink();
 
-    final width = MediaQuery.sizeOf(context).width;
-    final heroHeight = (width * 0.44).clamp(540.0, 680.0).toDouble();
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final heroHeight = screenHeight.clamp(600.0, double.infinity).toDouble();
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -191,8 +191,8 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
             // ── 2. Arrow Navigation Controls (Previous / Next) ──────
             if (widget.items.length > 1) ...[
               Positioned(
-                left: 16,
-                top: heroHeight * 0.45,
+                left: 20,
+                top: (heroHeight - 48) / 2,
                 child: _carouselArrowButton(
                   icon: Icons.chevron_left_rounded,
                   onTap: () {
@@ -204,8 +204,8 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
                 ),
               ),
               Positioned(
-                right: 16,
-                top: heroHeight * 0.45,
+                right: 20,
+                top: (heroHeight - 48) / 2,
                 child: _carouselArrowButton(
                   icon: Icons.chevron_right_rounded,
                   onTap: () {
@@ -220,7 +220,7 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
             if (widget.items.length > 1)
               Positioned(
                 right: 56,
-                bottom: 48,
+                bottom: (heroHeight * 0.10).clamp(56.0, 90.0),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -288,11 +288,11 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  stops: const [0.38, 0.68, 0.88, 1.0],
+                  stops: const [0.45, 0.70, 0.88, 1.0],
                   colors: [
                     Colors.transparent,
-                    Colors.black.withValues(alpha: 0.18),
-                    AppColors.bg.withValues(alpha: 0.80),
+                    Colors.black.withValues(alpha: 0.20),
+                    AppColors.bg.withValues(alpha: 0.82),
                     AppColors.bg,
                   ],
                 ),
@@ -326,7 +326,7 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
         // ── Hero Content (Badges / Stylized Title / Overview / Actions) ──
         Positioned(
           left: 56,
-          bottom: 56,
+          bottom: (heroHeight * 0.10).clamp(56.0, 90.0),
           right: 140,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 640),
