@@ -306,7 +306,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
   }
 
   Widget _previewItem(DockTab t, bool active, bool showLabels) {
-    final color = active ? AppColors.accent : AppColors.textSecondary;
+    final color = active ? Colors.white : const Color(0xFF9E9EA6);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -329,7 +329,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 8,
-              letterSpacing: 0.1,
+              letterSpacing: -0.1,
               color: color,
               fontWeight: active ? FontWeight.w600 : FontWeight.w400,
             ),
@@ -341,9 +341,9 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
 
   static List<List<dynamic>> _hugeIconFor(DockTab t) => switch (t) {
     DockTab.home => HugeIcons.strokeRoundedHome04,
-    DockTab.search => HugeIcons.strokeRoundedDiscoverCircle,
-    DockTab.myList => HugeIcons.strokeRoundedFolderLibrary,
+    DockTab.search => HugeIcons.strokeRoundedSearch01,
     DockTab.downloads => HugeIcons.strokeRoundedDownload03,
+    DockTab.myList => HugeIcons.strokeRoundedFolderLibrary,
     DockTab.schedule => HugeIcons.strokeRoundedCalendar03,
     DockTab.history => HugeIcons.strokeRoundedClock01,
     DockTab.profile => HugeIcons.strokeRoundedUserCircle02,

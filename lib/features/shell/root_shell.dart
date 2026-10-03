@@ -324,66 +324,27 @@ class _RootShellState extends State<RootShell>
 
 BoxDecoration _dockDecoration({
   required double radius,
-  required bool frosted,
-  bool isSelected = false,
 }) {
-  final surfaceColor = frosted
-      ? (isSelected
-          ? AppColors.accent.withValues(alpha: 0.22)
-          : const Color(0x7A121217))
-      : (isSelected
-          ? AppColors.accent.withValues(alpha: 0.28)
-          : const Color(0xEE131317));
-  final borderColor = isSelected
-      ? AppColors.accent.withValues(alpha: 0.70)
-      : Colors.white.withValues(alpha: frosted ? 0.18 : 0.14);
-
   return BoxDecoration(
     borderRadius: BorderRadius.circular(radius),
-    color: surfaceColor,
+    color: const Color(0x99101014), // ~60% dark tint so underlying artwork softly shows through
     border: Border.all(
-      color: borderColor,
-      width: isSelected ? 1.2 : 0.75,
+      color: Colors.white.withValues(alpha: 0.12),
+      width: 0.65,
     ),
     boxShadow: [
       BoxShadow(
-        color: Colors.black.withValues(alpha: frosted ? 0.35 : 0.45),
-        blurRadius: frosted ? 24 : 28,
-        offset: const Offset(0, 8),
+        color: Colors.black.withValues(alpha: 0.35),
+        blurRadius: 20,
+        offset: const Offset(0, 6),
       ),
-      if (frosted)
-        BoxShadow(
-          color: Colors.white.withValues(alpha: 0.05),
-          blurRadius: 10,
-          offset: const Offset(0, -1),
-        ),
     ],
   );
 }
 
-Widget _glassHighlight(double radius, {required bool frosted}) {
-  return Positioned.fill(
-    child: IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(radius),
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.white.withValues(alpha: frosted ? 0.15 : 0.09),
-              Colors.white.withValues(alpha: 0.01),
-            ],
-            stops: const [0.0, 0.48],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-/// The frosted floating capsule: rich Gaussian blur surface, hairline border,
-/// stroke-rounded HugeIcons, and an optional detached Profile circle (Material You).
+/// The frosted floating capsule: single Gaussian blur glass layer, hairline border,
+/// exactly four items (Home, Search, Download, Library) and a compact detached Profile
+/// circle with avatar filling ~82%.
 class _FloatingDock extends StatelessWidget {
   const _FloatingDock({
     required this.tabs,
@@ -410,16 +371,16 @@ class _FloatingDock extends StatelessWidget {
         );
         final navPrefs = sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : null;
         final separateProfile = navPrefs?.separateProfile ?? true;
-        final frostedGlass = navPrefs?.frostedGlass ?? true;
         final hasProfile = tabs.contains(DockTab.profile);
         final isSplit = separateProfile && hasProfile;
 
-        final expandedWidth = (screenWidth * 0.90).clamp(300.0, 520.0);
-        final compactWidth = (screenWidth * 0.64).clamp(240.0, 360.0);
-        final totalWidth = expandedWidth + (compactWidth - expandedWidth) * t;
-        final height = 74.0 - (16.0 * t);
+        // Proportions: compact and balanced (56dp expanded -> 44dp collapsed)
+        final height = 56.0 - (12.0 * t);
         final radius = height / 2;
-        final blurSigma = frostedGlass ? 26.0 : 16.0;
+
+        final expandedWidth = (screenWidth * 0.90).clamp(290.0, 480.0);
+        final compactWidth = (screenWidth * 0.66).clamp(230.0, 360.0);
+        final totalWidth = expandedWidth + (compactWidth - expandedWidth) * t;
 
         Widget buildCapsuleContent(List<DockTab> pillTabs) {
           return Row(
@@ -445,21 +406,13 @@ class _FloatingDock extends StatelessWidget {
           return ClipRRect(
             borderRadius: BorderRadius.circular(radius),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
               child: Container(
                 width: pillWidth,
                 height: height,
-                padding: EdgeInsets.all(5.0 - (1.0 * t)),
-                decoration: _dockDecoration(
-                  radius: radius,
-                  frosted: frostedGlass,
-                ),
-                child: Stack(
-                  children: [
-                    _glassHighlight(radius - 5, frosted: frostedGlass),
-                    buildCapsuleContent(pillTabs),
-                  ],
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                decoration: _dockDecoration(radius: radius),
+                child: buildCapsuleContent(pillTabs),
               ),
             ),
           );
@@ -469,7 +422,7 @@ class _FloatingDock extends StatelessWidget {
         if (isSplit) {
           final mainTabs = tabs.where((t) => t != DockTab.profile).toList();
           final circleSize = height;
-          const gap = 9.0;
+          const gap = 10.0;
           final mainWidth = totalWidth - circleSize - gap;
 
           content = Row(
@@ -484,7 +437,6 @@ class _FloatingDock extends StatelessWidget {
               _ProfileCircle(
                 size: circleSize,
                 radius: radius,
-                frosted: frostedGlass,
                 selected: active == DockTab.profile,
                 onTap: () => onSelected(DockTab.profile),
               ),
@@ -500,7 +452,9 @@ class _FloatingDock extends StatelessWidget {
         return Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
-            padding: EdgeInsets.only(bottom: bottomInset + 10),
+            padding: EdgeInsets.only(
+              bottom: bottomInset > 0 ? bottomInset + 4 : 12.0,
+            ),
             child: content,
           ),
         );
@@ -513,108 +467,88 @@ class _ProfileCircle extends StatelessWidget {
   const _ProfileCircle({
     required this.size,
     required this.radius,
-    required this.frosted,
     required this.selected,
     required this.onTap,
   });
 
   final double size;
   final double radius;
-  final bool frosted;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final blurSigma = frosted ? 26.0 : 16.0;
-    final surfaceColor = frosted
-        ? (selected
-            ? AppColors.accent.withValues(alpha: 0.24)
-            : const Color(0x7A121217))
-        : (selected
-            ? AppColors.accent.withValues(alpha: 0.30)
-            : const Color(0xEE131317));
-    final borderColor = selected
-        ? AppColors.accent.withValues(alpha: 0.85)
-        : Colors.white.withValues(alpha: frosted ? 0.18 : 0.14);
+    // User avatar fills ~82% of the circle, leaving a clean minimal frosted rim
+    final avatarSize = (size * 0.82).roundToDouble();
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
         child: Container(
           width: size,
           height: size,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            color: surfaceColor,
-            border: Border.all(
-              color: borderColor,
-              width: selected ? 1.4 : 0.75,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: frosted ? 0.38 : 0.45),
-                blurRadius: frosted ? 24 : 28,
-                offset: const Offset(0, 8),
-              ),
-              if (frosted)
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -1),
-                ),
-            ],
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              _glassHighlight(radius - 3, frosted: frosted),
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(radius),
-                  onTap: onTap,
-                  child: Center(
-                    child: _DockPop(
-                      selected: selected,
-                      child: BlocBuilder<AuthCubit, AuthState>(
-                        builder: (context, auth) {
-                          if (auth.isLoggedIn && auth.avatarUrl != null) {
-                            final avatarSize = (size * 0.52).clamp(24.0, 36.0);
-                            return Container(
-                              width: avatarSize,
-                              height: avatarSize,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: selected
-                                      ? AppColors.accent
-                                      : Colors.white.withValues(alpha: 0.32),
-                                  width: selected ? 1.5 : 1.0,
-                                ),
-                                image: DecorationImage(
-                                  image: NetworkImage(auth.avatarUrl!),
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            );
-                          }
-                          return HugeIcon(
+          decoration: _dockDecoration(radius: radius),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(radius),
+              onTap: onTap,
+              child: Center(
+                child: _DockPop(
+                  selected: selected,
+                  child: BlocBuilder<AuthCubit, AuthState>(
+                    builder: (context, auth) {
+                      if (auth.isLoggedIn && auth.avatarUrl != null) {
+                        return Container(
+                          width: avatarSize,
+                          height: avatarSize,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: selected
+                                  ? Colors.white
+                                  : Colors.white.withValues(alpha: 0.20),
+                              width: selected ? 1.5 : 0.8,
+                            ),
+                            image: DecorationImage(
+                              image: NetworkImage(auth.avatarUrl!),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        );
+                      }
+                      return Container(
+                        width: avatarSize,
+                        height: avatarSize,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: selected
+                              ? Colors.white.withValues(alpha: 0.14)
+                              : Colors.white.withValues(alpha: 0.06),
+                          border: Border.all(
+                            color: selected
+                                ? Colors.white
+                                : Colors.white.withValues(alpha: 0.20),
+                            width: selected ? 1.4 : 0.8,
+                          ),
+                        ),
+                        child: Center(
+                          child: HugeIcon(
                             icon: HugeIcons.strokeRoundedUserCircle02,
                             color: selected
-                                ? AppColors.accent
-                                : const Color(0xFFD4D4D8),
-                            size: (size * 0.42).clamp(20.0, 26.0),
-                            strokeWidth: selected ? 2.1 : 1.6,
-                          );
-                        },
-                      ),
-                    ),
+                                ? Colors.white
+                                : const Color(0xFF9E9EA6),
+                            size: avatarSize * 0.58,
+                            strokeWidth: selected ? 2.0 : 1.6,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -624,9 +558,9 @@ class _ProfileCircle extends StatelessWidget {
 
 List<List<dynamic>> _hugeIconFor(DockTab t) => switch (t) {
   DockTab.home => HugeIcons.strokeRoundedHome04,
-  DockTab.search => HugeIcons.strokeRoundedDiscoverCircle,
-  DockTab.myList => HugeIcons.strokeRoundedFolderLibrary,
+  DockTab.search => HugeIcons.strokeRoundedSearch01,
   DockTab.downloads => HugeIcons.strokeRoundedDownload03,
+  DockTab.myList => HugeIcons.strokeRoundedFolderLibrary,
   DockTab.schedule => HugeIcons.strokeRoundedCalendar03,
   DockTab.history => HugeIcons.strokeRoundedClock01,
   DockTab.profile => HugeIcons.strokeRoundedUserCircle02,
@@ -642,8 +576,8 @@ class _DockPop extends StatelessWidget {
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
       key: ValueKey(selected),
-      tween: Tween(begin: selected ? 0.88 : 1.0, end: 1.0),
-      duration: const Duration(milliseconds: 240),
+      tween: Tween(begin: selected ? 0.90 : 1.0, end: 1.0),
+      duration: const Duration(milliseconds: 200),
       curve: Curves.easeOutCubic,
       builder: (_, value, child) => Transform.scale(scale: value, child: child),
       child: child,
@@ -672,55 +606,20 @@ class _DockItem extends StatelessWidget {
         final t = Curves.easeOutCubic.transform(
           collapse.value.clamp(0.0, 1.0),
         );
-        final labelOpacity = 1.0 - t;
-        final iconColor = selected ? AppColors.accent : const Color(0xFFD4D4D8);
-        final profile = tab == DockTab.profile;
-        final label = profile ? 'Profile' : tab.label;
+        final labelOpacity = (1.0 - t * 2.2).clamp(0.0, 1.0);
+        final labelHeight = 12.0 * (1.0 - t);
+        final itemColor = selected ? Colors.white : const Color(0xFF9E9EA6);
+        final label = tab.label;
 
-        Widget iconWidget;
-        if (profile) {
-          iconWidget = BlocBuilder<AuthCubit, AuthState>(
-            builder: (context, auth) {
-              if (auth.isLoggedIn && auth.avatarUrl != null) {
-                return Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: selected
-                          ? AppColors.accent.withValues(alpha: 0.92)
-                          : Colors.white.withValues(alpha: 0.28),
-                      width: 1.2,
-                    ),
-                    image: DecorationImage(
-                      image: NetworkImage(auth.avatarUrl!),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                );
-              }
-              return HugeIcon(
-                icon: HugeIcons.strokeRoundedUserCircle02,
-                color: iconColor,
-                size: 21,
-                strokeWidth: selected ? 2.1 : 1.6,
-              );
-            },
-          );
-        } else {
-          iconWidget = HugeIcon(
-            icon: _hugeIconFor(tab),
-            color: iconColor,
-            size: 21,
-            strokeWidth: selected ? 2.1 : 1.6,
-          );
-        }
+        final Widget iconWidget = HugeIcon(
+          icon: _hugeIconFor(tab),
+          color: itemColor,
+          size: 19.5,
+          strokeWidth: selected ? 2.1 : 1.6,
+        );
 
-        final isCompact = t > 0.45;
-        const circleSize = 38.0;
         final navPrefs = sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : null;
-        final showLabels = (navPrefs?.showNavigationLabels ?? true) && t < 0.92;
+        final showLabels = navPrefs?.showNavigationLabels ?? true;
 
         return Material(
           color: Colors.transparent,
@@ -731,65 +630,55 @@ class _DockItem extends StatelessWidget {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 140),
                 curve: Curves.easeOutCubic,
-                width: isCompact ? circleSize : double.infinity,
-                height: isCompact ? circleSize : null,
-                margin: EdgeInsets.symmetric(
-                  horizontal: isCompact ? 0 : 3.0,
-                  vertical: isCompact ? 0 : 2.0,
+                margin: const EdgeInsets.symmetric(
+                  horizontal: 2.0,
+                  vertical: 2.0,
                 ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: isCompact ? 0 : 4.0,
-                  vertical: isCompact ? 0 : 4.0,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 2.0),
                 decoration: BoxDecoration(
                   color: selected
-                      ? AppColors.accent.withValues(alpha: 0.22)
+                      ? Colors.white.withValues(alpha: 0.08)
                       : Colors.transparent,
-                  shape: isCompact ? BoxShape.circle : BoxShape.rectangle,
-                  borderRadius: isCompact ? null : BorderRadius.circular(999),
-                  border: selected
-                      ? Border.all(
-                          color: AppColors.accent.withValues(alpha: 0.35),
-                          width: 0.75,
-                        )
-                      : null,
+                  borderRadius: BorderRadius.circular(999),
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      height: 24,
-                      child: Center(
-                        child: _DockPop(selected: selected, child: iconWidget),
-                      ),
-                    ),
-                    if (showLabels)
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                       SizedBox(
-                        height: 14.0 * (1.0 - t),
-                        child: ClipRect(
+                        height: 22,
+                        child: Center(
+                          child: _DockPop(selected: selected, child: iconWidget),
+                        ),
+                      ),
+                      if (showLabels && labelOpacity > 0.01) ...[
+                        SizedBox(height: 2.0 * (1.0 - t)),
+                        SizedBox(
+                          height: labelHeight,
                           child: Opacity(
-                            opacity: labelOpacity.clamp(0.0, 1.0),
-                            child: Center(
+                            opacity: labelOpacity,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
                               child: Text(
                                 label,
                                 maxLines: 1,
-                                softWrap: false,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  fontSize: 10.5,
-                                  height: 1,
-                                  color: iconColor,
-                                  fontWeight:
-                                      selected ? FontWeight.w600 : FontWeight.w400,
+                                  fontFamily: 'Inter',
+                                  fontSize: 10.0,
+                                  color: itemColor,
+                                  fontWeight: selected
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                  letterSpacing: -0.1,
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),

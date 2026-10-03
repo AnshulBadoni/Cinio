@@ -10,10 +10,10 @@ import 'package:watch_app/core/hive/safe_box.dart';
 /// moment the user can reorder or hide them.
 enum DockTab {
   home('Home'),
-  schedule('Schedule'),
   search('Search'),
-  myList('My List'),
-  downloads('Downloads'),
+  downloads('Download'),
+  myList('Library'),
+  schedule('Schedule'),
   history('History'),
   profile('Profile');
 
@@ -45,12 +45,11 @@ class NavPrefs extends ChangeNotifier {
   static const int minTabs = 3;
   static const int maxTabs = 5;
 
-  /// What the dock shipped with, and what a corrupt or empty value falls back
-  /// to. Search sits centre for thumb reach.
+  /// Four content tabs (Home, Search, Download, Library) + detached Profile circle.
   static const List<DockTab> defaultTabs = [
     DockTab.home,
-    DockTab.schedule,
     DockTab.search,
+    DockTab.downloads,
     DockTab.myList,
     DockTab.profile,
   ];
