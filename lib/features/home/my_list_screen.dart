@@ -138,8 +138,21 @@ class _MyListViewState extends State<_MyListView> {
     );
   }
 
-  double _cellW(BuildContext context) =>
-      (MediaQuery.of(context).size.width - 32 - 24) / 3;
+  int _gridColumns(BuildContext context) {
+    if (sl<AppMode>().isDesktop) {
+      final width = MediaQuery.sizeOf(context).width;
+      if (width >= 1600) return 8;
+      if (width >= 1200) return 6;
+      if (width >= 900) return 5;
+      return 4;
+    }
+    return 3;
+  }
+
+  double _cellW(BuildContext context) {
+    final cols = _gridColumns(context);
+    return (MediaQuery.sizeOf(context).width - 32 - (12 * (cols - 1))) / cols;
+  }
 
   // ── Header: frosted capsule (no avatar) + search/filter + accounts ─────────
 
@@ -1055,8 +1068,8 @@ class _MyListViewState extends State<_MyListView> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   cacheExtent: 800,
                   gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
+                      SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: _gridColumns(context),
                     childAspectRatio: 0.62,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 16,

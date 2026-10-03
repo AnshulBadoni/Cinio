@@ -55,7 +55,6 @@ import '../../core/update/extension_auto_updater.dart';
 import '../announce/announcement_sheet.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/reconnect.dart';
-import '../community/community_sheet.dart';
 import '../detail/detail_screen.dart';
 import '../history/history_screen.dart';
 import '../people/person_page.dart';
@@ -68,6 +67,7 @@ import '../sources/zangetsu_sources_screen.dart';
 import '../update/update_dialog.dart';
 import 'continue_section.dart';
 import 'cubit/home_cubit.dart';
+import 'desktop/desktop_home_screen.dart';
 import 'home_screen_tv.dart';
 import 'see_all_screen.dart';
 
@@ -1171,6 +1171,7 @@ class _HomeViewState extends State<_HomeView>
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const HomeScreenTv();
+    if (sl<AppMode>().isDesktop) return const DesktopHomeScreen();
 
     return BlocListener<ActiveSourceCubit, String>(
       listenWhen: (prev, curr) => prev != curr,

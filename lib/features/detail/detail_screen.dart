@@ -100,6 +100,7 @@ part 'detail_tabs.dart';
 part 'detail_skeleton.dart';
 
 part 'detail_screen_tv.dart';
+part 'detail_screen_desktop.dart';
 
 /// Last-resort friendly name for a [sourceId] that's neither a loaded JS nor CS
 /// provider (e.g. its source was uninstalled): drop the `cs:` prefix and the
@@ -1848,6 +1849,7 @@ class _DetailViewState extends State<_DetailView>
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return DetailScreenTv(item: widget.item);
+    if (sl<AppMode>().isDesktop) return DetailScreenDesktop(item: widget.item);
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: BlocBuilder<DetailCubit, DetailState>(

@@ -553,14 +553,23 @@ class _SearchViewState extends State<_SearchView>
   /// Search/Discover always uses a stable 3-column poster grid. Keeping the
   /// layout fixed avoids coupling this screen to the global poster-size
   /// preference and keeps Search/Discover predictable across devices.
-  static const int _searchGridColumns = 3;
+  int get _searchGridColumns {
+    if (sl<AppMode>().isDesktop) {
+      final width = MediaQuery.sizeOf(context).width;
+      if (width >= 1600) return 8;
+      if (width >= 1200) return 6;
+      if (width >= 900) return 5;
+      return 4;
+    }
+    return 3;
+  }
 
   double _searchGridCellWidth() {
     final width = MediaQuery.sizeOf(context).width;
     const horizontal = 24.0;
     const gap = 8.0;
-    return (width - horizontal - (gap * (_searchGridColumns - 1))) /
-        _searchGridColumns;
+    final cols = _searchGridColumns;
+    return (width - horizontal - (gap * (cols - 1))) / cols;
   }
 
   @override
@@ -1871,7 +1880,7 @@ class _SearchViewState extends State<_SearchView>
       ),
       cacheExtent: 800,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _searchGridColumns,
         childAspectRatio: 0.56,
         crossAxisSpacing: 8,
@@ -1929,7 +1938,7 @@ class _SearchViewState extends State<_SearchView>
         24 + MediaQuery.paddingOf(context).bottom,
       ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _searchGridColumns,
         childAspectRatio: 0.56,
         crossAxisSpacing: 8,
