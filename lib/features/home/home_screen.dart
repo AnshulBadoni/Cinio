@@ -348,11 +348,16 @@ class _HomeViewState extends State<_HomeView>
   Future<void> _openDetail(
     MediaItem item, {
     DetailTrailerContext? trailerContext,
+    String? heroTag,
   }) async {
     if (!mounted) return;
     await Navigator.push(
       context,
-      DetailScreen.route(item, trailerContext: trailerContext),
+      DetailScreen.route(
+        item,
+        trailerContext: trailerContext,
+        heroTag: heroTag,
+      ),
     );
     if (mounted) setState(() {});
   }
@@ -827,7 +832,7 @@ class _HomeViewState extends State<_HomeView>
       title: section.title,
       items: section.items,
       onSeeAll: () => _openSeeAll(section),
-      onTap: _openDetail,
+      onTap: (item, heroTag) => _openDetail(item, heroTag: heroTag),
       onLongPress: (item) => _showQuickActions(
         item,
         _posterHeroTag(section, section.items.indexOf(item), item),
@@ -847,6 +852,7 @@ class _HomeViewState extends State<_HomeView>
       onSeeAll: () => _openSeeAll(section),
       itemBuilder: (c, i) {
         final item = section.items[i];
+        final heroTag = _posterHeroTag(section, i, item);
         return SizedBox(
           height: rowHeight,
           child: PosterCard(
@@ -856,16 +862,20 @@ class _HomeViewState extends State<_HomeView>
             cellWidth: width,
             qualityBadge: item.quality,
             dubBadge: item.dubBadge,
-            heroTag: _posterHeroTag(section, i, item),
+            heroTag: heroTag,
             completed: _listStatus.statusOf(item) == WatchStatus.completed,
             onTap: () {
               if (item.sourceId == 'tpdb:studio') {
                 _openStudio(item);
               } else {
-                _openDetail(item, trailerContext: DetailTrailerContext.studio);
+                _openDetail(
+                  item,
+                  trailerContext: DetailTrailerContext.studio,
+                  heroTag: heroTag,
+                );
               }
             },
-            onLongPress: () => _showQuickActions(item, _posterHeroTag(section, i, item)),
+            onLongPress: () => _showQuickActions(item, heroTag),
           ),
         );
       },
@@ -883,6 +893,7 @@ class _HomeViewState extends State<_HomeView>
       onSeeAll: () => _openSeeAll(section),
       itemBuilder: (c, i) {
         final item = section.items[i];
+        final heroTag = _posterHeroTag(section, i, item);
         return PosterCard(
           title: item.title,
           imageUrl: item.cover,
@@ -891,9 +902,9 @@ class _HomeViewState extends State<_HomeView>
           qualityBadge: item.quality,
           dubBadge: item.dubBadge,
           completed: _listStatus.statusOf(item) == WatchStatus.completed,
-          heroTag: _posterHeroTag(section, i, item),
-          onTap: () => _openDetail(item),
-          onLongPress: () => _showQuickActions(item, _posterHeroTag(section, i, item)),
+          heroTag: heroTag,
+          onTap: () => _openDetail(item, heroTag: heroTag),
+          onLongPress: () => _showQuickActions(item, heroTag),
         );
       },
     );

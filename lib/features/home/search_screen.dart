@@ -263,7 +263,7 @@ class _SearchViewState extends State<_SearchView>
     return t;
   }
 
-  Future<void> _openDetail(MediaItem item) async {
+  Future<void> _openDetail(MediaItem item, {String? heroTag}) async {
     if (!mounted) return;
     if (item.sourceId == 'tpdb:performer') {
       final raw = item.id.replaceFirst('tpdb:performer:', '');
@@ -297,7 +297,7 @@ class _SearchViewState extends State<_SearchView>
     // to sit in the tap handler and made Detail feel frozen on slow TMDB/TPDB
     // responses. DetailCubit owns the same fetch and can render its shell first.
     if (!mounted) return;
-    Navigator.push(context, DetailScreen.route(item)).then((_) {
+    Navigator.push(context, DetailScreen.route(item, heroTag: heroTag)).then((_) {
       if (mounted) setState(() {});
     });
   }
@@ -1883,6 +1883,7 @@ class _SearchViewState extends State<_SearchView>
           return const Center(child: CircularProgressIndicator(strokeWidth: 2));
         }
         final item = items[i];
+        final heroTag = _posterHeroTag(item);
         return PosterCard(
           title: item.title,
           imageUrl: item.cover,
@@ -1892,7 +1893,8 @@ class _SearchViewState extends State<_SearchView>
           dubBadge: item.dubBadge,
           completed: sl<ListStatusStore>().statusOf(item) == WatchStatus.completed,
           cellWidth: cellW,
-          onTap: () => _openDetail(item),
+          heroTag: heroTag,
+          onTap: () => _openDetail(item, heroTag: heroTag),
           onLongPress: () => _showInfo(item),
         );
       },
@@ -1940,6 +1942,7 @@ class _SearchViewState extends State<_SearchView>
           return const Center(child: CircularProgressIndicator(strokeWidth: 2));
         }
         final item = items[i];
+        final heroTag = _posterHeroTag(item);
         return PosterCard(
           title: item.title,
           imageUrl: item.cover,
@@ -1949,8 +1952,8 @@ class _SearchViewState extends State<_SearchView>
           dubBadge: item.dubBadge,
           completed: sl<ListStatusStore>().statusOf(item) == WatchStatus.completed,
           cellWidth: cellW,
-          heroTag: _posterHeroTag(item),
-          onTap: () => _openDetail(item),
+          heroTag: heroTag,
+          onTap: () => _openDetail(item, heroTag: heroTag),
           onLongPress: () => _showQuickActions(item),
         );
       },

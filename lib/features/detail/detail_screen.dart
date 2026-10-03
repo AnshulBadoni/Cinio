@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/ui/native_cover_provider.dart';
 import '../../core/ui/jump_prompt.dart';
+import '../../core/ui/poster_card.dart';
 import '../../core/util/title_matcher.dart';
 import '../../core/app_mode.dart';
 import '../../core/cache/app_image_cache.dart';
@@ -206,44 +207,64 @@ Episode _matchTargetEpisode(MediaDetail targetDetail, MediaItem targetItem, Epis
 enum DetailTrailerContext { model, studio }
 
 class DetailScreen extends StatelessWidget {
-  const DetailScreen({super.key, required this.item, this.trailerContext, this.catalogDetail});
+  const DetailScreen({
+    super.key,
+    required this.item,
+    this.trailerContext,
+    this.catalogDetail,
+    this.heroTag,
+  });
   final MediaItem item;
   final DetailTrailerContext? trailerContext;
   final MediaDetail? catalogDetail;
+  final String? heroTag;
 
   static Route<void> route(
     MediaItem item, {
     DetailTrailerContext? trailerContext,
     MediaDetail? catalogDetail,
-  }) => PageRouteBuilder<void>(
-    transitionDuration: const Duration(milliseconds: 340),
-    reverseTransitionDuration: const Duration(milliseconds: 260),
-    pageBuilder: (_, _, _) => DetailScreen(
-      item: item,
-      trailerContext: trailerContext,
-      catalogDetail: catalogDetail,
-    ),
-    transitionsBuilder: (_, animation, _, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      );
-      return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(
-          position: Tween(
-            begin: const Offset(0, 0.035),
-            end: Offset.zero,
-          ).animate(curved),
-          child: ScaleTransition(
-            scale: Tween(begin: 0.96, end: 1.0).animate(curved),
+    String? heroTag,
+  }) {
+    final effectiveHeroTag = sl<AppMode>().isTv ? null : heroTag;
+    return PageRouteBuilder<void>(
+      transitionDuration: const Duration(milliseconds: 350),
+      reverseTransitionDuration: const Duration(milliseconds: 270),
+      pageBuilder: (_, _, _) => DetailScreen(
+        item: item,
+        trailerContext: trailerContext,
+        catalogDetail: catalogDetail,
+        heroTag: effectiveHeroTag,
+      ),
+      transitionsBuilder: (_, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        if (effectiveHeroTag != null && effectiveHeroTag.isNotEmpty) {
+          // When a Hero is flying into the top banner, keep the route unscaled
+          // so the Hero lands with sub-pixel precision while content fades in.
+          return FadeTransition(
+            opacity: curved,
             child: child,
+          );
+        }
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween(
+              begin: const Offset(0, 0.035),
+              end: Offset.zero,
+            ).animate(curved),
+            child: ScaleTransition(
+              scale: Tween(begin: 0.96, end: 1.0).animate(curved),
+              child: child,
+            ),
           ),
-        ),
-      );
-    },
-  );
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -262,6 +283,7 @@ class DetailScreen extends StatelessWidget {
         item: item,
         trailerContext: trailerContext,
         catalogDetail: catalogDetail,
+        heroTag: heroTag,
       ),
     );
   }
@@ -273,10 +295,16 @@ class DetailScreen extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DetailView extends StatefulWidget {
-  const _DetailView({required this.item, this.trailerContext, this.catalogDetail});
+  const _DetailView({
+    required this.item,
+    this.trailerContext,
+    this.catalogDetail,
+    this.heroTag,
+  });
   final MediaItem item;
   final DetailTrailerContext? trailerContext;
   final MediaDetail? catalogDetail;
+  final String? heroTag;
 
   @override
   State<_DetailView> createState() => _DetailViewState();
@@ -2146,6 +2174,7 @@ class _DetailViewState extends State<_DetailView>
             ),
             centerTitle: true,
             flexibleSpace: _Hero(
+              heroTag: widget.heroTag,
               coverUrl: heroCoverUrl,
               coverHeaders: coverHeaders,
               hasCover: hasCover,

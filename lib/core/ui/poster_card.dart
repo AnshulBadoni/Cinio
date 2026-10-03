@@ -88,6 +88,57 @@ bool get _showBadges {
 }
 
 
+/// Flight shuttle builder that smoothly morphs a portrait rounded poster card
+/// into a full-width header backdrop (and vice-versa on pop) with curved corner
+/// interpolation and seamless cross-fading.
+Widget posterHeroFlightShuttle(
+  BuildContext flightContext,
+  Animation<double> animation,
+  HeroFlightDirection flightDirection,
+  BuildContext fromHeroContext,
+  BuildContext toHeroContext,
+) {
+  final Hero fromHero = fromHeroContext.widget as Hero;
+  final Hero toHero = toHeroContext.widget as Hero;
+  final isPush = flightDirection == HeroFlightDirection.push;
+
+  Widget unwrap(Widget w) {
+    if (w is ClipRRect && w.child != null) return w.child!;
+    return w;
+  }
+
+  final posterChild = unwrap(isPush ? fromHero.child : toHero.child);
+  final targetChild = unwrap(isPush ? toHero.child : fromHero.child);
+
+  final curved = CurvedAnimation(
+    parent: animation,
+    curve: Curves.easeOutCubic,
+    reverseCurve: Curves.easeInCubic,
+  );
+
+  return AnimatedBuilder(
+    animation: curved,
+    builder: (context, _) {
+      final t = curved.value.clamp(0.0, 1.0);
+      final radius = 12.0 * (1.0 - t);
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            posterChild,
+            if (t > 0.0)
+              Opacity(
+                opacity: t,
+                child: targetChild,
+              ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
 class _CompletionBadge extends StatelessWidget {
   const _CompletionBadge();
 
@@ -176,15 +227,10 @@ class _PosterCardState extends State<PosterCard> {
       );
     }
     if (widget.heroTag == null) return image;
-    // Keep the card's corner treatment inside the Hero itself. Previously the
-    // Hero flight carried only the raw image, while the normal card clipped it
-    // from the outside. During the long-press flight that outer ClipRRect was
-    // left behind, so the moving poster briefly became a square.
     return Hero(
       tag: widget.heroTag!,
       createRectTween: (begin, end) => MaterialRectArcTween(begin: begin, end: end),
-      flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
-          direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
+      flightShuttleBuilder: posterHeroFlightShuttle,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: image,

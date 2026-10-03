@@ -102,9 +102,9 @@ class _MyListViewState extends State<_MyListView> {
     return defaultSortFor(isMyList: isMyList);
   }
 
-  Future<void> _openItem(BuildContext context, MediaItem item) async {
+  Future<void> _openItem(BuildContext context, MediaItem item, [String? heroTag]) async {
     final cubit = context.read<MyListCubit>();
-    await Navigator.push(context, DetailScreen.route(item));
+    await Navigator.push(context, DetailScreen.route(item, heroTag: heroTag));
     cubit.reload();
   }
 
@@ -885,7 +885,7 @@ class _MyListViewState extends State<_MyListView> {
         return _grid(
           context,
           entries,
-          onTap: (item) => _openItem(context, item),
+          onTap: (item, [heroTag]) => _openItem(context, item, heroTag),
           onMore: (entry) =>
               showListStatusSheet(context, item: entry.item),
         );
@@ -919,7 +919,8 @@ class _MyListViewState extends State<_MyListView> {
             : _grid(
                 context,
                 tlState.entries,
-                onTap: (item) => _openTrackerItem(context, item),
+                onTap: (item, [heroTag]) =>
+                    _openTrackerItem(context, item, heroTag),
                 onMore: (entry) => showTrackerEntrySheet(
                   context,
                   tracker: tlState.tracker!,
@@ -960,7 +961,7 @@ class _MyListViewState extends State<_MyListView> {
   Widget _grid(
     BuildContext context,
     List<MyListEntry> entries, {
-    required void Function(MediaItem) onTap,
+    required void Function(MediaItem item, [String? heroTag]) onTap,
     void Function(MyListEntry)? onMore,
   }) {
     final cellW = _cellW(context);
@@ -1074,7 +1075,7 @@ class _MyListViewState extends State<_MyListView> {
                         cellWidth: cellW,
                         heroTag: heroTag,
                         completed: entry.status == WatchStatus.completed,
-                        onTap: () => onTap(entry.item),
+                        onTap: () => onTap(entry.item, heroTag),
                         // Long-press opens quick actions with shatter on removal,
                         // or the tracker editor when browsing a tracker tab.
                         onLongPress: isMyList
@@ -1149,7 +1150,7 @@ class _MyListViewState extends State<_MyListView> {
   /// opening the catalog directly is both faster and deterministic. Anime/MAL
   /// entries still use title search because the tracker deliberately stores no
   /// streaming-provider URL.
-  Future<void> _openTrackerItem(BuildContext context, MediaItem stub) async {
+  Future<void> _openTrackerItem(BuildContext context, MediaItem stub, [String? heroTag]) async {
     if (stub.tmdbId != null) {
       final item = MediaItem(
         id: 'tmdb:${stub.tmdbIsTv ? 'tv' : 'movie'}:${stub.tmdbId}',
@@ -1161,7 +1162,7 @@ class _MyListViewState extends State<_MyListView> {
         tmdbId: stub.tmdbId,
         tmdbIsTv: stub.tmdbIsTv,
       );
-      await Navigator.of(context).push(DetailScreen.route(item));
+      await Navigator.of(context).push(DetailScreen.route(item, heroTag: heroTag));
       return;
     }
 

@@ -10,6 +10,7 @@ part of 'detail_screen.dart';
 
 class _Hero extends StatelessWidget {
   const _Hero({
+    this.heroTag,
     required this.coverUrl,
     required this.coverHeaders,
     required this.hasCover,
@@ -22,6 +23,7 @@ class _Hero extends StatelessWidget {
 
   static final ValueNotifier<double> _zeroStretch = ValueNotifier<double>(0);
 
+  final String? heroTag;
   final String coverUrl;
   final Map<String, String>? coverHeaders;
   final bool hasCover;
@@ -78,6 +80,17 @@ class _Hero extends StatelessWidget {
     );
   }
 
+  Widget _buildCoverBackdrop() {
+    final backdrop = _coverBackdrop();
+    if (heroTag == null || heroTag!.isEmpty) return backdrop;
+    return Hero(
+      tag: heroTag!,
+      createRectTween: (begin, end) =>
+          MaterialRectArcTween(begin: begin, end: end),
+      flightShuttleBuilder: posterHeroFlightShuttle,
+      child: backdrop,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -106,9 +119,9 @@ class _Hero extends StatelessWidget {
                     trailer: trailer!,
                     collapsed: collapsed,
                     onTapFullscreen: onTapFullscreen,
-                    placeholder: _coverBackdrop(),
+                    placeholder: _buildCoverBackdrop(),
                   )
-                : _coverBackdrop(),
+                : _buildCoverBackdrop(),
           ),
         ),
         // One continuous cinematic treatment: a restrained top scrim plus a

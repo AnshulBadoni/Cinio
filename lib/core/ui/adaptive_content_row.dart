@@ -23,7 +23,7 @@ class AdaptiveContentRow extends StatefulWidget {
 
   final String title;
   final List<MediaItem> items;
-  final void Function(MediaItem) onTap;
+  final void Function(MediaItem item, String? heroTag) onTap;
   final void Function(MediaItem) onLongPress;
   final VoidCallback? onSeeAll;
 
@@ -122,7 +122,10 @@ class _AdaptiveContentRowState extends State<AdaptiveContentRow> {
           cellWidth: width,
           qualityBadge: item.quality,
           dubBadge: item.dubBadge,
-          onTap: () => widget.onTap(item),
+          onTap: () {
+            final tag = widget.heroTagBuilder?.call(item, index);
+            widget.onTap(item, tag);
+          },
           heroTag: widget.heroTagBuilder?.call(item, index),
           onLongPress: () => widget.onLongPress(item),
         );
