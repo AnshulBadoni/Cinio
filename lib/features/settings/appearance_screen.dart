@@ -268,11 +268,34 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                 },
               ),
               _switchTile(
+                icon: Icons.account_circle_outlined,
+                title: 'Separate Profile circle',
+                subtitle: 'Detach Profile as a floating circle (Material You)',
+                value: sl<NavPrefs>().separateProfile,
+                onChanged: (v) async {
+                  await sl<NavPrefs>().setSeparateProfile(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _switchTile(
+                icon: Icons.lens_blur_rounded,
+                title: 'Frosted glass navbar',
+                subtitle: 'Translucent Gaussian blur with glass highlight',
+                value: sl<NavPrefs>().frostedGlass,
+                onChanged: (v) async {
+                  await sl<NavPrefs>().setFrostedGlass(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _switchTile(
                 icon: Icons.label_outline_rounded,
                 title: 'Show navigation labels',
                 subtitle: 'Show text below bottom navigation icons',
                 value: sl<NavPrefs>().showNavigationLabels,
-                onChanged: sl<NavPrefs>().setShowNavigationLabels,
+                onChanged: (v) async {
+                  await sl<NavPrefs>().setShowNavigationLabels(v);
+                  if (mounted) setState(() {});
+                },
               ),
               _switchTile(
                 icon: Icons.auto_awesome_motion_outlined,

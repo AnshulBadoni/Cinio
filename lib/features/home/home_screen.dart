@@ -1423,7 +1423,10 @@ class _HomeHeroSliver extends StatelessWidget {
                 reading: sl<ContentModeCubit>().state.isReading,
                 inList: view._myList.contains,
                 onPlay: view._playFeatured,
-                onInfo: view._openDetail,
+                onInfo: (item) => view._openDetail(
+                  item,
+                  heroTag: 'hero-carousel:${item.id}',
+                ),
                 onToggleList: (item) => showListStatusSheet(
                   context,
                   item: item,

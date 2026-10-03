@@ -8,6 +8,7 @@ import 'package:palette_generator/palette_generator.dart';
 
 import '../di/injector.dart';
 import 'native_cover_provider.dart';
+import 'poster_card.dart';
 import 'cinio_title_style.dart';
 import '../metadata/title_logo_service.dart';
 import '../models/media_item.dart';
@@ -41,6 +42,7 @@ class FeaturedHero extends StatefulWidget {
     required this.onPlay,
     required this.onInfo,
     required this.onToggleList,
+    this.heroTag,
     this.metaFuture,
     this.parallax = 0,
     this.kenBurns = false,
@@ -52,6 +54,7 @@ class FeaturedHero extends StatefulWidget {
 
   final MediaItem item;
   final bool inList;
+  final String? heroTag;
 
   /// Manga/novel mode: the primary action reads "Read" with a book glyph
   /// instead of "Play" with a triangle. Defaults to false, so every existing
@@ -239,10 +242,29 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                       final scale = 1.0 + (overscroll / 420).clamp(0.0, 0.34);
                       return ClipRect(child: Transform.scale(alignment: Alignment.topCenter, scale: scale, child: child));
                     },
-                    child: Image(
-                      image: provider, fit: BoxFit.cover, alignment: const Alignment(0, -0.20),
-                      filterQuality: FilterQuality.high, frameBuilder: imageFadeIn, gaplessPlayback: true,
-                    ),
+                    child: (widget.heroTag != null && widget.heroTag!.isNotEmpty)
+                        ? Hero(
+                            tag: widget.heroTag!,
+                            createRectTween: (begin, end) =>
+                                MaterialRectArcTween(begin: begin, end: end),
+                            flightShuttleBuilder: posterHeroFlightShuttle,
+                            child: Image(
+                              image: provider,
+                              fit: BoxFit.cover,
+                              alignment: const Alignment(0, -0.20),
+                              filterQuality: FilterQuality.high,
+                              frameBuilder: imageFadeIn,
+                              gaplessPlayback: true,
+                            ),
+                          )
+                        : Image(
+                            image: provider,
+                            fit: BoxFit.cover,
+                            alignment: const Alignment(0, -0.20),
+                            filterQuality: FilterQuality.high,
+                            frameBuilder: imageFadeIn,
+                            gaplessPlayback: true,
+                          ),
                   ),
                 ),
 

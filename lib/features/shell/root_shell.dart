@@ -1,9 +1,9 @@
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemNavigator;
+import 'package:hugeicons/hugeicons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
@@ -322,10 +322,68 @@ class _RootShellState extends State<RootShell>
   }
 }
 
-/// The frosted floating capsule: blurred surface, hairline border, five
-/// items. Active tab = the icon's solid accent twin + accent label — the
-/// state change lives in the icon itself (deliberately not the Material
-/// pill/indicator look).
+BoxDecoration _dockDecoration({
+  required double radius,
+  required bool frosted,
+  bool isSelected = false,
+}) {
+  final surfaceColor = frosted
+      ? (isSelected
+          ? AppColors.accent.withValues(alpha: 0.22)
+          : const Color(0x7A121217))
+      : (isSelected
+          ? AppColors.accent.withValues(alpha: 0.28)
+          : const Color(0xEE131317));
+  final borderColor = isSelected
+      ? AppColors.accent.withValues(alpha: 0.70)
+      : Colors.white.withValues(alpha: frosted ? 0.18 : 0.14);
+
+  return BoxDecoration(
+    borderRadius: BorderRadius.circular(radius),
+    color: surfaceColor,
+    border: Border.all(
+      color: borderColor,
+      width: isSelected ? 1.2 : 0.75,
+    ),
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: frosted ? 0.35 : 0.45),
+        blurRadius: frosted ? 24 : 28,
+        offset: const Offset(0, 8),
+      ),
+      if (frosted)
+        BoxShadow(
+          color: Colors.white.withValues(alpha: 0.05),
+          blurRadius: 10,
+          offset: const Offset(0, -1),
+        ),
+    ],
+  );
+}
+
+Widget _glassHighlight(double radius, {required bool frosted}) {
+  return Positioned.fill(
+    child: IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.white.withValues(alpha: frosted ? 0.15 : 0.09),
+              Colors.white.withValues(alpha: 0.01),
+            ],
+            stops: const [0.0, 0.48],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// The frosted floating capsule: rich Gaussian blur surface, hairline border,
+/// stroke-rounded HugeIcons, and an optional detached Profile circle (Material You).
 class _FloatingDock extends StatelessWidget {
   const _FloatingDock({
     required this.tabs,
@@ -347,95 +405,103 @@ class _FloatingDock extends StatelessWidget {
     return AnimatedBuilder(
       animation: collapse,
       builder: (context, _) {
-        // The dock morphs as one coherent object: it gets narrower and
-        // shorter while labels disappear. Every item keeps an equal column,
-        // so the glass never becomes a collection of unrelated buttons.
         final t = Curves.easeOutCubic.transform(
           collapse.value.clamp(0.0, 1.0),
         );
+        final navPrefs = sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : null;
+        final separateProfile = navPrefs?.separateProfile ?? true;
+        final frostedGlass = navPrefs?.frostedGlass ?? true;
+        final hasProfile = tabs.contains(DockTab.profile);
+        final isSplit = separateProfile && hasProfile;
+
         final expandedWidth = (screenWidth * 0.90).clamp(300.0, 520.0);
         final compactWidth = (screenWidth * 0.64).clamp(240.0, 360.0);
-        final width = expandedWidth + (compactWidth - expandedWidth) * t;
+        final totalWidth = expandedWidth + (compactWidth - expandedWidth) * t;
         final height = 74.0 - (16.0 * t);
         final radius = height / 2;
+        final blurSigma = frostedGlass ? 26.0 : 16.0;
+
+        Widget buildCapsuleContent(List<DockTab> pillTabs) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final tab in pillTabs)
+                Expanded(
+                  child: _DockItem(
+                    tab: tab,
+                    selected: active == tab,
+                    onTap: () => onSelected(tab),
+                    collapse: collapse,
+                  ),
+                ),
+            ],
+          );
+        }
+
+        Widget buildPillContainer({
+          required double pillWidth,
+          required List<DockTab> pillTabs,
+        }) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(radius),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+              child: Container(
+                width: pillWidth,
+                height: height,
+                padding: EdgeInsets.all(5.0 - (1.0 * t)),
+                decoration: _dockDecoration(
+                  radius: radius,
+                  frosted: frostedGlass,
+                ),
+                child: Stack(
+                  children: [
+                    _glassHighlight(radius - 5, frosted: frostedGlass),
+                    buildCapsuleContent(pillTabs),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        Widget content;
+        if (isSplit) {
+          final mainTabs = tabs.where((t) => t != DockTab.profile).toList();
+          final circleSize = height;
+          const gap = 9.0;
+          final mainWidth = totalWidth - circleSize - gap;
+
+          content = Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              buildPillContainer(
+                pillWidth: mainWidth,
+                pillTabs: mainTabs,
+              ),
+              const SizedBox(width: gap),
+              _ProfileCircle(
+                size: circleSize,
+                radius: radius,
+                frosted: frostedGlass,
+                selected: active == DockTab.profile,
+                onTap: () => onSelected(DockTab.profile),
+              ),
+            ],
+          );
+        } else {
+          content = buildPillContainer(
+            pillWidth: totalWidth,
+            pillTabs: tabs,
+          );
+        }
 
         return Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
             padding: EdgeInsets.only(bottom: bottomInset + 10),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(radius),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-                child: Container(
-                  width: width,
-                  height: height,
-                  padding: EdgeInsets.all(5.0 - (1.0 * t)),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(radius),
-                    color: const Color(0xEE131317),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.16),
-                      width: 0.75,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.45),
-                        blurRadius: 28,
-                        offset: const Offset(0, 10),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.04),
-                        blurRadius: 10,
-                        offset: const Offset(0, -1),
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      // A single glass highlight belongs to the surface, not
-                      // to individual buttons. This keeps every tab uniform.
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(radius - 5),
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.white.withValues(alpha: 0.09),
-                                  Colors.white.withValues(alpha: 0.01),
-                                ],
-                                stops: const [0.0, 0.48],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (final tab in tabs)
-                            Expanded(
-                              child: _DockItem(
-                                label: tab == DockTab.profile ? 'Profile' : tab.label,
-                                icon: tab == DockTab.profile
-                                    ? null
-                                    : _iconFor(tab),
-                                profile: tab == DockTab.profile,
-                                selected: active == tab,
-                                onTap: () => onSelected(tab),
-                                collapse: collapse,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            child: content,
           ),
         );
       },
@@ -443,14 +509,127 @@ class _FloatingDock extends StatelessWidget {
   }
 }
 
-(IconData, IconData)? _iconFor(DockTab t) => switch (t) {
-  DockTab.home => (CupertinoIcons.house, CupertinoIcons.house_fill),
-  DockTab.search => (CupertinoIcons.search, CupertinoIcons.search),
-  DockTab.myList => (CupertinoIcons.bookmark, CupertinoIcons.bookmark_fill),
-  DockTab.schedule => (CupertinoIcons.calendar, CupertinoIcons.calendar_today),
-  DockTab.downloads => (CupertinoIcons.arrow_down_circle, CupertinoIcons.arrow_down_circle_fill),
-  DockTab.history => (CupertinoIcons.clock, CupertinoIcons.clock_fill),
-  DockTab.profile => (CupertinoIcons.person_crop_circle, CupertinoIcons.person_crop_circle_fill),
+class _ProfileCircle extends StatelessWidget {
+  const _ProfileCircle({
+    required this.size,
+    required this.radius,
+    required this.frosted,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final double size;
+  final double radius;
+  final bool frosted;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final blurSigma = frosted ? 26.0 : 16.0;
+    final surfaceColor = frosted
+        ? (selected
+            ? AppColors.accent.withValues(alpha: 0.24)
+            : const Color(0x7A121217))
+        : (selected
+            ? AppColors.accent.withValues(alpha: 0.30)
+            : const Color(0xEE131317));
+    final borderColor = selected
+        ? AppColors.accent.withValues(alpha: 0.85)
+        : Colors.white.withValues(alpha: frosted ? 0.18 : 0.14);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            color: surfaceColor,
+            border: Border.all(
+              color: borderColor,
+              width: selected ? 1.4 : 0.75,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: frosted ? 0.38 : 0.45),
+                blurRadius: frosted ? 24 : 28,
+                offset: const Offset(0, 8),
+              ),
+              if (frosted)
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -1),
+                ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              _glassHighlight(radius - 3, frosted: frosted),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(radius),
+                  onTap: onTap,
+                  child: Center(
+                    child: _DockPop(
+                      selected: selected,
+                      child: BlocBuilder<AuthCubit, AuthState>(
+                        builder: (context, auth) {
+                          if (auth.isLoggedIn && auth.avatarUrl != null) {
+                            final avatarSize = (size * 0.52).clamp(24.0, 36.0);
+                            return Container(
+                              width: avatarSize,
+                              height: avatarSize,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: selected
+                                      ? AppColors.accent
+                                      : Colors.white.withValues(alpha: 0.32),
+                                  width: selected ? 1.5 : 1.0,
+                                ),
+                                image: DecorationImage(
+                                  image: NetworkImage(auth.avatarUrl!),
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            );
+                          }
+                          return HugeIcon(
+                            icon: HugeIcons.strokeRoundedUserCircle02,
+                            color: selected
+                                ? AppColors.accent
+                                : const Color(0xFFD4D4D8),
+                            size: (size * 0.42).clamp(20.0, 26.0),
+                            strokeWidth: selected ? 2.1 : 1.6,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+List<List<dynamic>> _hugeIconFor(DockTab t) => switch (t) {
+  DockTab.home => HugeIcons.strokeRoundedHome04,
+  DockTab.search => HugeIcons.strokeRoundedDiscoverCircle,
+  DockTab.myList => HugeIcons.strokeRoundedFolderLibrary,
+  DockTab.downloads => HugeIcons.strokeRoundedDownload03,
+  DockTab.schedule => HugeIcons.strokeRoundedCalendar03,
+  DockTab.history => HugeIcons.strokeRoundedClock01,
+  DockTab.profile => HugeIcons.strokeRoundedUserCircle02,
 };
 
 class _DockPop extends StatelessWidget {
@@ -474,17 +653,13 @@ class _DockPop extends StatelessWidget {
 
 class _DockItem extends StatelessWidget {
   const _DockItem({
-    required this.label,
-    required this.icon,
-    required this.profile,
+    required this.tab,
     required this.selected,
     required this.onTap,
     required this.collapse,
   });
 
-  final String label;
-  final (IconData, IconData)? icon;
-  final bool profile;
+  final DockTab tab;
   final bool selected;
   final VoidCallback onTap;
   final Animation<double> collapse;
@@ -499,6 +674,8 @@ class _DockItem extends StatelessWidget {
         );
         final labelOpacity = 1.0 - t;
         final iconColor = selected ? AppColors.accent : const Color(0xFFD4D4D8);
+        final profile = tab == DockTab.profile;
+        final label = profile ? 'Profile' : tab.label;
 
         Widget iconWidget;
         if (profile) {
@@ -523,25 +700,27 @@ class _DockItem extends StatelessWidget {
                   ),
                 );
               }
-              return Icon(
-                selected
-                    ? CupertinoIcons.person_crop_circle_fill
-                    : CupertinoIcons.person_crop_circle,
+              return HugeIcon(
+                icon: HugeIcons.strokeRoundedUserCircle02,
                 color: iconColor,
                 size: 21,
+                strokeWidth: selected ? 2.1 : 1.6,
               );
             },
           );
         } else {
-          iconWidget = Icon(
-            selected ? icon!.$2 : icon!.$1,
+          iconWidget = HugeIcon(
+            icon: _hugeIconFor(tab),
             color: iconColor,
             size: 21,
+            strokeWidth: selected ? 2.1 : 1.6,
           );
         }
 
         final isCompact = t > 0.45;
         const circleSize = 38.0;
+        final navPrefs = sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : null;
+        final showLabels = (navPrefs?.showNavigationLabels ?? true) && t < 0.92;
 
         return Material(
           color: Colors.transparent,
@@ -585,7 +764,7 @@ class _DockItem extends StatelessWidget {
                         child: _DockPop(selected: selected, child: iconWidget),
                       ),
                     ),
-                    if (t < 0.92)
+                    if (showLabels)
                       SizedBox(
                         height: 14.0 * (1.0 - t),
                         child: ClipRect(

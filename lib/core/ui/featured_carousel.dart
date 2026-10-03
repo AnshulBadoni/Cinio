@@ -116,6 +116,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
   /// slides the PageView forward.
   void _advance() {
     if (!mounted) return;
+    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
     if (widget.style == HeroTransition.cinematic) {
       setState(() => _index++);
     } else if (_pc.hasClients) {
@@ -164,7 +165,12 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
     super.dispose();
   }
 
-  FeaturedHero _hero(MediaItem it, {double parallax = 0, bool kenBurns = false}) =>
+  FeaturedHero _hero(
+    MediaItem it, {
+    double parallax = 0,
+    bool kenBurns = false,
+    bool isActive = false,
+  }) =>
       FeaturedHero(
         item: it,
         inList: widget.inList(it),
@@ -177,6 +183,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
         reading: widget.reading,
         fullBleed: widget.fullBleed,
         stretch: widget.stretch,
+        heroTag: isActive ? 'hero-carousel:${it.id}' : null,
       );
 
   /// The pager — cinematic cross-fade (A) or parallax slide (B).
@@ -209,7 +216,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
               FadeTransition(opacity: anim, child: child),
           child: KeyedSubtree(
             key: ValueKey(_realIndex),
-            child: _hero(_pages[_realIndex]),
+            child: _hero(_pages[_realIndex], isActive: true),
           ),
         ),
       );
@@ -226,9 +233,14 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
             off = (_pc.page ?? _index.toDouble()) - i;
           }
           final scale = (1 - off.abs() * 0.06).clamp(0.94, 1.0);
+          final isCurrentSlide = (i % _count) == _realIndex;
           return Transform.scale(
             scale: scale,
-            child: _hero(_pages[i % _count], parallax: off.clamp(-1.0, 1.0)),
+            child: _hero(
+              _pages[i % _count],
+              parallax: off.clamp(-1.0, 1.0),
+              isActive: isCurrentSlide,
+            ),
           );
         },
       ),
@@ -244,7 +256,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
     // Single item — no dots, no timer. Still pinned to the hero height.
     if (_count == 1) {
       return RepaintBoundary(
-        child: SizedBox(height: heroHeight, child: _hero(_pages.first)),
+        child: SizedBox(height: heroHeight, child: _hero(_pages.first, isActive: true)),
       );
     }
 

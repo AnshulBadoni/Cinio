@@ -7,7 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/nav_prefs.dart';
 import '../../core/ui/settings_widgets.dart';
-import '../shell/dock_icons.dart';
+import 'package:hugeicons/hugeicons.dart';
 
 /// Choose which tabs the bottom bar shows, and in what order.
 ///
@@ -130,6 +130,41 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
                   ]
                 : [for (final t in hidden) _row(t)],
           ),
+          const SettingsSectionLabel('Style & blur'),
+          SettingsCard(
+            children: [
+              _switchTile(
+                icon: Icons.account_circle_outlined,
+                title: 'Separate Profile circle',
+                subtitle: 'Detach Profile as a floating circle (Material You)',
+                value: _prefs.separateProfile,
+                onChanged: (v) async {
+                  await _prefs.setSeparateProfile(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _switchTile(
+                icon: Icons.lens_blur_rounded,
+                title: 'Frosted glass navbar',
+                subtitle: 'Translucent Gaussian blur with glass highlight',
+                value: _prefs.frostedGlass,
+                onChanged: (v) async {
+                  await _prefs.setFrostedGlass(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _switchTile(
+                icon: Icons.label_outline_rounded,
+                title: 'Show tab labels',
+                subtitle: 'Show text below bottom navigation icons',
+                value: _prefs.showNavigationLabels,
+                onChanged: (v) async {
+                  await _prefs.setShowNavigationLabels(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 14, 8, 0),
             child: Text(
@@ -147,13 +182,49 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
     );
   }
 
+  Widget _switchTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required Future<void> Function(bool) onChanged,
+  }) {
+    Future<void> flip(bool v) async {
+      await onChanged(v);
+      if (mounted) setState(() {});
+    }
+
+    return SettingsTile(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      onTap: () => flip(!value),
+      trailing: Switch.adaptive(
+        value: value,
+        activeTrackColor: AppColors.accent,
+        onChanged: flip,
+      ),
+    );
+  }
+
   /// The dock as it will actually look — same frosted capsule, same glyphs,
   /// same outline→fill active state, redrawn as you edit.
   Widget _preview() {
+    final separate = _prefs.separateProfile && _shown.contains(DockTab.profile);
+    final frosted = _prefs.frostedGlass;
+    final showLabels = _prefs.showNavigationLabels;
+    final mainTabs = separate
+        ? _shown.where((t) => t != DockTab.profile).toList()
+        : _shown;
+    final blurSigma = frosted ? 16.0 : 8.0;
+    final bgColor = frosted
+        ? const Color(0x7A121217)
+        : const Color(0xEE131317);
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: SizedBox(
-        height: 104,
+        height: 106,
         child: DecoratedBox(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -167,32 +238,64 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface.withValues(alpha: 0.55),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: ClipRRect(
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.07),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: bgColor,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: frosted ? 0.16 : 0.08),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                for (var i = 0; i < mainTabs.length; i++)
+                                  Expanded(child: _previewItem(mainTabs[i], i == 0, showLabels)),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                      child: Row(
-                        children: [
-                          // First tab drawn active, exactly as the dock lands
-                          // on open.
-                          for (var i = 0; i < _shown.length; i++)
-                            Expanded(child: _previewItem(_shown[i], i == 0)),
-                        ],
-                      ),
                     ),
-                  ),
+                    if (separate) ...[
+                      const SizedBox(width: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: bgColor,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: frosted ? 0.16 : 0.08),
+                              ),
+                            ),
+                            child: Center(
+                              child: HugeIcon(
+                                icon: HugeIcons.strokeRoundedUserCircle02,
+                                color: AppColors.textSecondary,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -202,47 +305,53 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
     );
   }
 
-  Widget _previewItem(DockTab t, bool active) {
+  Widget _previewItem(DockTab t, bool active, bool showLabels) {
     final color = active ? AppColors.accent : AppColors.textSecondary;
-    final glyph = dockGlyphFor(t);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
           height: 19,
           child: Center(
-            child: glyph != null
-                ? DockIcon(glyph, color: color, filled: active, size: 18)
-                : Icon(_iconFor(t, active), size: 18, color: color),
+            child: HugeIcon(
+              icon: _hugeIconFor(t),
+              color: color,
+              size: 17,
+              strokeWidth: active ? 2.1 : 1.6,
+            ),
           ),
         ),
-        const SizedBox(height: 2),
-        Text(
-          t.label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 8,
-            letterSpacing: 0.1,
-            color: color,
-            fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+        if (showLabels) ...[
+          const SizedBox(height: 2),
+          Text(
+            t.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 8,
+              letterSpacing: 0.1,
+              color: color,
+              fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
 
-  IconData _iconFor(DockTab t, bool active) => switch (t) {
-    DockTab.downloads =>
-      active ? Icons.download_rounded : Icons.download_outlined,
-    DockTab.history => active ? Icons.history_rounded : Icons.history_outlined,
-    _ => active ? Icons.person_rounded : Icons.person_outline_rounded,
+  static List<List<dynamic>> _hugeIconFor(DockTab t) => switch (t) {
+    DockTab.home => HugeIcons.strokeRoundedHome04,
+    DockTab.search => HugeIcons.strokeRoundedDiscoverCircle,
+    DockTab.myList => HugeIcons.strokeRoundedFolderLibrary,
+    DockTab.downloads => HugeIcons.strokeRoundedDownload03,
+    DockTab.schedule => HugeIcons.strokeRoundedCalendar03,
+    DockTab.history => HugeIcons.strokeRoundedClock01,
+    DockTab.profile => HugeIcons.strokeRoundedUserCircle02,
   };
 
   Widget _row(DockTab t, {int? index}) {
     final onBar = index != null;
     final tint = onBar ? AppColors.textPrimary : AppColors.textTertiary;
-    final glyph = dockGlyphFor(t);
     return Padding(
       key: ValueKey('${onBar ? 'on' : 'off'}_${t.name}'),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -263,11 +372,14 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
           else
             const SizedBox(width: 29),
           SizedBox(
-            width: 20,
+            width: 22,
             child: Center(
-              child: glyph != null
-                  ? DockIcon(glyph, color: tint, size: 19)
-                  : Icon(_iconFor(t, false), size: 19, color: tint),
+              child: HugeIcon(
+                icon: _hugeIconFor(t),
+                color: tint,
+                size: 19,
+                strokeWidth: 1.7,
+              ),
             ),
           ),
           const SizedBox(width: 12),

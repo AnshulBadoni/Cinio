@@ -31,6 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+  hugeicons: ^1.2.0
 
   # State management
   flutter_bloc: ^9.1.0

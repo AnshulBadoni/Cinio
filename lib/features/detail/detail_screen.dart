@@ -1855,7 +1855,17 @@ class _DetailViewState extends State<_DetailView>
       body: BlocBuilder<DetailCubit, DetailState>(
         builder: (context, state) {
           if (state.status == DetailStatus.loading) {
-            return const _DetailSkeleton(heroHeight: 450);
+            final isReading = widget.item.type == ProviderType.manga ||
+                widget.item.type == ProviderType.novel;
+            return _DetailSkeleton(
+              heroHeight: _expandedHeightFor(
+                isReading: isReading,
+                hasDownload: !isReading,
+              ),
+              coverUrl: widget.item.heroImage ?? widget.item.cover,
+              coverHeaders: widget.item.coverHeaders,
+              heroTag: widget.heroTag,
+            );
           }
           if (state.detail == null && state.status == DetailStatus.error) {
             return Center(

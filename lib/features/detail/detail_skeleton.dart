@@ -7,9 +7,17 @@ part of 'detail_screen.dart';
 /// screen eases in instead of popping from a blank spinner to a full page.
 /// One shared [AnimationController] (same pattern as RowSkeleton/SkeletonGrid).
 class _DetailSkeleton extends StatefulWidget {
-  const _DetailSkeleton({required this.heroHeight});
+  const _DetailSkeleton({
+    required this.heroHeight,
+    this.coverUrl,
+    this.coverHeaders,
+    this.heroTag,
+  });
 
   final double heroHeight;
+  final String? coverUrl;
+  final Map<String, String>? coverHeaders;
+  final String? heroTag;
 
   @override
   State<_DetailSkeleton> createState() => _DetailSkeletonState();
@@ -36,6 +44,54 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
     super.dispose();
   }
 
+  Widget _coverBackdrop() {
+    final url = widget.coverUrl;
+    if (url == null || url.isEmpty) {
+      return ColoredBox(color: AppColors.surface2);
+    }
+    final aniSrcId = widget.coverHeaders?['x-ani-src'];
+    final mihonSrcId = widget.coverHeaders?['x-mihon-src'];
+    if (aniSrcId != null || mihonSrcId != null) {
+      return Image(
+        image: ResizeImage(
+          aniSrcId != null
+              ? AniyomiImage(int.parse(aniSrcId), url)
+              : MihonImage(int.parse(mihonSrcId!), url),
+          width: 1440,
+        ),
+        fit: BoxFit.cover,
+        alignment: const Alignment(0, -0.20),
+        filterQuality: FilterQuality.high,
+        errorBuilder: (context, error, stackTrace) =>
+            ColoredBox(color: AppColors.surface2),
+      );
+    }
+    final effectiveHeaders =
+        resolveEffectiveCoverHeaders(url, widget.coverHeaders);
+    return CachedNetworkImage(
+      imageUrl: url,
+      httpHeaders: effectiveHeaders,
+      fit: BoxFit.cover,
+      alignment: const Alignment(0, -0.20),
+      memCacheWidth: 1440,
+      filterQuality: FilterQuality.high,
+      placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
+      errorWidget: (c, u, e) => ColoredBox(color: AppColors.surface2),
+    );
+  }
+
+  Widget _buildBackdropWithHero() {
+    final backdrop = _coverBackdrop();
+    if (widget.heroTag == null || widget.heroTag!.isEmpty) return backdrop;
+    return Hero(
+      tag: widget.heroTag!,
+      createRectTween: (begin, end) =>
+          MaterialRectArcTween(begin: begin, end: end),
+      flightShuttleBuilder: posterHeroFlightShuttle,
+      child: backdrop,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
@@ -53,64 +109,113 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
 
     // The skeleton shapes, painted in the flat base colour. A moving highlight
     // is swept across them by the ShaderMask below.
-    final shapes = SingleChildScrollView(
+    final shimmerShapes = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        box(width * 0.66, 26), // title
+        const SizedBox(height: 12),
+        box(width * 0.42, 14), // meta line
+        const SizedBox(height: 20),
+        box(double.infinity, 50, 14), // Play
+        const SizedBox(height: 10),
+        box(double.infinity, 50, 14), // Download
+        const SizedBox(height: 22),
+        box(double.infinity, 12), // synopsis line 1
+        const SizedBox(height: 9),
+        box(double.infinity, 12), // synopsis line 2
+        const SizedBox(height: 9),
+        box(width * 0.55, 12), // synopsis line 3
+      ],
+    );
+
+    // A diagonal highlight band swept across the masked shapes — the classic
+    // shimmer sheen, far livelier than a flat opacity pulse.
+    final shimmerContent = AnimatedBuilder(
+      animation: _ctrl,
+      child: shimmerShapes,
+      builder: (context, child) {
+        final t =
+            _ctrl.value * 3 - 1; // -1 → 2 : band enters left, exits right
+        return ShaderMask(
+          blendMode: BlendMode.srcATop,
+          shaderCallback: (bounds) => LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [base, highlight, base],
+            stops: const [0.32, 0.5, 0.68],
+            transform: _SlideGradient(t),
+          ).createShader(bounds),
+          child: child,
+        );
+      },
+    );
+
+    return SingleChildScrollView(
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Real cover backdrop with matching Hero tag ─────────────
           SizedBox(
             width: double.infinity,
             height: widget.heroHeight,
-            child: ColoredBox(color: base),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                box(width * 0.66, 26), // title
-                const SizedBox(height: 12),
-                box(width * 0.42, 14), // meta line
-                const SizedBox(height: 20),
-                box(double.infinity, 50, 14), // Play
-                const SizedBox(height: 10),
-                box(double.infinity, 50, 14), // Download
-                const SizedBox(height: 22),
-                box(double.infinity, 12), // synopsis line 1
-                const SizedBox(height: 9),
-                box(double.infinity, 12), // synopsis line 2
-                const SizedBox(height: 9),
-                box(width * 0.55, 12), // synopsis line 3
+                _buildBackdropWithHero(),
+                IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(gradient: AppColors.topScrim),
+                  ),
+                ),
+                IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.transparent,
+                          AppColors.bg.withValues(alpha: 0.12),
+                          AppColors.bg.withValues(alpha: 0.40),
+                          AppColors.bg.withValues(alpha: 0.75),
+                          AppColors.bg,
+                        ],
+                        stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+                // Top-left back button so user can pop back even while loading
+                Positioned(
+                  top: MediaQuery.paddingOf(context).top + 4,
+                  left: 16,
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black.withValues(alpha: 0.55),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(CupertinoIcons.chevron_back,
+                          color: Colors.white, size: 19.5),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 64),
+            child: shimmerContent,
+          ),
         ],
-      ),
-    );
-
-    // A diagonal highlight band swept across the masked shapes — the classic
-    // shimmer sheen, far livelier than a flat opacity pulse.
-    return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _ctrl,
-        child: shapes,
-        builder: (context, child) {
-          final t =
-              _ctrl.value * 3 - 1; // -1 → 2 : band enters left, exits right
-          return ShaderMask(
-            blendMode: BlendMode.srcATop,
-            shaderCallback: (bounds) => LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [base, highlight, base],
-              stops: const [0.32, 0.5, 0.68],
-              transform: _SlideGradient(t),
-            ).createShader(bounds),
-            child: child,
-          );
-        },
       ),
     );
   }

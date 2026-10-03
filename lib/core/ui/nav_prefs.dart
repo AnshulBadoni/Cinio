@@ -77,6 +77,23 @@ class NavPrefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// When true, the Profile tab is detached from the main capsule as an
+  /// independent floating circle button (Material You style).
+  bool get separateProfile =>
+      _box?.get('separateProfile', defaultValue: true) as bool? ?? true;
+  Future<void> setSeparateProfile(bool value) async {
+    await _box?.put('separateProfile', value);
+    notifyListeners();
+  }
+
+  /// When true, renders a translucent Gaussian frosted-glass blur on the navbar.
+  bool get frostedGlass =>
+      _box?.get('frostedGlass', defaultValue: true) as bool? ?? true;
+  Future<void> setFrostedGlass(bool value) async {
+    await _box?.put('frostedGlass', value);
+    notifyListeners();
+  }
+
   List<DockTab> get tabs {
     final raw = _box?.get(_tabsKey);
     if (raw is! List || raw.isEmpty) return defaultTabs;
