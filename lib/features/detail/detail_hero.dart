@@ -48,8 +48,9 @@ class _Hero extends StatelessWidget {
     // CF session) instead of CachedNetworkImage which cannot pass Cloudflare.
     final aniSrcId = coverHeaders?['x-ani-src'];
     final mihonSrcId = coverHeaders?['x-mihon-src'];
+    Widget image;
     if (aniSrcId != null || mihonSrcId != null) {
-      return Image(
+      image = Image(
         // Resize to the backdrop's memCacheWidth (matches the non-native path)
         // at full high-DPI width so crisp detail is preserved.
         image: ResizeImage(
@@ -66,17 +67,28 @@ class _Hero extends StatelessWidget {
         errorBuilder: (context, error, stackTrace) =>
             ColoredBox(color: AppColors.surface2),
       );
+    } else {
+      final effectiveHeaders = resolveEffectiveCoverHeaders(coverUrl, coverHeaders);
+      image = CachedNetworkImage(
+        imageUrl: coverUrl,
+        httpHeaders: effectiveHeaders,
+        fit: BoxFit.cover,
+        alignment: const Alignment(0, -0.20),
+        memCacheWidth: 1440,
+        filterQuality: FilterQuality.high,
+        fadeInDuration: const Duration(milliseconds: 250),
+        placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
+        errorWidget: (c, u, e) => ColoredBox(color: AppColors.surface2),
+      );
     }
-    final effectiveHeaders = resolveEffectiveCoverHeaders(coverUrl, coverHeaders);
-    return CachedNetworkImage(
-      imageUrl: coverUrl,
-      httpHeaders: effectiveHeaders,
-      fit: BoxFit.cover,
-      alignment: const Alignment(0, -0.20),
-      memCacheWidth: 1440,
-      filterQuality: FilterQuality.high,
-      placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
-      errorWidget: (c, u, e) => ColoredBox(color: AppColors.surface2),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: KeyedSubtree(
+        key: ValueKey(coverUrl),
+        child: image,
+      ),
     );
   }
 

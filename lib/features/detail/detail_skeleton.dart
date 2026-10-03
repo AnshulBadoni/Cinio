@@ -75,6 +75,7 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
       alignment: const Alignment(0, -0.20),
       memCacheWidth: 1440,
       filterQuality: FilterQuality.high,
+      fadeInDuration: const Duration(milliseconds: 200),
       placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
       errorWidget: (c, u, e) => ColoredBox(color: AppColors.surface2),
     );

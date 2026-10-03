@@ -339,6 +339,7 @@ class _PosterCardState extends State<PosterCard> {
                   style: AppText.caption.copyWith(
                     color: AppColors.textPrimary,
                     fontSize: 14,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
                 if (widget.subtitle != null && widget.subtitle!.isNotEmpty) ...[

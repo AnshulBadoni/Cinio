@@ -1,5 +1,7 @@
+import 'dart:ui' show ImageFilter;
+
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
-import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'reveal_item.dart';
 
@@ -108,7 +110,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -121,22 +123,71 @@ class _Header extends StatelessWidget {
             Row(
               children: [
                 Expanded(child: Text(title, style: AppText.headline)),
-                GestureDetector(
-                  onTap: onSeeAll,
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: Text(
-                      'See All',
-                      style: AppText.caption.copyWith(color: AppColors.accent),
-                    ),
-                  ),
-                ),
+                _GlassChevronButton(onTap: onSeeAll!),
               ],
             )
           else
             Text(title, style: AppText.headline),
         ],
+      ),
+    );
+  }
+}
+
+class _GlassChevronButton extends StatefulWidget {
+  const _GlassChevronButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_GlassChevronButton> createState() => _GlassChevronButtonState();
+}
+
+class _GlassChevronButtonState extends State<_GlassChevronButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 8),
+        child: AnimatedScale(
+          scale: _pressed ? 0.90 : 1.0,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
+          child: ClipOval(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0x6618181E),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    width: 0.65,
+                  ),
+                ),
+                child: const Center(
+                  child: Padding(
+                    padding: EdgeInsets.only(left: 1.5),
+                    child: Icon(
+                      CupertinoIcons.chevron_right,
+                      size: 13,
+                      color: Color(0xDDFFFFFF),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

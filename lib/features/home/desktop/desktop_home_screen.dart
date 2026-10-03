@@ -10,10 +10,8 @@ import '../cubit/home_cubit.dart';
 import '../see_all_screen.dart';
 import 'desktop_hero_banner.dart';
 import 'desktop_media_row.dart';
+import 'desktop_top_nav.dart';
 
-/// Full-screen desktop home screen modeled on the Netflix desktop experience:
-/// Full-bleed cinematic hero banner at the top, followed by horizontal
-/// media rows with hover pagination arrows and smooth mouse scrolling.
 class DesktopHomeScreen extends StatefulWidget {
   const DesktopHomeScreen({super.key});
 
@@ -23,20 +21,37 @@ class DesktopHomeScreen extends StatefulWidget {
 
 class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
   final HomeCubit _homeCubit = sl<HomeCubit>();
+  final ScrollController _scrollController = ScrollController();
+
+  double _navOpacity = 0;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleScroll);
     if (_homeCubit.state.sections == null) {
       _homeCubit.load();
     }
   }
 
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_handleScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleScroll() {
+    final next = (_scrollController.offset / 220).clamp(0.0, 1.0);
+    if ((next - _navOpacity).abs() > 0.01) {
+      setState(() => _navOpacity = next);
+    }
+  }
+
   void _openDetail(MediaItem item) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => DetailScreen(item: item),
-      ),
+      MaterialPageRoute<void>(builder: (_) => DetailScreen(item: item)),
     );
   }
 
@@ -59,88 +74,214 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
       body: BlocBuilder<HomeCubit, HomeState>(
         bloc: _homeCubit,
         builder: (context, state) {
-          final sections = state.sections;
+          final sections = state.sections ?? const <HomeSection>[];
 
-          if (state.loading && (sections == null || sections.isEmpty)) {
-            return Center(
-              child: CircularProgressIndicator(
-                color: AppColors.accent,
-                strokeWidth: 2.5,
-              ),
-            );
+          if (state.loading && sections.isEmpty) {
+            return const _FullScreenLoader();
           }
 
-          if (sections == null || sections.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.cloud_off_rounded,
-                    size: 48,
-                    color: AppColors.textTertiary,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'No content available',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed: () => _homeCubit.load(reset: true),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.accent,
-                      side: BorderSide(color: AppColors.accent),
-                    ),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
+          if (sections.isEmpty) {
+            // Removed 'const' here because onRetry is a function
+            return _EmptyState(onRetry: () => _homeCubit.load(reset: true));
           }
 
-          // Drive Hero banner from the first item of the first section
-          final featuredItem = state.heroItems.isNotEmpty
+          final featured = state.heroItems.isNotEmpty
               ? state.heroItems.first
               : sections.first.items.firstOrNull;
 
-          return CustomScrollView(
-            slivers: [
-              // ── Hero Banner ───────────────────────────────
-              if (featuredItem != null)
-                SliverToBoxAdapter(
-                  child: DesktopHeroBanner(
-                    item: featuredItem,
-                    onPlay: () => _openDetail(featuredItem),
-                    onMoreInfo: () => _openDetail(featuredItem),
-                  ),
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: CustomScrollView(
+                  controller: _scrollController,
+                  physics: const ClampingScrollPhysics(),
+                  slivers: [
+                    if (featured != null)
+                      SliverToBoxAdapter(
+                        child: DesktopHeroBanner(
+                          item: featured,
+                          onPlay: () => _openDetail(featured),
+                          onMoreInfo: () => _openDetail(featured),
+                        ),
+                      )
+                    else
+                      const SliverToBoxAdapter(child: SizedBox(height: 84)),
+                    const SliverToBoxAdapter(child: SizedBox(height: 6)),
+                    SliverList.builder(
+                      itemCount: sections.length,
+                      itemBuilder: (context, index) {
+                        final section = sections[index];
+                        return DesktopMediaRow(
+                          title: section.title,
+                          items: section.items,
+                          onTap: _openDetail,
+                          onSeeAll: () => _openSeeAll(section),
+                        );
+                      },
+                    ),
+                    const SliverToBoxAdapter(child: _Footer()),
+                  ],
                 ),
-
-              // ── Horizontal Content Rows ───────────────────
-              SliverPadding(
-                padding: const EdgeInsets.only(top: 8, bottom: 48),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final section = sections[index];
-                      return DesktopMediaRow(
-                        title: section.title,
-                        items: section.items,
-                        onTap: _openDetail,
-                        onSeeAll: () => _openSeeAll(section),
-                      );
-                    },
-                    childCount: sections.length,
-                  ),
-                ),
+              ),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: DesktopTopNav(opacity: _navOpacity),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Helper Widgets
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FullScreenLoader extends StatelessWidget {
+  const _FullScreenLoader();
+
+  @override
+  Widget build(BuildContext context) {
+    // Removed 'const' from Center because AppColors.accent is not a compile-time constant
+    return Center(
+      child: SizedBox(
+        width: 34,
+        height: 34,
+        child: CircularProgressIndicator(
+          color: AppColors.accent,
+          strokeWidth: 2.6,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  // Removed 'const' because onRetry is a VoidCallback (function)
+  _EmptyState({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.cloud_off_rounded,
+            size: 48,
+            color: AppColors.textTertiary,
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Something went wrong',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "We couldn't load this page. Please try again.",
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+          ),
+          const SizedBox(height: 20),
+          FilledButton(
+            onPressed: onRetry,
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+            child: const Text(
+              'Try again',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Footer extends StatelessWidget {
+  const _Footer();
+
+  static const _links = <String>[
+    'Audio Description',
+    'Help Centre',
+    'Gift Cards',
+    'Media Centre',
+    'Investor Relations',
+    'Jobs',
+    'Terms of Use',
+    'Privacy',
+    'Legal Notices',
+    'Cookie Preferences',
+    'Corporate Information',
+    'Contact Us',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    const linkStyle = TextStyle(
+      color: AppColors.textTertiary,
+      fontSize: 13,
+      height: 1.4,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(56, 16, 56, 56),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              for (final icon in const [
+                Icons.facebook_rounded,
+                Icons.camera_alt_outlined,
+                Icons.alternate_email_rounded,
+                Icons.play_circle_outline_rounded,
+              ])
+                Padding(
+                  padding: const EdgeInsets.only(right: 22),
+                  child: Icon(icon, size: 20, color: AppColors.textSecondary),
+                ),
+            ],
+          ),
+          const SizedBox(height: 26),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 900),
+            child: Wrap(
+              spacing: 26,
+              runSpacing: 12,
+              children: [
+                for (final link in _links)
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: Text(link, style: linkStyle),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 26),
+          Text(
+            '© ${DateTime.now().year} Streamly. All rights reserved.',
+            style: const TextStyle(
+              color: AppColors.textTertiary,
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -374,8 +374,8 @@ class _FloatingDock extends StatelessWidget {
         final hasProfile = tabs.contains(DockTab.profile);
         final isSplit = separateProfile && hasProfile;
 
-        // Proportions: compact and balanced (56dp expanded -> 44dp collapsed)
-        final height = 56.0 - (12.0 * t);
+        // Proportions: compact and balanced (58dp expanded -> 44dp collapsed)
+        final height = 58.0 - (14.0 * t);
         final radius = height / 2;
 
         final expandedWidth = (screenWidth * 0.90).clamp(290.0, 480.0);
@@ -518,17 +518,18 @@ class _ProfileCircle extends StatelessWidget {
                           ),
                         );
                       }
+                      final activeAccent = AppColors.accent;
                       return Container(
                         width: avatarSize,
                         height: avatarSize,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: selected
-                              ? Colors.white.withValues(alpha: 0.14)
+                              ? activeAccent.withValues(alpha: 0.18)
                               : Colors.white.withValues(alpha: 0.06),
                           border: Border.all(
                             color: selected
-                                ? Colors.white
+                                ? activeAccent
                                 : Colors.white.withValues(alpha: 0.20),
                             width: selected ? 1.4 : 0.8,
                           ),
@@ -537,7 +538,7 @@ class _ProfileCircle extends StatelessWidget {
                           child: HugeIcon(
                             icon: HugeIcons.strokeRoundedUserCircle02,
                             color: selected
-                                ? Colors.white
+                                ? Color.lerp(Colors.white, activeAccent, 0.28)!
                                 : const Color(0xFF9E9EA6),
                             size: avatarSize * 0.58,
                             strokeWidth: selected ? 2.0 : 1.6,
@@ -607,14 +608,17 @@ class _DockItem extends StatelessWidget {
           collapse.value.clamp(0.0, 1.0),
         );
         final labelOpacity = (1.0 - t * 2.2).clamp(0.0, 1.0);
-        final labelHeight = 12.0 * (1.0 - t);
-        final itemColor = selected ? Colors.white : const Color(0xFF9E9EA6);
+        final labelHeight = 13.5 * (1.0 - t);
+        final activeAccent = AppColors.accent;
+        final itemColor = selected
+            ? Color.lerp(Colors.white, activeAccent, 0.28)!
+            : const Color(0xFF9E9EA6);
         final label = tab.label;
 
         final Widget iconWidget = HugeIcon(
           icon: _hugeIconFor(tab),
           color: itemColor,
-          size: 19.5,
+          size: 21.2,
           strokeWidth: selected ? 2.1 : 1.6,
         );
 
@@ -637,7 +641,7 @@ class _DockItem extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 2.0),
                 decoration: BoxDecoration(
                   color: selected
-                      ? Colors.white.withValues(alpha: 0.08)
+                      ? activeAccent.withValues(alpha: 0.14)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(999),
                 ),
@@ -647,13 +651,13 @@ class _DockItem extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       SizedBox(
-                        height: 22,
+                        height: 23,
                         child: Center(
                           child: _DockPop(selected: selected, child: iconWidget),
                         ),
                       ),
                       if (showLabels && labelOpacity > 0.01) ...[
-                        SizedBox(height: 2.0 * (1.0 - t)),
+                        SizedBox(height: 1.5 * (1.0 - t)),
                         SizedBox(
                           height: labelHeight,
                           child: Opacity(
@@ -665,7 +669,7 @@ class _DockItem extends StatelessWidget {
                                 maxLines: 1,
                                 style: TextStyle(
                                   fontFamily: 'Inter',
-                                  fontSize: 10.0,
+                                  fontSize: 11.0,
                                   color: itemColor,
                                   fontWeight: selected
                                       ? FontWeight.w600

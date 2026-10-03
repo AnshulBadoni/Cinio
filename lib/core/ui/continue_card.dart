@@ -134,7 +134,7 @@ class _ContinueCardState extends State<ContinueCard> {
                         overflow: TextOverflow.ellipsis,
                         style: AppText.body.copyWith(
                           color: Colors.white,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w400,
                         ),
                       ),
                       if (widget.subtitle != null &&
