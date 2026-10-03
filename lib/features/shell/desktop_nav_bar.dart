@@ -1,15 +1,22 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../auth/auth_cubit.dart';
 import '../../core/di/injector.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/source_switcher.dart';
-import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
+import '../notify/subscriptions_screen.dart';
 
+/// Desktop-only top navigation. Phone and TV navigation are separate widgets.
+///
+/// The desktop treatment intentionally follows the visual language of the
+/// supplied reference: a dark cinematic bar, centered text navigation, and a
+/// small cluster of circular utilities on the right.
 enum DesktopNavTab {
   home,
   search,
@@ -40,187 +47,255 @@ class _DesktopNavBarState extends State<DesktopNavBar> {
   bool _searchExpanded = false;
 
   @override
+  void initState() {
+    super.initState();
+    _searchFocus.addListener(_handleSearchFocus);
+    _searchCtrl.addListener(_handleSearchText);
+  }
+
+  @override
   void dispose() {
-    _searchCtrl.dispose();
-    _searchFocus.dispose();
+    _searchFocus
+      ..removeListener(_handleSearchFocus)
+      ..dispose();
+    _searchCtrl
+      ..removeListener(_handleSearchText)
+      ..dispose();
     super.dispose();
+  }
+
+  void _handleSearchFocus() {
+    if (!mounted) return;
+    setState(() => _searchExpanded = _searchFocus.hasFocus || _searchCtrl.text.isNotEmpty);
+  }
+
+  void _handleSearchText() {
+    if (!mounted) return;
+    if (_searchCtrl.text.isNotEmpty && !_searchExpanded) {
+      setState(() => _searchExpanded = true);
+    } else {
+      setState(() {});
+    }
   }
 
   void _submitSearch(String query) {
     final clean = query.trim();
-    if (clean.isNotEmpty) {
-      widget.onSearchSubmitted?.call(clean);
-      widget.onTabSelected(DesktopNavTab.search);
-    }
+    if (clean.isEmpty) return;
+    widget.onSearchSubmitted?.call(clean);
+    widget.onTabSelected(DesktopNavTab.search);
+    _searchFocus.unfocus();
+  }
+
+  void _openNotifications() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SubscriptionsScreen()),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          height: 68,
-          padding: const EdgeInsets.symmetric(horizontal: 28),
-          decoration: BoxDecoration(
-            color: AppColors.bg.withValues(alpha: 0.82),
-            border: Border(
-              bottom: BorderSide(
-                color: AppColors.hairline.withValues(alpha: 0.4),
-                width: 1,
-              ),
-            ),
-          ),
-          child: Row(
-            children: [
-              // ── Brand Logo & Wordmark ─────────────────────────
-              MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  onTap: () => widget.onTabSelected(DesktopNavTab.home),
-                  child: Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.asset(
-                          'assets/icon/app_icon.png',
-                          width: 32,
-                          height: 32,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Image.asset(
-                        'assets/icon/wordmark.png',
-                        height: 20,
-                        fit: BoxFit.contain,
-                      ),
-                    ],
-                  ),
+    return SizedBox(
+      height: 72,
+      child: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 42),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.70),
+              border: Border(
+                bottom: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.055),
                 ),
               ),
-
-              const SizedBox(width: 40),
-
-              // ── Navigation Links ──────────────────────────────
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _navLink(DesktopNavTab.home, 'Home', Icons.home_rounded),
-                  _navLink(DesktopNavTab.search, 'Search', Icons.search_rounded),
-                  _navLink(DesktopNavTab.myList, 'My List', Icons.bookmark_rounded),
-                  _navLink(DesktopNavTab.downloads, 'Downloads', Icons.download_rounded),
-                  _navLink(DesktopNavTab.settings, 'Settings', Icons.settings_rounded),
-                ],
-              ),
-
-              const Spacer(),
-
-              // ── Right Utilities ───────────────────────────────
-              // 1. Expandable Search Input
-              _searchBar(),
-              const SizedBox(width: 16),
-
-              // 2. Active Source Pill
-              BlocBuilder<ActiveSourceCubit, String>(
-                bloc: sl<ActiveSourceCubit>(),
-                builder: (context, activeSource) {
-                  return SourceSwitcher(
-                    currentId: activeSource,
-                    onChanged: (id) => sl<ActiveSourceCubit>().setSource(id),
-                  );
-                },
-              ),
-              const SizedBox(width: 16),
-
-              // 3. User Profile Avatar
-              _avatarButton(context),
-            ],
+            ),
+            child: Row(
+              children: [
+                _brand(),
+                const SizedBox(width: 44),
+                Expanded(
+                  child: Center(
+                    child: _navigationLinks(),
+                  ),
+                ),
+                const SizedBox(width: 28),
+                _utilities(),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _navLink(DesktopNavTab tab, String label, IconData icon) {
-    final isActive = widget.currentTab == tab;
-
-    return _DesktopNavButton(
-      label: label,
-      icon: icon,
-      isActive: isActive,
-      onTap: () => widget.onTabSelected(tab),
+  Widget _brand() {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => widget.onTabSelected(DesktopNavTab.home),
+        child: Image.asset(
+          'assets/icon/wordmark.png',
+          height: 22,
+          fit: BoxFit.contain,
+        ),
+      ),
     );
   }
 
-  Widget _searchBar() {
+  Widget _navigationLinks() {
+    const links = <(DesktopNavTab, String)>[
+      (DesktopNavTab.home, 'Home'),
+      (DesktopNavTab.search, 'Search'),
+      (DesktopNavTab.myList, 'My List'),
+      (DesktopNavTab.downloads, 'Downloads'),
+      (DesktopNavTab.settings, 'Settings'),
+    ];
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (tab, label) in links) _navLink(tab, label),
+      ],
+    );
+  }
+
+  Widget _navLink(DesktopNavTab tab, String label) {
+    final active = widget.currentTab == tab;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => widget.onTabSelected(tab),
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 150),
+            style: TextStyle(
+              color: active ? Colors.white : Colors.white.withValues(alpha: 0.68),
+              fontSize: 13,
+              fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+              letterSpacing: -0.05,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Text(label),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _utilities() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _searchButton(),
+        const SizedBox(width: 9),
+        _circleButton(
+          icon: Icons.notifications_none_rounded,
+          tooltip: 'Notifications',
+          onTap: _openNotifications,
+        ),
+        const SizedBox(width: 9),
+        BlocBuilder<ActiveSourceCubit, String>(
+          bloc: sl<ActiveSourceCubit>(),
+          builder: (context, activeSource) {
+            return SourceSwitcher(
+              currentId: activeSource,
+              compact: true,
+              onChanged: (id) => sl<ActiveSourceCubit>().setSource(id),
+            );
+          },
+        ),
+        const SizedBox(width: 9),
+        _avatarButton(context),
+      ],
+    );
+  }
+
+  Widget _searchButton() {
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
-      width: _searchExpanded ? 240 : 160,
-      height: 38,
+      width: _searchExpanded ? 220 : 40,
+      height: 40,
       decoration: BoxDecoration(
-        color: AppColors.surface.withValues(alpha: 0.7),
+        color: Colors.white.withValues(alpha: _searchExpanded ? 0.10 : 0.08),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: _searchExpanded
-              ? AppColors.accent.withValues(alpha: 0.8)
-              : AppColors.hairline,
-          width: 1,
+              ? Colors.white.withValues(alpha: 0.16)
+              : Colors.white.withValues(alpha: 0.07),
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
-          Icon(
-            Icons.search_rounded,
-            size: 18,
-            color: _searchExpanded ? AppColors.accent : AppColors.textSecondary,
+          const SizedBox(width: 11),
+          GestureDetector(
+            onTap: () {
+              setState(() => _searchExpanded = true);
+              _searchFocus.requestFocus();
+            },
+            child: Icon(
+              Icons.search_rounded,
+              size: 19,
+              color: _searchExpanded ? Colors.white : Colors.white.withValues(alpha: 0.82),
+            ),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _searchCtrl,
-              focusNode: _searchFocus,
-              style: AppText.body.copyWith(
-                fontSize: 13,
-                color: AppColors.textPrimary,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Titles, genres...',
-                hintStyle: AppText.caption.copyWith(
-                  color: AppColors.textTertiary,
+          if (_searchExpanded) ...[
+            const SizedBox(width: 7),
+            Expanded(
+              child: TextField(
+                controller: _searchCtrl,
+                focusNode: _searchFocus,
+                autofocus: false,
+                style: AppText.body.copyWith(
+                  color: Colors.white,
                   fontSize: 13,
                 ),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
+                decoration: InputDecoration(
+                  hintText: 'Search titles...',
+                  hintStyle: AppText.caption.copyWith(
+                    color: Colors.white.withValues(alpha: 0.4),
+                    fontSize: 12,
+                  ),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                onSubmitted: _submitSearch,
               ),
-              onTap: () {
-                if (!_searchExpanded) {
-                  setState(() => _searchExpanded = true);
-                }
-              },
-              onSubmitted: _submitSearch,
             ),
-          ),
-          if (_searchCtrl.text.isNotEmpty)
-            MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
+            if (_searchCtrl.text.isNotEmpty)
+              GestureDetector(
                 onTap: () {
                   _searchCtrl.clear();
-                  setState(() {});
+                  _searchFocus.unfocus();
                 },
-                child: const Icon(
-                  Icons.close_rounded,
-                  size: 16,
-                  color: AppColors.textTertiary,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 16,
+                    color: Colors.white.withValues(alpha: 0.55),
+                  ),
                 ),
               ),
-            ),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _circleButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: _HoverCircleButton(icon: icon, onTap: onTap),
     );
   }
 
@@ -235,42 +310,53 @@ class _DesktopNavBarState extends State<DesktopNavBar> {
             : null;
         final avatar = auth.avatarUrl;
 
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () {
-              if (loggedIn) {
-                widget.onTabSelected(DesktopNavTab.settings);
-              } else {
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const LoginScreen(),
+        return Tooltip(
+          message: loggedIn ? 'Profile' : 'Sign in',
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () {
+                if (loggedIn) {
+                  widget.onTabSelected(DesktopNavTab.settings);
+                } else {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+                  );
+                }
+              },
+              child: Container(
+                width: 40,
+                height: 40,
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.10),
                   ),
-                );
-              }
-            },
-            child: CircleAvatar(
-              radius: 17,
-              backgroundColor: AppColors.surface2,
-              backgroundImage: (avatar != null && avatar.isNotEmpty)
-                  ? NetworkImage(avatar)
-                  : null,
-              child: (avatar == null || avatar.isEmpty)
-                  ? (initial != null
-                      ? Text(
-                          initial,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        )
-                      : const Icon(
-                          Icons.person_rounded,
-                          color: AppColors.textSecondary,
-                          size: 20,
-                        ))
-                  : null,
+                ),
+                child: CircleAvatar(
+                  backgroundColor: AppColors.surface2,
+                  backgroundImage: (avatar != null && avatar.isNotEmpty)
+                      ? NetworkImage(avatar)
+                      : null,
+                  child: (avatar == null || avatar.isEmpty)
+                      ? (initial != null
+                          ? Text(
+                              initial,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.person_rounded,
+                              color: AppColors.textSecondary,
+                              size: 19,
+                            ))
+                      : null,
+                ),
+              ),
             ),
           ),
         );
@@ -279,78 +365,43 @@ class _DesktopNavBarState extends State<DesktopNavBar> {
   }
 }
 
-class _DesktopNavButton extends StatefulWidget {
-  const _DesktopNavButton({
-    required this.label,
-    required this.icon,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  final String label;
+class _HoverCircleButton extends StatefulWidget {
+  const _HoverCircleButton({required this.icon, required this.onTap});
   final IconData icon;
-  final bool isActive;
   final VoidCallback onTap;
 
   @override
-  State<_DesktopNavButton> createState() => _DesktopNavButtonState();
+  State<_HoverCircleButton> createState() => _HoverCircleButtonState();
 }
 
-class _DesktopNavButtonState extends State<_DesktopNavButton> {
+class _HoverCircleButtonState extends State<_HoverCircleButton> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.isActive
-        ? AppColors.textPrimary
-        : (_hovered ? AppColors.textPrimary : AppColors.textSecondary);
-
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    widget.icon,
-                    size: 16,
-                    color: color,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 14,
-                      fontWeight:
-                          widget.isActive ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 140),
-                height: 2,
-                width: widget.isActive ? 24 : (_hovered ? 12 : 0),
-                decoration: BoxDecoration(
-                  color: widget.isActive
-                      ? AppColors.accent
-                      : (_hovered ? AppColors.textTertiary : Colors.transparent),
-                  borderRadius: BorderRadius.circular(1),
-                ),
-              ),
-            ],
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: _hovered
+                ? Colors.white.withValues(alpha: 0.14)
+                : Colors.white.withValues(alpha: 0.08),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Colors.white.withValues(alpha: _hovered ? 0.15 : 0.07),
+            ),
+          ),
+          child: Icon(
+            widget.icon,
+            size: 19,
+            color: Colors.white.withValues(alpha: 0.86),
           ),
         ),
       ),

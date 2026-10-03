@@ -10,7 +10,6 @@ import '../cubit/home_cubit.dart';
 import '../see_all_screen.dart';
 import 'desktop_hero_banner.dart';
 import 'desktop_media_row.dart';
-import 'desktop_top_nav.dart';
 
 class DesktopHomeScreen extends StatefulWidget {
   const DesktopHomeScreen({super.key});
@@ -23,12 +22,9 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
   final HomeCubit _homeCubit = sl<HomeCubit>();
   final ScrollController _scrollController = ScrollController();
 
-  double _navOpacity = 0;
-
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_handleScroll);
     if (_homeCubit.state.sections == null) {
       _homeCubit.load();
     }
@@ -36,17 +32,8 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
 
   @override
   void dispose() {
-    _scrollController
-      ..removeListener(_handleScroll)
-      ..dispose();
+    _scrollController.dispose();
     super.dispose();
-  }
-
-  void _handleScroll() {
-    final next = (_scrollController.offset / 220).clamp(0.0, 1.0);
-    if ((next - _navOpacity).abs() > 0.01) {
-      setState(() => _navOpacity = next);
-    }
   }
 
   void _openDetail(MediaItem item) {
@@ -106,7 +93,7 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
                       )
                     else
                       const SliverToBoxAdapter(child: SizedBox(height: 84)),
-                    const SliverToBoxAdapter(child: SizedBox(height: 6)),
+                    const SliverToBoxAdapter(child: SizedBox(height: 2)),
                     SliverList.builder(
                       itemCount: sections.length,
                       itemBuilder: (context, index) {
@@ -122,12 +109,6 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
                     const SliverToBoxAdapter(child: _Footer()),
                   ],
                 ),
-              ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: DesktopTopNav(opacity: _navOpacity),
               ),
             ],
           );
@@ -161,8 +142,7 @@ class _FullScreenLoader extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  // Removed 'const' because onRetry is a VoidCallback (function)
-  _EmptyState({required this.onRetry});
+  const _EmptyState({required this.onRetry});
 
   final VoidCallback onRetry;
 

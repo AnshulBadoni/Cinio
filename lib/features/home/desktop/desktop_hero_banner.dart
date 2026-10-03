@@ -5,9 +5,12 @@ import '../../../core/models/media_item.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 
-/// Cinematic widescreen desktop hero banner modeled directly on the
-/// Netflix desktop concept: high-impact backdrop, smooth fade vignettes,
-/// title typography, tags, and solid Play + frosted More Info buttons.
+/// Full-bleed cinematic desktop hero.
+///
+/// This is intentionally desktop-only: phone/TV hero implementations remain
+/// untouched. The artwork does most of the visual work, while the lower and
+/// left scrims let the content rows feel like they grow naturally out of the
+/// hero instead of ending at a hard edge.
 class DesktopHeroBanner extends StatelessWidget {
   const DesktopHeroBanner({
     super.key,
@@ -23,38 +26,40 @@ class DesktopHeroBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final backdrop = item.cover;
+    final width = MediaQuery.sizeOf(context).width;
+    final heroHeight = (width * 0.43).clamp(520.0, 650.0).toDouble();
 
     return SizedBox(
-      height: 540,
+      height: heroHeight,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // ── Backdrop Artwork ──────────────────────────────
           if (backdrop != null && backdrop.isNotEmpty)
             CachedNetworkImage(
               imageUrl: backdrop,
               fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-              fadeInDuration: const Duration(milliseconds: 200),
-              placeholder: (_, _) => Container(color: AppColors.surface),
-              errorWidget: (_, _, _) => Container(color: AppColors.surface),
+              alignment: Alignment.center,
+              fadeInDuration: const Duration(milliseconds: 220),
+              placeholder: (_, _) => Container(color: AppColors.bg),
+              errorWidget: (_, _, _) => Container(color: AppColors.bg),
             )
           else
-            Container(color: AppColors.surface),
+            Container(color: AppColors.bg),
 
-          // ── Cinematic Vignettes (Left & Bottom) ───────────
-          // 1. Left-to-right fade for text readability
+          // Keep the artwork strong on the right while making the copy area
+          // readable without a visible rectangular overlay.
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
-                  stops: const [0.0, 0.45, 0.85],
+                  stops: const [0.0, 0.34, 0.62, 1.0],
                   colors: [
-                    AppColors.bg.withValues(alpha: 0.96),
-                    AppColors.bg.withValues(alpha: 0.65),
+                    Colors.black.withValues(alpha: 0.82),
+                    Colors.black.withValues(alpha: 0.48),
+                    Colors.black.withValues(alpha: 0.12),
                     Colors.transparent,
                   ],
                 ),
@@ -62,17 +67,18 @@ class DesktopHeroBanner extends StatelessWidget {
             ),
           ),
 
-          // 2. Bottom fade to blend seamlessly into content rows
+          // Strong bottom fade — the hero should visually melt into the rows.
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  stops: const [0.5, 0.82, 1.0],
+                  stops: const [0.46, 0.72, 0.9, 1.0],
                   colors: [
                     Colors.transparent,
-                    AppColors.bg.withValues(alpha: 0.7),
+                    Colors.black.withValues(alpha: 0.18),
+                    AppColors.bg.withValues(alpha: 0.78),
                     AppColors.bg,
                   ],
                 ),
@@ -80,19 +86,19 @@ class DesktopHeroBanner extends StatelessWidget {
             ),
           ),
 
-          // 3. Top subtle vignette for navigation bar contrast
+          // Quiet top vignette behind the global desktop nav.
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            height: 120,
+            height: 150,
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withValues(alpha: 0.7),
+                    Colors.black.withValues(alpha: 0.58),
                     Colors.transparent,
                   ],
                 ),
@@ -100,96 +106,87 @@ class DesktopHeroBanner extends StatelessWidget {
             ),
           ),
 
-          // ── Hero Content (Title, Badges, Overview, CTAs) ──
           Positioned(
-            left: 48,
-            bottom: 60,
-            width: 580,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Top Tag Badges
-                Row(
-                  children: [
-                    _badge('FEATURED', isAccent: true),
-                    const SizedBox(width: 8),
-                    if (item.year != null && item.year!.isNotEmpty)
-                      _badge(item.year!),
-                    const SizedBox(width: 8),
-                    if (item.rating != null && item.rating! > 0) ...[
-                      const Icon(
-                        Icons.star_rounded,
-                        size: 16,
-                        color: Color(0xFFFFB800),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        item.rating!.toStringAsFixed(1),
-                        style: AppText.caption.copyWith(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
+            left: 56,
+            bottom: 78,
+            right: 40,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 620),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      _metaLabel('CINIO ORIGINAL', accent: true),
+                      if (item.year != null && item.year!.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        _metaLabel(item.year!),
+                      ],
+                      if (item.rating != null && item.rating! > 0) ...[
+                        const SizedBox(width: 12),
+                        const Icon(Icons.star_rounded,
+                            size: 16, color: Color(0xFFFFC400)),
+                        const SizedBox(width: 4),
+                        Text(
+                          item.rating!.toStringAsFixed(1),
+                          style: AppText.caption.copyWith(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
-                ),
-
-                const SizedBox(height: 14),
-
-                // Main Title
-                Text(
-                  item.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 40,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    height: 1.15,
-                    letterSpacing: -0.5,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black,
-                        blurRadius: 16,
-                        offset: Offset(0, 4),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    item.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 46,
+                      fontWeight: FontWeight.w800,
+                      height: 1.03,
+                      letterSpacing: -1.1,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black,
+                          blurRadius: 18,
+                          offset: Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Watch now on Cinio with multiple streaming sources, high resolution playback, and custom subtitle support.',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.body.copyWith(
+                      color: Colors.white.withValues(alpha: 0.82),
+                      fontSize: 14,
+                      height: 1.45,
+                      shadows: const [
+                        Shadow(color: Colors.black, blurRadius: 8),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  Row(
+                    children: [
+                      _PlayButton(onTap: onPlay),
+                      const SizedBox(width: 10),
+                      _IconButton(
+                        icon: Icons.info_outline_rounded,
+                        label: 'More info',
+                        onTap: onMoreInfo,
                       ),
                     ],
                   ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // Synopsis
-                Text(
-                  'Watch now on Cinio with multiple streaming sources, high resolution playback, and custom subtitle support.',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.body.copyWith(
-                    fontSize: 14,
-                    color: AppColors.textSecondary,
-                    height: 1.4,
-                    shadows: const [
-                      Shadow(color: Colors.black, blurRadius: 8),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // Action Buttons
-                Row(
-                  children: [
-                    // Solid White "Play" Button
-                    _PlayButton(onTap: onPlay),
-                    const SizedBox(width: 14),
-
-                    // Frosted Glass "More Info" Button
-                    _MoreInfoButton(onTap: onMoreInfo),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -197,22 +194,22 @@ class DesktopHeroBanner extends StatelessWidget {
     );
   }
 
-  Widget _badge(String text, {bool isAccent = false}) {
+  Widget _metaLabel(String text, {bool accent = false}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: isAccent
-            ? AppColors.accent.withValues(alpha: 0.85)
-            : Colors.white.withValues(alpha: 0.15),
+        color: accent
+            ? AppColors.accent.withValues(alpha: 0.9)
+            : Colors.white.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         text,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
+        style: const TextStyle(
           color: Colors.white,
-          letterSpacing: 0.5,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.8,
         ),
       ),
     );
@@ -240,30 +237,21 @@ class _PlayButtonState extends State<_PlayButton> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 11),
           decoration: BoxDecoration(
-            color: _hovered
-                ? Colors.white.withValues(alpha: 0.85)
-                : Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.4),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            color: _hovered ? Colors.white.withValues(alpha: 0.9) : Colors.white,
+            borderRadius: BorderRadius.circular(7),
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.play_arrow_rounded, color: Colors.black, size: 26),
-              SizedBox(width: 8),
+              Icon(Icons.play_arrow_rounded, color: Colors.black, size: 24),
+              SizedBox(width: 7),
               Text(
                 'Play',
                 style: TextStyle(
                   color: Colors.black,
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -275,15 +263,17 @@ class _PlayButtonState extends State<_PlayButton> {
   }
 }
 
-class _MoreInfoButton extends StatefulWidget {
-  const _MoreInfoButton({required this.onTap});
+class _IconButton extends StatefulWidget {
+  const _IconButton({required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
   final VoidCallback onTap;
 
   @override
-  State<_MoreInfoButton> createState() => _MoreInfoButtonState();
+  State<_IconButton> createState() => _IconButtonState();
 }
 
-class _MoreInfoButtonState extends State<_MoreInfoButton> {
+class _IconButtonState extends State<_IconButton> {
   bool _hovered = false;
 
   @override
@@ -296,27 +286,24 @@ class _MoreInfoButtonState extends State<_MoreInfoButton> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
           decoration: BoxDecoration(
             color: _hovered
-                ? Colors.white.withValues(alpha: 0.28)
-                : Colors.white.withValues(alpha: 0.16),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.25),
-              width: 1,
-            ),
+                ? Colors.white.withValues(alpha: 0.22)
+                : Colors.white.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.info_outline_rounded, color: Colors.white, size: 22),
-              SizedBox(width: 8),
+              Icon(widget.icon, color: Colors.white, size: 20),
+              const SizedBox(width: 7),
               Text(
-                'More Info',
-                style: TextStyle(
+                widget.label,
+                style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
               ),

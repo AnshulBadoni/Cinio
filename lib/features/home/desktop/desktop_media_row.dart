@@ -5,8 +5,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 import 'desktop_media_card.dart';
 
-/// Desktop content row with smooth hover-activated left and right arrow
-/// buttons for quick pagination without mouse dragging (Netflix style).
+/// Desktop-only landscape content rail, intentionally closer to modern
+/// streaming-service desktop layouts than a poster grid.
 class DesktopMediaRow extends StatefulWidget {
   const DesktopMediaRow({
     super.key,
@@ -35,6 +35,7 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
   void initState() {
     super.initState();
     _scrollController.addListener(_updateScrollButtons);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateScrollButtons());
   }
 
   @override
@@ -75,50 +76,51 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
   Widget build(BuildContext context) {
     if (widget.items.isEmpty) return const SizedBox.shrink();
 
-    const double cardWidth = 175;
-    const double cardHeight = 260;
-    const double rowHeight = cardHeight + 20; // Extra room for 1.05x hover scale
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final cardWidth = (screenWidth * 0.19).clamp(245.0, 315.0).toDouble();
+    final cardHeight = cardWidth * 9 / 16;
+    final rowHeight = cardHeight + 24;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
+      padding: const EdgeInsets.only(top: 18, bottom: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Header (Title + See all) ──────────────────────
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 48),
+            padding: const EdgeInsets.symmetric(horizontal: 56),
             child: Row(
               children: [
                 Text(
                   widget.title,
                   style: AppText.title.copyWith(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
+                    fontSize: 21,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const Spacer(),
                 if (widget.onSeeAll != null)
                   MouseRegion(
                     cursor: SystemMouseCursors.click,
                     child: GestureDetector(
                       onTap: widget.onSeeAll,
                       child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
                             'Explore all',
                             style: AppText.caption.copyWith(
+                              color: AppColors.textTertiary,
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.accent,
                             ),
                           ),
-                          const SizedBox(width: 4),
-                          Icon(
+                          const SizedBox(width: 2),
+                          const Icon(
                             Icons.chevron_right_rounded,
-                            size: 16,
-                            color: AppColors.accent,
+                            size: 17,
+                            color: AppColors.textTertiary,
                           ),
                         ],
                       ),
@@ -127,10 +129,7 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
               ],
             ),
           ),
-
           const SizedBox(height: 10),
-
-          // ── Carousel with Hover Arrows ───────────────────
           MouseRegion(
             onEnter: (_) => setState(() => _hovered = true),
             onExit: (_) => setState(() => _hovered = false),
@@ -138,11 +137,13 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
               height: rowHeight,
               child: Stack(
                 children: [
-                  // Horizontal List
                   ListView.separated(
                     controller: _scrollController,
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 56,
+                      vertical: 5,
+                    ),
                     itemCount: widget.items.length,
                     separatorBuilder: (_, _) => const SizedBox(width: 14),
                     itemBuilder: (context, index) {
@@ -155,8 +156,6 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
                       );
                     },
                   ),
-
-                  // Left Floating Arrow
                   if (_hovered && _canScrollLeft)
                     Positioned(
                       left: 0,
@@ -164,12 +163,10 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
                       bottom: 0,
                       child: _scrollArrow(
                         icon: Icons.chevron_left_rounded,
-                        onTap: () => _scroll(-750),
+                        onTap: () => _scroll(-cardWidth * 2.3),
                         isLeft: true,
                       ),
                     ),
-
-                  // Right Floating Arrow
                   if (_hovered && _canScrollRight)
                     Positioned(
                       right: 0,
@@ -177,7 +174,7 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
                       bottom: 0,
                       child: _scrollArrow(
                         icon: Icons.chevron_right_rounded,
-                        onTap: () => _scroll(750),
+                        onTap: () => _scroll(cardWidth * 2.3),
                         isLeft: false,
                       ),
                     ),
@@ -195,38 +192,35 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
     required VoidCallback onTap,
     required bool isLeft,
   }) {
-    return Container(
-      width: 44,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: isLeft ? Alignment.centerLeft : Alignment.centerRight,
-          end: isLeft ? Alignment.centerRight : Alignment.centerLeft,
-          colors: [
-            Colors.black.withValues(alpha: 0.85),
-            Colors.transparent,
-          ],
+    return SizedBox(
+      width: 62,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: isLeft ? Alignment.centerLeft : Alignment.centerRight,
+            end: isLeft ? Alignment.centerRight : Alignment.centerLeft,
+            colors: [
+              Colors.black.withValues(alpha: 0.72),
+              Colors.transparent,
+            ],
+          ),
         ),
-      ),
-      child: Center(
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: onTap,
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.surface.withValues(alpha: 0.9),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  width: 1,
+        child: Center(
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: onTap,
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.58),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.16),
+                  ),
                 ),
-              ),
-              child: Icon(
-                icon,
-                color: Colors.white,
-                size: 22,
+                child: Icon(icon, color: Colors.white, size: 23),
               ),
             ),
           ),
