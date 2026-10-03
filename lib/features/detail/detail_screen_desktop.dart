@@ -591,6 +591,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
       title: detail.title,
       seed: detail.id,
       accent: AppColors.accent,
+      genres: detail.genres,
       fontSize: 44,
       textAlign: TextAlign.left,
     );

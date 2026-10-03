@@ -467,6 +467,7 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
       title: item.title,
       seed: item.tmdbId ?? item.id,
       accent: AppColors.accent,
+      genres: item.genres,
       fontSize: 44,
       textAlign: TextAlign.left,
     );

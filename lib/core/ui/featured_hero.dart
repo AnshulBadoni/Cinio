@@ -268,25 +268,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                   ),
                 ),
 
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          tint.withValues(alpha: 0.72),
-                          tint.withValues(alpha: 0.34),
-                          tint.withValues(alpha: 0.08),
-                          Colors.transparent,
-                        ],
-                        stops: const [0.0, 0.16, 0.34, 0.52],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              // Bottom gradient melting into page background.
               Positioned.fill(
                 child: IgnorePointer(
                   child: DecoratedBox(
@@ -390,6 +372,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       title: widget.item.title,
       seed: seed,
       accent: accent,
+      genres: widget.item.genres,
       fontSize: 28.5,
       maxLines: 2,
     );

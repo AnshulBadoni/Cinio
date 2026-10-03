@@ -2074,6 +2074,7 @@ class _DetailViewState extends State<_DetailView>
       title: detail.title,
       seed: seed,
       accent: accent,
+      genres: detail.genres,
       fontSize: fontSize,
       maxLines: maxLines,
     );
