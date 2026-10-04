@@ -61,33 +61,7 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
   }
 
   List<HomeSection> _filterSections(List<HomeSection> raw) {
-    final filtered = switch (widget.selectedCategory) {
-      DesktopNavCategory.home || DesktopNavCategory.collections => raw,
-      DesktopNavCategory.tvShows => raw.where((s) {
-          final t = s.title.toLowerCase();
-          return t.contains('tv') ||
-              t.contains('series') ||
-              t.contains('show') ||
-              t.contains('anime') ||
-              t.contains('drama');
-        }).toList(),
-      DesktopNavCategory.movies => raw.where((s) {
-          final t = s.title.toLowerCase();
-          return t.contains('movie') ||
-              t.contains('film') ||
-              t.contains('cinema');
-        }).toList(),
-      DesktopNavCategory.newAndPopular => raw.where((s) {
-          final t = s.title.toLowerCase();
-          return t.contains('popular') ||
-              t.contains('trending') ||
-              t.contains('latest') ||
-              t.contains('top') ||
-              t.contains('featured');
-        }).toList(),
-      _ => raw,
-    };
-    return filtered.isNotEmpty ? filtered : raw;
+    return raw;
   }
 
   List<MediaItem> _buildCarouselItems(

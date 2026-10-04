@@ -25,25 +25,22 @@ class _DesktopShellState extends State<DesktopShell> {
   String? _pendingSearchQuery;
 
   void _onCategorySelected(DesktopNavCategory category) {
+    if (category == DesktopNavCategory.discover) {
+      _searchFocusSignal.value++;
+    }
+    if (_pendingSearchQuery != null && category != DesktopNavCategory.discover) {
+      _pendingSearchQuery = null;
+    }
     setState(() => _category = category);
-  }
-
-  void _onSearchSubmitted(String query) {
-    setState(() {
-      _pendingSearchQuery = query;
-      _category = DesktopNavCategory.collections; // routing to search
-    });
-    _searchFocusSignal.value++;
   }
 
   int get _tabIndex {
     return switch (_category) {
       DesktopNavCategory.home => 0,
-      DesktopNavCategory.tvShows => 0,
-      DesktopNavCategory.movies => 0,
-      DesktopNavCategory.newAndPopular => 0,
-      DesktopNavCategory.myList => 2,
-      DesktopNavCategory.collections => 4,
+      DesktopNavCategory.discover => 1,
+      DesktopNavCategory.library => 2,
+      DesktopNavCategory.downloads => 3,
+      DesktopNavCategory.profile => 4,
     };
   }
 
@@ -110,13 +107,7 @@ class _DesktopShellState extends State<DesktopShell> {
               right: 0,
               child: DesktopNavBar(
                 currentCategory: _category,
-                onCategorySelected: (cat) {
-                  if (_pendingSearchQuery != null) {
-                    setState(() => _pendingSearchQuery = null);
-                  }
-                  _onCategorySelected(cat);
-                },
-                onSearchSubmitted: _onSearchSubmitted,
+                onCategorySelected: _onCategorySelected,
                 isScrolled: _isScrolled,
               ),
             ),
