@@ -11,6 +11,7 @@ import '../../../core/playback/my_list.dart';
 import '../../../core/repository/source_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../detail/detail_screen.dart';
+import '../../sources/sources_screen.dart';
 
 /// Desktop-native Discover & Search Screen designed after the modern streaming reference:
 /// • Top atmospheric filter bar: Search field · Genre multi-select · Year · IMDb Rating · Red Search button.
@@ -172,10 +173,18 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
         if (!sl.isRegistered<SourceRepository>()) return [];
         final repo = sl<SourceRepository>();
         if (query.isNotEmpty) {
-          return await repo.search(query);
+          try {
+            return await repo.searchAll(query);
+          } catch (_) {
+            return [];
+          }
         } else {
-          final sections = await repo.home();
-          return sections.expand((s) => s.items).toList();
+          try {
+            final sections = await repo.home();
+            return sections.expand((s) => s.items).toList();
+          } catch (_) {
+            return [];
+          }
         }
       case 'Mixed':
       default:
@@ -262,33 +271,47 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
       return list;
     }
 
+    final isProviders = _selectedSource == 'Providers';
+
     return list.where((item) {
       // 1. Genre filter
       if (_selectedGenres.isNotEmpty) {
-        final matchesGenre = item.genres.any((g) {
-          final lower = g.toLowerCase();
-          return _selectedGenres.any((sel) => lower.contains(sel.toLowerCase()));
-        });
-        if (!matchesGenre) return false;
+        if (item.genres.isNotEmpty) {
+          final matchesGenre = item.genres.any((g) {
+            final lower = g.toLowerCase();
+            return _selectedGenres.any((sel) => lower.contains(sel.toLowerCase()));
+          });
+          if (!matchesGenre) return false;
+        } else if (!isProviders) {
+          return false;
+        }
       }
 
       // 2. Year filter
       if (_selectedYear != 'All') {
         final y = item.year ?? '';
-        if (_selectedYear.endsWith('s')) {
-          final decade = int.tryParse(_selectedYear.replaceAll('s', '')) ?? 0;
-          final itemYear = int.tryParse(y) ?? 0;
-          if (itemYear < decade || itemYear >= decade + 10) return false;
-        } else if (y != _selectedYear) {
+        if (y.isNotEmpty) {
+          if (_selectedYear.endsWith('s')) {
+            final decade = int.tryParse(_selectedYear.replaceAll('s', '')) ?? 0;
+            final itemYear = int.tryParse(y) ?? 0;
+            if (itemYear < decade || itemYear >= decade + 10) return false;
+          } else if (y != _selectedYear) {
+            return false;
+          }
+        } else if (!isProviders) {
           return false;
         }
       }
 
       // 3. Rating filter
       if (_selectedRating != 'All') {
-        final minRating = double.tryParse(_selectedRating.replaceAll('+', '')) ?? 0.0;
-        final rating = item.rating ?? 0.0;
-        if (rating < minRating) return false;
+        if (item.rating != null && item.rating! > 0) {
+          final minRating = double.tryParse(_selectedRating.replaceAll('+', '')) ?? 0.0;
+          final rating = item.rating ?? 0.0;
+          if (rating < minRating) return false;
+        } else if (!isProviders) {
+          return false;
+        }
       }
 
       return true;
@@ -369,32 +392,95 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        HugeIcon(
-                          icon: HugeIcons.strokeRoundedSearch01,
-                          size: 48,
-                          color: Colors.white.withValues(alpha: 0.35),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'No titles found',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Try adjusting your search or filters',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.50),
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
+                    child: Builder(
+                      builder: (context) {
+                        final isProviders = _selectedSource == 'Providers';
+                        final hasProviders = sl.isRegistered<SourceRepository>() &&
+                            sl<SourceRepository>().loadedSources.isNotEmpty;
+
+                        if (isProviders && !hasProviders) {
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.extension_outlined,
+                                size: 48,
+                                color: Colors.white.withValues(alpha: 0.35),
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'No providers installed on Desktop',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Install Zangetsu JS providers or add Stremio addons in Settings to search',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.50),
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFE50914),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.extension_outlined, size: 18),
+                                label: const Text(
+                                  'Open Providers',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                onPressed: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => const SourcesScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          );
+                        }
+
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            HugeIcon(
+                              icon: HugeIcons.strokeRoundedSearch01,
+                              size: 48,
+                              color: Colors.white.withValues(alpha: 0.35),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'No titles found',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              isProviders
+                                  ? 'No matching results from installed providers'
+                                  : 'Try adjusting your search or filters',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.50),
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ),
