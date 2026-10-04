@@ -231,10 +231,8 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
     }
 
     if (mounted) {
-      final filtered = _applyClientFilters(results);
-      _prewarmImageRatios(filtered);
       setState(() {
-        _items = filtered;
+        _items = _applyClientFilters(results);
         _loading = false;
         _hasMore = results.isNotEmpty;
       });
@@ -260,48 +258,12 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
     }
 
     if (mounted) {
-      final filtered = _applyClientFilters(results);
-      _prewarmImageRatios(filtered);
       setState(() {
         _currentPage = nextPage;
-        _items.addAll(filtered);
+        _items.addAll(_applyClientFilters(results));
         _loading = false;
         _hasMore = results.isNotEmpty;
       });
-    }
-  }
-
-  void _prewarmImageRatios(List<MediaItem> items) {
-    for (final item in items) {
-      final isTpdb = item.sourceId.startsWith('tpdb:');
-      if (isTpdb) continue;
-      final url = item.cover;
-      if (url == null || url.isEmpty || _MasonryCard.aspectRatioCache.containsKey(url)) {
-        continue;
-      }
-      try {
-        final provider = CachedNetworkImageProvider(
-          url,
-          cacheManager: AppImageCache.manager,
-          headers: item.coverHeaders,
-        );
-        final stream = provider.resolve(ImageConfiguration.empty);
-        late final ImageStreamListener listener;
-        listener = ImageStreamListener(
-          (info, _) {
-            final w = info.image.width;
-            final h = info.image.height;
-            if (w > 0 && h > 0) {
-              _MasonryCard.aspectRatioCache[url] = w / h;
-            }
-            stream.removeListener(listener);
-          },
-          onError: (_, _) {
-            stream.removeListener(listener);
-          },
-        );
-        stream.addListener(listener);
-      } catch (_) {}
     }
   }
 
@@ -1106,7 +1068,7 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Masonry Content Card (Wide 16:9 or Tall 2:3 with dynamic ratio detection)
+// Masonry Content Card (Wide 16:9 or Tall 2:3 with TPDB tall guarantee)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _MasonryCard extends StatefulWidget {
@@ -1124,82 +1086,12 @@ class _MasonryCard extends StatefulWidget {
   final VoidCallback onBookmarkToggle;
   final VoidCallback onTap;
 
-  /// Global cache storing resolved aspect ratios (width / height) keyed by image URL.
-  static final Map<String, double> aspectRatioCache = {};
-
   @override
   State<_MasonryCard> createState() => _MasonryCardState();
 }
 
 class _MasonryCardState extends State<_MasonryCard> {
   bool _hovered = false;
-  ImageStream? _imageStream;
-  ImageStreamListener? _streamListener;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkImageRatio();
-  }
-
-  @override
-  void didUpdateWidget(_MasonryCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.cover != widget.item.cover ||
-        oldWidget.item.heroImage != widget.item.heroImage) {
-      _cleanupListener();
-      _checkImageRatio();
-    }
-  }
-
-  @override
-  void dispose() {
-    _cleanupListener();
-    super.dispose();
-  }
-
-  void _cleanupListener() {
-    if (_streamListener != null) {
-      _imageStream?.removeListener(_streamListener!);
-      _streamListener = null;
-      _imageStream = null;
-    }
-  }
-
-  void _checkImageRatio() {
-    final item = widget.item;
-    final isTpdb = item.sourceId.startsWith('tpdb:');
-    if (isTpdb) return;
-
-    final coverUrl = item.cover;
-    if (coverUrl == null || coverUrl.isEmpty) return;
-
-    if (_MasonryCard.aspectRatioCache.containsKey(coverUrl)) return;
-
-    try {
-      final imageProvider = CachedNetworkImageProvider(
-        coverUrl,
-        cacheManager: AppImageCache.manager,
-        headers: item.coverHeaders,
-      );
-      _imageStream = imageProvider.resolve(ImageConfiguration.empty);
-      _streamListener = ImageStreamListener(
-        (ImageInfo info, bool synchronousCall) {
-          final w = info.image.width;
-          final h = info.image.height;
-          if (w > 0 && h > 0) {
-            final ratio = w / h;
-            _MasonryCard.aspectRatioCache[coverUrl] = ratio;
-            if (mounted && !synchronousCall) {
-              setState(() {});
-            }
-          }
-        },
-        onError: (_, _) {},
-      );
-      _imageStream?.addListener(_streamListener!);
-    } catch (_) {}
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1209,23 +1101,10 @@ class _MasonryCardState extends State<_MasonryCard> {
         item.heroImage!.isNotEmpty &&
         item.heroImage != item.cover;
 
-    final coverUrl = item.cover ?? '';
-    final cachedRatio = _MasonryCard.aspectRatioCache[coverUrl];
-
-    // Determine wide vs tall poster orientation:
-    // 1. TPDB is strictly tall (2:3 poster).
-    // 2. If provider / item sends an image that is naturally wide (ratio >= 1.15) -> wide (16:9).
-    // 3. If item has a distinct backdrop (e.g. TMDB) -> alternate wide (16:9) & tall (2:3) rhythm.
-    // 4. Otherwise -> standard tall poster (2:3).
-    bool isWide = false;
-    if (!isTpdb) {
-      if (cachedRatio != null) {
-        isWide = cachedRatio >= 1.15;
-      } else if (hasBackdrop) {
-        isWide = ((widget.index % 5 == 0) || (widget.index % 5 == 2));
-      }
-    }
-
+    // Signature masonry rhythm: TPDB is strictly tall posters (2:3).
+    // All other sources (TMDB, Mixed, Providers) alternate wide (16:9) backdrop cards
+    // and tall (2:3) poster cards for a lively, well-proportioned masonry grid.
+    final isWide = !isTpdb && ((widget.index % 5 == 0) || (widget.index % 5 == 2));
     final double aspectRatio = isWide ? (16 / 9) : (2 / 3);
     final imageUrl = (isWide && hasBackdrop ? item.heroImage : item.cover) ?? item.cover ?? '';
 
