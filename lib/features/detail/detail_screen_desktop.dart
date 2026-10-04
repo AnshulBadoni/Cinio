@@ -932,9 +932,8 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         ? (seasonsCount > 1 ? '$seasonsCount Seasons' : '1 Season')
         : (episodes.isNotEmpty && episodes.first.runtimeMinutes != null
             ? '${episodes.first.runtimeMinutes} min'
-            : (widget.item.duration != null && widget.item.duration!.isNotEmpty
-                ? widget.item.duration!
-                : '128 min'));
+            : '128 min');
+
 
     final rating = (detail.rating != null && detail.rating! > 0)
         ? detail.rating!
@@ -1299,9 +1298,10 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
             widget.item.url,
             ep.id,
           );
-          final progress = mark != null && mark.duration > 0
-              ? (mark.position / mark.duration).clamp(0.0, 1.0)
+          final progress = mark != null && mark.duration > Duration.zero
+              ? (mark.position.inMilliseconds / mark.duration.inMilliseconds).clamp(0.0, 1.0)
               : (isActive ? 0.45 : 0.0);
+
 
           return _SeriesEpisodeCard(
             ep: ep,

@@ -254,6 +254,7 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
         _loading = false;
         _hasMore = results.isNotEmpty;
       });
+    }
   }
 
   List<MediaItem> _applyClientFilters(List<MediaItem> list) {
