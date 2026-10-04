@@ -39,6 +39,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   List<_MovieExtraVideo> _movieVideos = [];
   List<MediaRelation> _similarMovies = [];
   List<CastMember> _loadedCast = [];
+  List<int> _extraSeasons = [];
 
 
   bool _hasResume(List<Episode> eps) {
@@ -208,6 +209,26 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
               _similarMovies = extras.relations;
             }
           });
+        }
+      }).catchError((_) {});
+    }
+
+    if (isTv && tmdbId != null && tmdbId > 0 && detail.availableSeasons.isEmpty && _extraSeasons.isEmpty) {
+      final dio = sl<Dio>();
+      dio.get<Map<String, dynamic>>(
+        'https://${Tmdb.host}/3/tv/$tmdbId',
+        queryParameters: {'api_key': Tmdb.apiKey},
+      ).then((res) {
+        final sList = res.data?['seasons'] as List?;
+        if (sList != null && mounted) {
+          final sNums = [
+            for (final s in sList)
+              if (s is Map && ((s['episode_count'] as num?)?.toInt() ?? 0) > 0)
+                (s['season_number'] as num?)?.toInt(),
+          ].whereType<int>().where((n) => n > 0).toList()..sort();
+          if (sNums.isNotEmpty) {
+            setState(() => _extraSeasons = sNums);
+          }
         }
       }).catchError((_) {});
     }
@@ -505,13 +526,36 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
               detail.cover ??
               widget.item.cover;
 
-          final seasons = episodes
-              .map((e) => seasonOf(e) ?? 1)
-              .toSet()
-              .toList()
-            ..sort();
-          final currentSeason =
-              _selectedSeason ?? (seasons.isNotEmpty ? seasons.first : 1);
+          final allKnownSeasons = [
+            ...detail.availableSeasons,
+            ..._extraSeasons,
+          ];
+          final seasons = seasonsOf(episodes, allKnownSeasons).toList()..sort();
+          if (seasons.isEmpty) seasons.add(1);
+
+          final currentSeason = _selectedSeason ??
+              (state.selectedSeason > 0 && seasons.contains(state.selectedSeason)
+                  ? state.selectedSeason
+                  : seasons.first);
+
+          final seasonEps = episodes
+              .where((e) => (seasonOf(e) ?? 1) == currentSeason)
+              .toList();
+
+          if (detail.isSeries &&
+              detail.sourceId == 'tmdb:catalog' &&
+              seasonEps.isEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                context.read<DetailCubit>().selectSeason(currentSeason);
+              }
+            });
+          }
+
+          final focusedEpisode = (seasonEps.isNotEmpty &&
+                  _focusedEpisodeIndex < seasonEps.length)
+              ? seasonEps[_focusedEpisodeIndex.clamp(0, seasonEps.length - 1)]
+              : (seasonEps.isNotEmpty ? seasonEps.first : null);
 
           final castList = state.cast.isNotEmpty
               ? state.cast
@@ -609,6 +653,8 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                         episodes,
                         currentSeason,
                         castList,
+                        focusedEpisode,
+                        seasons.length,
                       ),
                     ),
 
@@ -618,7 +664,12 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                     SizedBox(
                       width: 440,
                       child: detail.isSeries
-                          ? _seriesEpisodesColumn(detail, episodes, currentSeason)
+                          ? _seriesEpisodesColumn(
+                              detail,
+                              episodes,
+                              seasons,
+                              currentSeason,
+                            )
                           : _movieExtrasColumn(detail),
                     ),
                   ],
@@ -735,11 +786,13 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
           _selectedSeason = s;
           _focusedEpisodeIndex = 0;
         });
+        context.read<DetailCubit>().selectSeason(s);
       },
       itemBuilder: (context) => [
         for (final s in seasons)
           PopupMenuItem<int>(
             value: s,
+            height: 38,
             child: Row(
               children: [
                 Text(
@@ -804,89 +857,92 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     List<Episode> episodes,
     int currentSeason,
     List<CastMember> castList,
+    Episode? focusedEpisode,
+    int totalSeasons,
   ) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: IntrinsicHeight(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  // Spacer pushes the entire block to sit elegantly in the lower half
-                  const Spacer(),
+    final epDesc = focusedEpisode?.description;
+    final synopsis = (detail.isSeries && epDesc != null && epDesc.trim().isNotEmpty)
+        ? epDesc.trim()
+        : (detail.description != null && detail.description!.isNotEmpty
+            ? detail.description!
+            : 'In a divided city of utopia and undercity, two sisters find themselves on opposite sides of a brewing conflict that will reshape their world.');
 
-                  // ── 1. Stylized Title Logo / Elegant Display Typography ────
-                  _titleHeader(detail),
+    return Align(
+      alignment: Alignment.bottomLeft,
+      child: SingleChildScrollView(
+        reverse: true,
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── 1. Stylized Title Logo / Elegant Display Typography ────
+            _titleHeader(detail),
 
-                  const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
-                  // ── 2. Metadata Line: "2021 | 2 Seasons | 16+ | [IMDb] 9.0" ─
-                  _metadataRow(detail, episodes),
+            // ── 2. Metadata Line: "2021 | 2 Seasons | 16+ | [IMDb] 9.0" ─
+            _metadataRow(detail, episodes, totalSeasons),
 
-                  const SizedBox(height: 12),
+            const SizedBox(height: 16),
 
-                  // ── 3. Frosted Genre Pills Row ─────────────────────────────
-                  _genresPillRow(detail),
+            // ── 3. Frosted Genre Pills Row ─────────────────────────────
+            _genresPillRow(detail),
 
-                  if (castList.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    _castSquareRow(castList),
-                  ],
+            if (castList.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              _castSquareRow(castList),
+            ],
 
-                  const SizedBox(height: 14),
+            const SizedBox(height: 18),
 
-                  // ── 4. Red Accent Dash (Exact Match to Reference Screenshots) ─
-                  Container(
-                    width: 32,
-                    height: 3.5,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE50914),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  // ── 5. Editorial Synopsis ──────────────────────────────────
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 540),
-                    child: Text(
-                      detail.description != null && detail.description!.isNotEmpty
-                          ? detail.description!
-                          : 'In a divided city of utopia and undercity, two sisters find themselves on opposite sides of a brewing conflict that will reshape their world.',
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.88),
-                        fontSize: 14.5,
-                        height: 1.52,
-                        fontWeight: FontWeight.w400,
-                        shadows: const [
-                          Shadow(
-                            color: Colors.black87,
-                            blurRadius: 10,
-                            offset: Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // ── 6. Primary Action Button & Circular Frosted Utilities ──
-                  _bottomActionBar(detail, episodes, currentSeason),
-                  const SizedBox(height: 6),
-                ],
+            // ── 4. Red Accent Dash (Exact Match to Reference Screenshots) ─
+            Container(
+              width: 36,
+              height: 3.5,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE50914),
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-          ),
-        );
-      },
+
+            const SizedBox(height: 12),
+
+            // ── 5. Editorial Synopsis (Dynamically updates with episode) ─
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 580),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: Text(
+                  synopsis,
+                  key: ValueKey(focusedEpisode?.id ?? detail.id),
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.88),
+                    fontSize: 14.5,
+                    height: 1.54,
+                    fontWeight: FontWeight.w400,
+                    shadows: const [
+                      Shadow(
+                        color: Colors.black87,
+                        blurRadius: 10,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // ── 6. Primary Action Button & Circular Frosted Utilities ──
+            _bottomActionBar(detail, episodes, currentSeason, focusedEpisode),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
   }
 
@@ -924,15 +980,16 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     );
   }
 
-  Widget _metadataRow(MediaDetail detail, List<Episode> episodes) {
+  Widget _metadataRow(
+    MediaDetail detail,
+    List<Episode> episodes,
+    int totalSeasons,
+  ) {
     final year = detail.year != null && detail.year!.isNotEmpty
         ? detail.year!
         : (widget.item.year ?? '2021');
 
-    final seasonsCount = episodes
-        .map((e) => seasonOf(e) ?? 1)
-        .toSet()
-        .length;
+    final seasonsCount = totalSeasons > 0 ? totalSeasons : 1;
     final seasonsText = detail.isSeries
         ? (seasonsCount > 1 ? '$seasonsCount Seasons' : '1 Season')
         : (episodes.isNotEmpty && episodes.first.runtimeMinutes != null
@@ -1077,15 +1134,15 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
   Widget _castSquareRow(List<CastMember> cast) {
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 580),
+      constraints: const BoxConstraints(maxWidth: 640),
       child: SizedBox(
-        height: 84,
+        height: 126,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           shrinkWrap: true,
           physics: const BouncingScrollPhysics(),
           itemCount: cast.length.clamp(0, 16),
-          separatorBuilder: (_, _) => const SizedBox(width: 10),
+          separatorBuilder: (_, _) => const SizedBox(width: 14),
           itemBuilder: (context, index) {
             final member = cast[index];
             return _SquareCastCard(
@@ -1101,14 +1158,22 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   Widget _bottomActionBar(
     MediaDetail detail,
     List<Episode> episodes,
-    int currentSeason,
-  ) {
+    int currentSeason, [
+    Episode? focusedEpisode,
+  ]) {
     final isBookmarked = _myList.contains(widget.item);
 
     Episode? targetEp;
     String playLabel = 'Watch Now';
 
-    if (detail.isSeries && episodes.isNotEmpty) {
+    if (detail.isSeries && focusedEpisode != null) {
+      targetEp = focusedEpisode;
+      final sNum = seasonOf(targetEp) ?? currentSeason;
+      final eNum = targetEp.number?.toInt() ?? (_focusedEpisodeIndex + 1);
+      final hasResume =
+          _resume.get(widget.item.sourceId, widget.item.url, targetEp.id) != null;
+      playLabel = hasResume ? 'Resume S$sNum E$eNum' : 'Watch S$sNum E$eNum';
+    } else if (detail.isSeries && episodes.isNotEmpty) {
       final seasonEps = episodes
           .where((e) => (seasonOf(e) ?? 1) == currentSeason)
           .toList();
@@ -1281,6 +1346,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   Widget _seriesEpisodesColumn(
     MediaDetail detail,
     List<Episode> episodes,
+    List<int> seasons,
     int currentSeason,
   ) {
     final filteredEpisodes = episodes
@@ -1289,12 +1355,28 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
     if (filteredEpisodes.isEmpty) {
       return Center(
-        child: Text(
-          'No episodes found for Season $currentSeason',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.6),
-            fontSize: 14,
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _seasonSelectorPill(seasons, currentSeason),
+            const SizedBox(height: 24),
+            const SizedBox(
+              width: 26,
+              height: 26,
+              child: CircularProgressIndicator(
+                color: Color(0xFFE50914),
+                strokeWidth: 2.2,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Loading Season $currentSeason episodes...',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.70),
+                fontSize: 13.5,
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -1302,14 +1384,17 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     final total = filteredEpisodes.length;
     final activeIndex = _focusedEpisodeIndex.clamp(0, total - 1);
 
-    // Visible window of 5 cards around activeIndex
-    int start = activeIndex - 2;
+    // Visible window of 3 cards around activeIndex for clean breathing room
+    int start = activeIndex - 1;
     if (start < 0) start = 0;
-    if (start + 5 > total) {
-      start = (total - 5).clamp(0, total);
+    if (start + 3 > total) {
+      start = (total - 3).clamp(0, total);
     }
-    final end = (start + 5).clamp(0, total);
+    final end = (start + 3).clamp(0, total);
     final visibleIndices = [for (int i = start; i < end; i++) i];
+
+    final fallbackBackdrop =
+        _resolvedBackdropUrl ?? detail.cover ?? widget.item.cover;
 
     return Listener(
       onPointerSignal: (event) {
@@ -1332,12 +1417,32 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              // Top Season Header above episode cards
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Text(
+                      'EPISODES (${filteredEpisodes.length})',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.55),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const Spacer(),
+                    _seasonSelectorPill(seasons, currentSeason),
+                  ],
+                ),
+              ),
+
               // Up chevron if earlier episodes exist
               if (start > 0)
                 Align(
                   alignment: Alignment.centerRight,
                   child: Padding(
-                    padding: const EdgeInsets.only(right: 28, bottom: 4),
+                    padding: const EdgeInsets.only(right: 36, bottom: 6),
                     child: MouseRegion(
                       cursor: SystemMouseCursors.click,
                       child: GestureDetector(
@@ -1348,8 +1453,8 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                         },
                         child: Icon(
                           Icons.keyboard_arrow_up_rounded,
-                          color: Colors.white.withValues(alpha: 0.45),
-                          size: 22,
+                          color: Colors.white.withValues(alpha: 0.6),
+                          size: 24,
                         ),
                       ),
                     ),
@@ -1369,25 +1474,24 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                       ep.id,
                     );
                     final progress = mark != null && mark.duration > Duration.zero
-                        ? (mark.position.inMilliseconds / mark.duration.inMilliseconds).clamp(0.0, 1.0)
-                        : (isActive ? 0.45 : 0.0);
+                        ? (mark.position.inMilliseconds /
+                                mark.duration.inMilliseconds)
+                            .clamp(0.0, 1.0)
+                        : (isActive ? 0.40 : 0.0);
 
-                    // Stacked cascading offsets matching Arcane reference:
-                    // Active card pops out to the left (Offset -46), while inactive cards recede right.
+                    // Stacked cascading offsets with breathable margins
                     final double offsetX = isActive
-                        ? -46.0
-                        : (diff.abs() == 1 ? 0.0 : 26.0);
-                    final double scale = isActive
-                        ? 1.04
-                        : (diff.abs() == 1 ? 0.94 : 0.88);
+                        ? -32.0
+                        : (diff.abs() == 1 ? 0.0 : 20.0);
+                    final double scale = isActive ? 1.03 : 0.94;
                     final double opacity = isActive
                         ? 1.0
-                        : (diff.abs() == 1 ? 0.72 : 0.45);
+                        : (diff.abs() == 1 ? 0.72 : 0.48);
 
                     return AnimatedContainer(
                       duration: const Duration(milliseconds: 220),
                       curve: Curves.easeOutCubic,
-                      margin: EdgeInsets.symmetric(vertical: isActive ? 8 : 4),
+                      margin: const EdgeInsets.symmetric(vertical: 8),
                       transform: Matrix4.translationValues(offsetX, 0, 0),
                       child: AnimatedOpacity(
                         duration: const Duration(milliseconds: 200),
@@ -1400,15 +1504,14 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                             index: i,
                             isActive: isActive,
                             progress: progress,
+                            fallbackBackdrop: fallbackBackdrop,
                             onTap: () {
-                              if (isActive) {
-                                _playEpisode(detail, filteredEpisodes, i);
-                              } else {
+                              _playEpisode(detail, filteredEpisodes, i);
+                            },
+                            onHover: () {
+                              if (_focusedEpisodeIndex != i) {
                                 setState(() => _focusedEpisodeIndex = i);
                               }
-                            },
-                            onPlayDirect: () {
-                              _playEpisode(detail, filteredEpisodes, i);
                             },
                           ),
                         ),
@@ -1423,7 +1526,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: Padding(
-                    padding: const EdgeInsets.only(right: 28, top: 4),
+                    padding: const EdgeInsets.only(right: 36, top: 6),
                     child: MouseRegion(
                       cursor: SystemMouseCursors.click,
                       child: GestureDetector(
@@ -1434,8 +1537,8 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                         },
                         child: Icon(
                           Icons.keyboard_arrow_down_rounded,
-                          color: Colors.white.withValues(alpha: 0.45),
-                          size: 22,
+                          color: Colors.white.withValues(alpha: 0.6),
+                          size: 24,
                         ),
                       ),
                     ),
@@ -1562,7 +1665,8 @@ class _SeriesEpisodeCard extends StatefulWidget {
     required this.isActive,
     required this.progress,
     required this.onTap,
-    required this.onPlayDirect,
+    required this.onHover,
+    this.fallbackBackdrop,
   });
 
   final Episode ep;
@@ -1570,7 +1674,8 @@ class _SeriesEpisodeCard extends StatefulWidget {
   final bool isActive;
   final double progress;
   final VoidCallback onTap;
-  final VoidCallback onPlayDirect;
+  final VoidCallback onHover;
+  final String? fallbackBackdrop;
 
   @override
   State<_SeriesEpisodeCard> createState() => _SeriesEpisodeCardState();
@@ -1586,164 +1691,183 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
     final displayTitle = ep.metaTitle ?? ep.title;
     final isActive = widget.isActive;
 
+    final String durationLabel;
+    if (widget.progress > 0 &&
+        ep.runtimeMinutes != null &&
+        ep.runtimeMinutes! > 0) {
+      final remaining =
+          ((1.0 - widget.progress) * ep.runtimeMinutes!).round();
+      durationLabel = remaining > 0 ? '${remaining}m left' : 'Finished';
+    } else if (ep.runtimeMinutes != null && ep.runtimeMinutes! > 0) {
+      durationLabel = '${ep.runtimeMinutes}m';
+    } else {
+      durationLabel = '45m';
+    }
+
+    final imageUrl = (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
+        ? ep.thumbnail
+        : widget.fallbackBackdrop;
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
+      onEnter: (_) {
+        setState(() => _hovered = true);
+        widget.onHover();
+      },
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          duration: const Duration(milliseconds: 180),
+          width: 380,
+          height: 190,
           decoration: BoxDecoration(
-            color: isActive
-                ? const Color(0xFF18151E).withValues(alpha: 0.90)
-                : (_hovered
-                    ? const Color(0xFF1A1A24).withValues(alpha: 0.80)
-                    : const Color(0xFF101018).withValues(alpha: 0.68)),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isActive
                   ? const Color(0xFFE50914)
                   : (_hovered
-                      ? Colors.white.withValues(alpha: 0.22)
-                      : Colors.white.withValues(alpha: 0.08)),
-              width: isActive ? 1.8 : 1.0,
+                      ? Colors.white.withValues(alpha: 0.45)
+                      : Colors.white.withValues(alpha: 0.12)),
+              width: isActive ? 2.0 : 1.0,
             ),
             boxShadow: isActive
                 ? [
                     BoxShadow(
-                      color: const Color(0xFFE50914).withValues(alpha: 0.35),
-                      blurRadius: 20,
-                      offset: const Offset(-4, 4),
+                      color: const Color(0xFFE50914).withValues(alpha: 0.45),
+                      blurRadius: 22,
+                      offset: const Offset(-2, 4),
                     ),
                   ]
-                : null,
+                : (_hovered
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  // Left info: Episode number & title + duration
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          '$epNumber. $displayTitle',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight:
-                                isActive ? FontWeight.w700 : FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          ep.runtimeMinutes != null
-                              ? '${ep.runtimeMinutes} min'
-                              : '41 min',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.50),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                      ],
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(isActive ? 14 : 15),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 1. Episode Thumbnail Background
+                if (imageUrl != null && imageUrl.isNotEmpty)
+                  CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.medium,
+                    placeholder: (_, _) => Container(
+                      color: const Color(0xFF14141E),
                     ),
-                  ),
-
-                  const SizedBox(width: 14),
-
-                  // Right: 16:9 Thumbnail with Play Button Overlay if Active
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(9),
-                    child: SizedBox(
-                      width: 116,
-                      height: 65,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          if (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
-                            CachedNetworkImage(
-                              imageUrl: ep.thumbnail!,
-                              fit: BoxFit.cover,
-                              filterQuality: FilterQuality.medium,
-                              placeholder: (_, _) => Container(
-                                color: Colors.white.withValues(alpha: 0.06),
-                              ),
-                              errorWidget: (_, _, _) => Container(
-                                color: Colors.white.withValues(alpha: 0.06),
-                                child: const Icon(
-                                  Icons.movie_rounded,
-                                  color: Colors.white30,
-                                  size: 20,
-                                ),
-                              ),
-                            )
-                          else
-                            Container(
-                              color: Colors.white.withValues(alpha: 0.08),
-                              child: const Icon(
-                                Icons.movie_rounded,
-                                color: Colors.white30,
-                                size: 20,
-                              ),
-                            ),
-
-                          // Centered Play Button Circle (Exact match to Arcane Active Episode Card)
-                          if (isActive)
-                            Center(
-                              child: GestureDetector(
-                                onTap: widget.onPlayDirect,
-                                child: Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Colors.black.withValues(alpha: 0.60),
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 1.8,
-                                    ),
-                                  ),
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.play_arrow_rounded,
-                                      color: Colors.white,
-                                      size: 24,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
+                    errorWidget: (_, _, _) => Container(
+                      color: const Color(0xFF14141E),
+                      child: const Center(
+                        child: Icon(
+                          Icons.movie_outlined,
+                          color: Colors.white24,
+                          size: 38,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    color: const Color(0xFF14141E),
+                    child: const Center(
+                      child: Icon(
+                        Icons.movie_outlined,
+                        color: Colors.white24,
+                        size: 38,
                       ),
                     ),
                   ),
-                ],
-              ),
 
-              // Bottom Progress Bar (Active Episode Watch Progress in Red)
-              if (isActive && widget.progress > 0) ...[
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: widget.progress,
-                    minHeight: 2.5,
-                    backgroundColor: Colors.white.withValues(alpha: 0.16),
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      Color(0xFFE50914),
+                // 2. Cinematic Gradient overlay for text legibility
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      stops: const [0.35, 1.0],
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.88),
+                      ],
                     ),
                   ),
                 ),
+
+                // 3. Bottom-Left Typography (Matching media_1791102530281.png)
+                Positioned(
+                  left: 18,
+                  right: 18,
+                  bottom: 14,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '$epNumber. $displayTitle',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black,
+                              blurRadius: 8,
+                              offset: Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        durationLabel,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.75),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          shadows: const [
+                            Shadow(
+                              color: Colors.black,
+                              blurRadius: 6,
+                              offset: Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // 4. Red progress bar at the very bottom edge (Matching reference)
+                if (widget.progress > 0)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      height: 3.5,
+                      color: Colors.white.withValues(alpha: 0.15),
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: widget.progress.clamp(0.0, 1.0),
+                        child: Container(
+                          color: const Color(0xFFE50914),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -2166,17 +2290,17 @@ class _SquareCastCardState extends State<_SquareCastCard> {
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
         child: SizedBox(
-          width: 58,
+          width: 82,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOutCubic,
-                width: 56,
-                height: 56,
+                width: 80,
+                height: 80,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: _hovered
                         ? Colors.white.withValues(alpha: 0.6)
@@ -2187,47 +2311,49 @@ class _SquareCastCardState extends State<_SquareCastCard> {
                       ? [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.5),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
                           ),
                         ]
                       : null,
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(11),
+                  borderRadius: BorderRadius.circular(15),
                   child: hasPhoto
                       ? CachedNetworkImage(
                           imageUrl: photo,
                           fit: BoxFit.cover,
-                          memCacheWidth: 150,
+                          memCacheWidth: 200,
                           placeholder: (_, _) => Container(
                             color: const Color(0xFF1E1E28),
                             alignment: Alignment.center,
                             child: const SizedBox(
-                              width: 14,
-                              height: 14,
+                              width: 18,
+                              height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 1.5,
                                 color: Colors.white30,
                               ),
                             ),
                           ),
-                          errorWidget: (_, _, _) => _fallbackSquareAvatar(m.name),
+                          errorWidget: (_, _, _) =>
+                              _fallbackSquareAvatar(m.name),
                         )
                       : _fallbackSquareAvatar(m.name),
                 ),
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 6),
               Text(
                 m.name,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: _hovered
                       ? Colors.white
-                      : Colors.white.withValues(alpha: 0.82),
-                  fontSize: 10,
+                      : Colors.white.withValues(alpha: 0.88),
+                  fontSize: 11.5,
+                  height: 1.25,
                   fontWeight: _hovered ? FontWeight.w600 : FontWeight.w500,
                   letterSpacing: 0.1,
                 ),
@@ -2260,7 +2386,7 @@ class _SquareCastCardState extends State<_SquareCastCard> {
         initial,
         style: const TextStyle(
           color: Colors.white70,
-          fontSize: 18,
+          fontSize: 24,
           fontWeight: FontWeight.w700,
         ),
       ),
