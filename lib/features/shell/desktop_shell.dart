@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../detail/detail_screen.dart';
 import '../downloads/downloads_screen.dart';
+import '../home/desktop/desktop_discover_screen.dart';
 import '../home/desktop/desktop_home_screen.dart';
 import '../home/my_list_screen.dart';
-import '../home/search_screen.dart';
 import '../settings/settings_screen.dart';
 import 'desktop_nav_bar.dart';
 
@@ -21,16 +22,9 @@ class DesktopShell extends StatefulWidget {
 class _DesktopShellState extends State<DesktopShell> {
   DesktopNavCategory _category = DesktopNavCategory.home;
   bool _isScrolled = false;
-  final ValueNotifier<int> _searchFocusSignal = ValueNotifier<int>(0);
-  String? _pendingSearchQuery;
+  final TextEditingController _searchCtrl = TextEditingController();
 
   void _onCategorySelected(DesktopNavCategory category) {
-    if (category == DesktopNavCategory.discover) {
-      _searchFocusSignal.value++;
-    }
-    if (_pendingSearchQuery != null && category != DesktopNavCategory.discover) {
-      _pendingSearchQuery = null;
-    }
     setState(() => _category = category);
   }
 
@@ -46,7 +40,7 @@ class _DesktopShellState extends State<DesktopShell> {
 
   @override
   void dispose() {
-    _searchFocusSignal.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -73,16 +67,18 @@ class _DesktopShellState extends State<DesktopShell> {
             // ── Tab Views (IndexedStack preserves scroll and state) ──
             Positioned.fill(
               child: IndexedStack(
-                index: _pendingSearchQuery != null ? 1 : _tabIndex,
+                index: _tabIndex,
                 children: [
                   DesktopHomeScreen(selectedCategory: _category),
-                  Padding(
-                    padding: topInset,
-                    child: SearchScreen(
-                      showBack: false,
-                      focusSignal: _searchFocusSignal,
-                      initialQuery: _pendingSearchQuery,
-                    ),
+                  DesktopDiscoverScreen(
+                    searchController: _searchCtrl,
+                    onOpenDetail: (item) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => DetailScreen(item: item),
+                        ),
+                      );
+                    },
                   ),
                   const Padding(
                     padding: topInset,
@@ -108,6 +104,7 @@ class _DesktopShellState extends State<DesktopShell> {
               child: DesktopNavBar(
                 currentCategory: _category,
                 onCategorySelected: _onCategorySelected,
+                searchController: _searchCtrl,
                 isScrolled: _isScrolled,
               ),
             ),
@@ -117,3 +114,4 @@ class _DesktopShellState extends State<DesktopShell> {
     );
   }
 }
+

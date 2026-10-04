@@ -27,11 +27,17 @@ class DesktopNavBar extends StatelessWidget {
     super.key,
     required this.currentCategory,
     required this.onCategorySelected,
+    this.searchController,
+    this.onSearchChanged,
+    this.onSearchSubmitted,
     this.isScrolled = false,
   });
 
   final DesktopNavCategory currentCategory;
   final ValueChanged<DesktopNavCategory> onCategorySelected;
+  final TextEditingController? searchController;
+  final ValueChanged<String>? onSearchChanged;
+  final ValueChanged<String>? onSearchSubmitted;
   final bool isScrolled;
 
   @override
@@ -114,13 +120,25 @@ class DesktopNavBar extends StatelessWidget {
 
     return Row(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         for (final (category, label) in categories)
-          _DesktopNavLink(
-            label: label,
-            active: currentCategory == category,
-            onTap: () => onCategorySelected(category),
-          ),
+          if (category == DesktopNavCategory.discover &&
+              currentCategory == DesktopNavCategory.discover)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: _DesktopNavbarSearchBar(
+                controller: searchController,
+                onChanged: onSearchChanged,
+                onSubmitted: onSearchSubmitted,
+              ),
+            )
+          else
+            _DesktopNavLink(
+              label: label,
+              active: currentCategory == category,
+              onTap: () => onCategorySelected(category),
+            ),
       ],
     );
   }
@@ -388,6 +406,116 @@ class _DesktopFullscreenButtonState extends State<_DesktopFullscreenButton> with
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DesktopNavbarSearchBar extends StatefulWidget {
+  const _DesktopNavbarSearchBar({
+    this.controller,
+    this.onChanged,
+    this.onSubmitted,
+  });
+
+  final TextEditingController? controller;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  State<_DesktopNavbarSearchBar> createState() => _DesktopNavbarSearchBarState();
+}
+
+class _DesktopNavbarSearchBarState extends State<_DesktopNavbarSearchBar> {
+  late final TextEditingController _effectiveController;
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _effectiveController = widget.controller ?? TextEditingController();
+    _effectiveController.addListener(_onTextChange);
+    // Smooth autofocus when morphing into search bar
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _effectiveController.removeListener(_onTextChange);
+    _focusNode.dispose();
+    if (widget.controller == null) _effectiveController.dispose();
+    super.dispose();
+  }
+
+  void _onTextChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      width: 250,
+      height: 36,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.22),
+          width: 1.2,
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(
+        children: [
+          HugeIcon(
+            icon: HugeIcons.strokeRoundedSearch01,
+            size: 16.5,
+            color: Colors.white.withValues(alpha: 0.75),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _effectiveController,
+              focusNode: _focusNode,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Search…',
+                hintStyle: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.40),
+                  fontSize: 12.5,
+                ),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onChanged: widget.onChanged,
+              onSubmitted: widget.onSubmitted,
+            ),
+          ),
+          if (_effectiveController.text.isNotEmpty)
+            GestureDetector(
+              onTap: () {
+                _effectiveController.clear();
+                widget.onChanged?.call('');
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 15,
+                  color: Colors.white.withValues(alpha: 0.55),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
