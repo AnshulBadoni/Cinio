@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -169,6 +170,7 @@ class _TrailerScreenState extends State<TrailerScreen> {
           label: 'Finding best source…',
         );
       case false:
+        final vid = widget.videoId ?? _effectiveSource.youtubeId;
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -178,11 +180,40 @@ class _TrailerScreenState extends State<TrailerScreen> {
               size: 40,
             ),
             const SizedBox(height: 12),
-            Text('Trailer unavailable', style: AppText.body),
+            Text('Trailer stream unavailable', style: AppText.body),
             const SizedBox(height: 16),
-            TextButton(
-              onPressed: () => Navigator.of(context).maybePop(),
-              child: const Text('Close'),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (vid != null && vid.isNotEmpty) ...[
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFE50914),
+                    ),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                    label: const Text('Watch on YouTube'),
+                    onPressed: () {
+                      launchUrl(
+                        Uri.parse('https://www.youtube.com/watch?v=$vid'),
+                        mode: LaunchMode.externalApplication,
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                OutlinedButton(
+                  onPressed: () {
+                    setState(() => _resolved = null);
+                    _resolveAndOpen();
+                  },
+                  child: const Text('Try Again'),
+                ),
+                const SizedBox(width: 12),
+                TextButton(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  child: const Text('Close'),
+                ),
+              ],
             ),
           ],
         );

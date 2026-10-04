@@ -4,9 +4,11 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:hugeicons/hugeicons.dart';
 
 import '../../../core/di/injector.dart';
+import '../../../core/metadata/theporndb.dart';
 import '../../../core/metadata/tmdb_discover_service.dart';
 import '../../../core/models/media_item.dart';
 import '../../../core/playback/my_list.dart';
+import '../../../core/repository/source_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../detail/detail_screen.dart';
 
@@ -42,7 +44,15 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
   final Set<String> _selectedGenres = {};
   String _selectedYear = 'All';
   String _selectedRating = 'All';
+  String _selectedSource = 'Mixed';
   bool _genreMenuOpen = false;
+
+  static const List<String> _sources = [
+    'Mixed',
+    'TMDB',
+    'TPDB',
+    'Providers',
+  ];
 
   static const List<List<String>> _genreColumns = [
     [
@@ -128,6 +138,68 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
     }
   }
 
+  List<MediaItem> _interleave(List<MediaItem> a, List<MediaItem> b) {
+    final out = <MediaItem>[];
+    var i = 0, j = 0;
+    while (i < a.length || j < b.length) {
+      if (i < a.length) out.add(a[i++]);
+      if (j < b.length) out.add(b[j++]);
+    }
+    return out;
+  }
+
+  Future<List<MediaItem>> _fetchItemsForSource({
+    required String source,
+    required String query,
+    required int page,
+  }) async {
+    switch (source) {
+      case 'TMDB':
+        final tmdb = sl<TmdbDiscoverService>();
+        if (query.isNotEmpty) {
+          return await tmdb.search(query: query, type: 'all', page: page);
+        } else {
+          return await tmdb.discover(catalog: 'trending', type: 'all', page: page);
+        }
+      case 'TPDB':
+        if (!sl.isRegistered<ThePornDb>()) return [];
+        final tpdb = sl<ThePornDb>();
+        return await tpdb.movies(
+          page: page,
+          query: query.isNotEmpty ? query : null,
+        );
+      case 'Providers':
+        if (!sl.isRegistered<SourceRepository>()) return [];
+        final repo = sl<SourceRepository>();
+        if (query.isNotEmpty) {
+          return await repo.search(query);
+        } else {
+          final sections = await repo.home();
+          return sections.expand((s) => s.items).toList();
+        }
+      case 'Mixed':
+      default:
+        final tmdb = sl<TmdbDiscoverService>();
+        final tmdbFuture = query.isNotEmpty
+            ? tmdb.search(query: query, type: 'all', page: page)
+            : tmdb.discover(catalog: 'trending', type: 'all', page: page);
+
+        Future<List<MediaItem>> tpdbFuture = Future.value(<MediaItem>[]);
+        if (sl.isRegistered<ThePornDb>()) {
+          tpdbFuture = sl<ThePornDb>().movies(
+            page: page,
+            query: query.isNotEmpty ? query : null,
+          );
+        }
+
+        final res = await Future.wait([
+          tmdbFuture.catchError((_) => <MediaItem>[]),
+          tpdbFuture.catchError((_) => <MediaItem>[]),
+        ]);
+        return _interleave(res[0], res[1]);
+    }
+  }
+
   Future<void> _loadInitialItems() async {
     setState(() {
       _loading = true;
@@ -139,16 +211,11 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
     List<MediaItem> results = [];
 
     try {
-      final tmdb = sl<TmdbDiscoverService>();
-      if (query.isNotEmpty) {
-        results = await tmdb.search(query: query, type: 'all', page: 1);
-      } else {
-        results = await tmdb.discover(
-          catalog: 'trending',
-          type: 'all',
-          page: 1,
-        );
-      }
+      results = await _fetchItemsForSource(
+        source: _selectedSource,
+        query: query,
+        page: 1,
+      );
     } catch (_) {
       results = [];
     }
@@ -171,16 +238,11 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
     List<MediaItem> results = [];
 
     try {
-      final tmdb = sl<TmdbDiscoverService>();
-      if (query.isNotEmpty) {
-        results = await tmdb.search(query: query, type: 'all', page: nextPage);
-      } else {
-        results = await tmdb.discover(
-          catalog: 'trending',
-          type: 'all',
-          page: nextPage,
-        );
-      }
+      results = await _fetchItemsForSource(
+        source: _selectedSource,
+        query: query,
+        page: nextPage,
+      );
     } catch (_) {
       results = [];
     }
@@ -192,7 +254,6 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
         _loading = false;
         _hasMore = results.isNotEmpty;
       });
-    }
   }
 
   List<MediaItem> _applyClientFilters(List<MediaItem> list) {
@@ -676,9 +737,78 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
           ),
         ),
 
+        const SizedBox(width: 14),
+
+        // 5. Source Dropdown (Mixed, TMDB, TPDB, Providers)
+        Expanded(
+          flex: 2,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Source',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.50),
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: _selectedSource != 'Mixed'
+                        ? const Color(0xFFE50914).withValues(alpha: 0.6)
+                        : Colors.white.withValues(alpha: 0.12),
+                    width: 1,
+                  ),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedSource,
+                    isExpanded: true,
+                    dropdownColor: const Color(0xFF1E1E1E),
+                    icon: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: Colors.white.withValues(alpha: 0.60),
+                    ),
+                    items: _sources.map((s) {
+                      return DropdownMenuItem<String>(
+                        value: s,
+                        child: Text(
+                          s,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.88),
+                            fontSize: 12.5,
+                            fontWeight: s == _selectedSource
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _selectedSource = val);
+                        _triggerSearch();
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
         const SizedBox(width: 18),
 
-        // 5. Solid Red Search Button
+        // 6. Solid Red Search Button
         MouseRegion(
           cursor: SystemMouseCursors.click,
           child: GestureDetector(

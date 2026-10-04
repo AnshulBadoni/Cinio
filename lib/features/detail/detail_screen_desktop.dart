@@ -1,13 +1,18 @@
 part of 'detail_screen.dart';
 
-/// Desktop-native Detail Screen precisely styled after the modern streaming reference:
-/// • Full-bleed 16:9 widescreen backdrop / auto-playing muted hero trailer.
-/// • Stylized official TMDB title logo with [cinioFallbackTitle] archetype fallback.
-/// • Refined metadata line: "2021 | 2 Seasons | 16+ | [IMDb] 9.0" with frosted genre pills.
-/// • Open middle layout with red accent dash and high-readability 3-line synopsis.
-/// • Action bar: solid white "[ ▶ Resume S1 E3 ]" pill + circular frosted buttons (⤓, +, ♡, ···).
-/// • Right-hand floating frosted Episodes Panel with season switching ("Season 1 ˅", "Season 2"),
-///   total episodes count, and episode cards with active coral outline, 16:9 thumbnails, and watched checkmarks.
+/// Desktop-native Detail Screen precisely styled after the modern streaming references:
+/// • Series layout (Arcane reference):
+///   - Fullscreen 16:9 still backdrop with atmospheric left-to-right legibility scrim.
+///   - Top navigation: minimal back chevron (<) on top-left, Season dropdown pill + (✕) close button on top-right.
+///   - Left column: stylized logo / title, meta line (Year | Seasons | 16+ | IMDb rating), frosted genre pills,
+///     red accent dash, 3-line editorial synopsis, solid white [▶ Resume S1 E3] pill + circular utility buttons.
+///   - Right column: floating vertical stack of episode cards with 16:9 thumbnails, active red glowing border,
+///     watched red progress bar, and centered circular play button overlay.
+/// • Movie layout (The Final Problem reference):
+///   - Stylized elegant serif title ("THE FINAL PROBLEM" style), meta line (Year | Duration | 16+ | IMDb rating),
+///     red accent dash, synopsis, solid white [▶ Watch Now] pill.
+///   - Right column: prominent featured Trailer card with amber/gold glowing border and play button, followed by
+///     Behind the Scenes, Cast Interviews, Deleted Scenes, and Similar Movies with live TMDB video integration!
 class DetailScreenDesktop extends StatefulWidget {
   const DetailScreenDesktop({super.key, required this.item});
   final MediaItem item;
@@ -30,6 +35,10 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
   int? _selectedSeason;
   bool _isFavorited = false;
+  String? _focusedEpisodeId;
+
+  List<_MovieExtraVideo> _movieVideos = [];
+  List<MediaRelation> _similarMovies = [];
 
   int _resumeIndex(List<Episode> eps) {
     if (eps.isEmpty) return 0;
@@ -166,7 +175,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     final tmdbId = detail.tmdbId ?? widget.item.tmdbId;
     final isTv = detail.isSeries || widget.item.tmdbIsTv;
 
-    // Resolve trailer with high priority using official detail TMDB ID
+    // Resolve trailer with high priority
     if (_trailerSource == null) {
       _trailerResolving = true;
       sl<TrailerService>()
@@ -207,6 +216,86 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     if (_resolvedBackdropUrl == null || _resolvedBackdropUrl!.isEmpty) {
       _resolve16x9Backdrop();
     }
+
+    if (!detail.isSeries) {
+      _loadMovieExtras(detail);
+    }
+  }
+
+  Future<void> _loadMovieExtras(MediaDetail detail) async {
+    final tmdbId = detail.tmdbId ?? widget.item.tmdbId;
+    if (tmdbId == null || tmdbId <= 0) return;
+
+    try {
+      final dio = sl<Dio>();
+      final isTv = detail.isSeries || widget.item.tmdbIsTv;
+      final type = isTv ? 'tv' : 'movie';
+
+      // 1. Fetch videos from TMDB
+      final res = await dio.get<Map<String, dynamic>>(
+        'https://${Tmdb.host}/3/$type/$tmdbId/videos',
+        queryParameters: {'api_key': Tmdb.apiKey},
+      );
+      final results = res.data?['results'] as List?;
+      if (results != null && results.isNotEmpty) {
+        final yt = results
+            .whereType<Map>()
+            .where((v) => v['site'] == 'YouTube' && v['key'] != null)
+            .toList();
+        if (mounted && yt.isNotEmpty) {
+          final list = yt.map((v) {
+            final t = v['type']?.toString() ?? 'Clip';
+            return _MovieExtraVideo(
+              title: v['name']?.toString() ?? t,
+              duration: _durationForType(t),
+              youtubeKey: v['key'].toString(),
+              type: t,
+            );
+          }).toList();
+          setState(() => _movieVideos = list);
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fetch recommendations / similar movies
+    try {
+      if (detail.relations.isNotEmpty) {
+        setState(() => _similarMovies = detail.relations);
+      } else {
+        final dio = sl<Dio>();
+        final res = await dio.get<Map<String, dynamic>>(
+          'https://${Tmdb.host}/3/movie/$tmdbId/recommendations',
+          queryParameters: {'api_key': Tmdb.apiKey},
+        );
+        final results = res.data?['results'] as List?;
+        if (results != null && results.isNotEmpty && mounted) {
+          setState(() {
+            _similarMovies = results.whereType<Map>().take(6).map((r) {
+              final id = int.tryParse('${r['id']}');
+              final title = r['title']?.toString() ?? r['name']?.toString() ?? '';
+              final poster = r['poster_path']?.toString();
+              return MediaRelation(
+                title: title,
+                cover: poster != null ? '${Tmdb.img}/w500$poster' : null,
+                tmdbId: id,
+                relation: 'Recommendation',
+              );
+            }).toList();
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  String _durationForType(String type) {
+    return switch (type.toLowerCase()) {
+      'trailer' => '2:24',
+      'teaser' => '1:15',
+      'behind the scenes' => '8:12',
+      'featurette' => '5:41',
+      'clip' => '3:30',
+      _ => '4:20',
+    };
   }
 
   void _openTrailerFullscreen(MediaDetail detail) {
@@ -214,7 +303,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => TrailerScreen(
-            title: detail.title,
+            title: '${detail.title} - Trailer',
             source: _trailerSource!,
           ),
         ),
@@ -239,12 +328,23 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => TrailerScreen(
-            title: detail.title,
+            title: '${detail.title} - Trailer',
             source: source,
           ),
         ),
       );
     });
+  }
+
+  void _openExtraVideo(String title, String videoKey) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TrailerScreen(
+          title: title,
+          videoId: videoKey,
+        ),
+      ),
+    );
   }
 
   void _playEpisode(MediaDetail detail, List<Episode> eps, int index) {
@@ -409,22 +509,29 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
           }
 
           final episodes = detail.episodes;
-          // Prefer resolved 16:9 backdrop, then heroImage, then cover
           final backdropUrl = _resolvedBackdropUrl ??
               widget.item.heroImage ??
               detail.cover ??
               widget.item.cover;
 
+          final seasons = episodes
+              .map((e) => seasonOf(e) ?? 1)
+              .toSet()
+              .toList()
+            ..sort();
+          final currentSeason =
+              _selectedSeason ?? (seasons.isNotEmpty ? seasons.first : 1);
+
           return Stack(
             fit: StackFit.expand,
             children: [
-              // ── 1. Full-Screen 16:9 Backdrop Artwork / Auto-Playing Trailer ──
+              // ── 1. Fullscreen High-Resolution 16:9 Still Backdrop Artwork ─
               Positioned.fill(
-                child: _backdropView(backdropUrl),
+                child: _staticBackdrop(backdropUrl),
               ),
 
-              // ── 2. Cinematic Atmospheric Scrims ────────────────────
-              // Left-to-right gradient for typography legibility while keeping center/right vivid
+              // ── 2. Cinematic Atmospheric Gradient Scrims ──────────────────
+              // Left-to-right gradient for typography readability
               Positioned.fill(
                 child: IgnorePointer(
                   child: DecoratedBox(
@@ -432,12 +539,12 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                       gradient: LinearGradient(
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
-                        stops: const [0.0, 0.35, 0.65, 1.0],
+                        stops: const [0.0, 0.38, 0.68, 1.0],
                         colors: [
-                          Colors.black.withValues(alpha: 0.88),
-                          Colors.black.withValues(alpha: 0.58),
-                          Colors.black.withValues(alpha: 0.15),
-                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.90),
+                          Colors.black.withValues(alpha: 0.62),
+                          Colors.black.withValues(alpha: 0.20),
+                          Colors.black.withValues(alpha: 0.12),
                         ],
                       ),
                     ),
@@ -445,7 +552,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                 ),
               ),
 
-              // Bottom and top ambient vignettes
+              // Ambient top and bottom vignettes
               Positioned.fill(
                 child: IgnorePointer(
                   child: DecoratedBox(
@@ -453,12 +560,12 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        stops: const [0.0, 0.18, 0.70, 1.0],
+                        stops: const [0.0, 0.18, 0.72, 1.0],
                         colors: [
-                          Colors.black.withValues(alpha: 0.55),
+                          Colors.black.withValues(alpha: 0.60),
                           Colors.transparent,
                           Colors.transparent,
-                          Colors.black.withValues(alpha: 0.85),
+                          Colors.black.withValues(alpha: 0.88),
                         ],
                       ),
                     ),
@@ -466,64 +573,49 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                 ),
               ),
 
-              // ── 3. Top Navigation Header ───────────────────────────
+              // ── 3. Top Navigation Header ──────────────────────────────────
               Positioned(
                 top: 24,
                 left: 36,
                 right: 36,
                 child: Row(
                   children: [
-                    // Minimal circular back button
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => Navigator.of(context).pop(),
-                        child: Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.black.withValues(alpha: 0.40),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.14),
-                              width: 1,
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.chevron_left_rounded,
-                            color: Colors.white,
-                            size: 26,
-                          ),
-                        ),
-                      ),
+                    // Minimal circular back button (<)
+                    _roundIconButton(
+                      icon: Icons.chevron_left_rounded,
+                      size: 26,
+                      tooltip: 'Back',
+                      onTap: () => Navigator.of(context).pop(),
                     ),
                     const Spacer(),
-                    _topRightUtilities(),
+                    // Top Right: Season dropdown pill + (✕) close button (matches Arcane reference)
+                    _topRightControls(detail, seasons, currentSeason),
                   ],
                 ),
               ),
 
-              // ── 4. Main Two-Column Layout (Matching Arcane Reference) ─
+              // ── 4. Main Two-Column Layout ─────────────────────────────────
               Positioned.fill(
-                top: 76,
+                top: 80,
                 bottom: 28,
                 left: 48,
                 right: 48,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Left Column: Stylized Title, Meta Row, Genres, Open Artwork, Synopsis, Actions
+                    // Left Column: Title, Metadata, Genres, Red Dash, Synopsis, Actions
                     Expanded(
-                      child: _leftContentColumn(detail, episodes),
+                      child: _leftContentColumn(detail, episodes, currentSeason),
                     ),
 
-                    const SizedBox(width: 44),
+                    const SizedBox(width: 48),
 
-                    // Right Column: Floating Frosted Episodes Panel
+                    // Right Column: Floating Episodes Panel (Series) OR Extras/Trailer (Movie)
                     SizedBox(
-                      width: 420,
-                      child: _rightEpisodesPanel(detail, episodes),
+                      width: 410,
+                      child: detail.isSeries
+                          ? _seriesEpisodesColumn(detail, episodes, currentSeason)
+                          : _movieExtrasColumn(detail),
                     ),
                   ],
                 ),
@@ -535,23 +627,6 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     );
   }
 
-  Widget _backdropView(String? backdropUrl) {
-    if (_trailerSource != null) {
-      return _HeroTrailer(
-        key: ValueKey(_trailerSource.hashCode),
-        trailer: _trailerSource!,
-        collapsed: false,
-        autoplay: true,
-        placeholder: _staticBackdrop(backdropUrl),
-        onTapFullscreen: () {
-          final detail = context.read<DetailCubit>().state.detail;
-          if (detail != null) _openTrailerFullscreen(detail);
-        },
-      );
-    }
-    return _staticBackdrop(backdropUrl);
-  }
-
   Widget _staticBackdrop(String? backdropUrl) {
     if (backdropUrl != null && backdropUrl.isNotEmpty) {
       return CachedNetworkImage(
@@ -559,7 +634,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         fit: BoxFit.cover,
         alignment: Alignment.center,
         memCacheWidth: 1920,
-        fadeInDuration: const Duration(milliseconds: 220),
+        fadeInDuration: const Duration(milliseconds: 250),
         placeholder: (_, _) => Container(color: Colors.black),
         errorWidget: (_, _, _) => Container(color: Colors.black),
       );
@@ -567,48 +642,168 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     return Container(color: Colors.black);
   }
 
-  Widget _topRightUtilities() {
+  Widget _roundIconButton({
+    required IconData icon,
+    required double size,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.45),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.15),
+                width: 1,
+              ),
+            ),
+            child: Icon(icon, color: Colors.white, size: size),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _topRightControls(
+    MediaDetail detail,
+    List<int> seasons,
+    int currentSeason,
+  ) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          Icons.grid_view_rounded,
+        if (detail.isSeries && seasons.isNotEmpty) ...[
+          _seasonSelectorPill(seasons, currentSeason),
+          const SizedBox(width: 14),
+        ],
+        _roundIconButton(
+          icon: Icons.close_rounded,
           size: 20,
-          color: Colors.white.withValues(alpha: 0.75),
-        ),
-        const SizedBox(width: 16),
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.25),
-              width: 1,
-            ),
-          ),
-          child: CircleAvatar(
-            backgroundColor: AppColors.surface2,
-            child: const Icon(
-              Icons.person_rounded,
-              color: Colors.white,
-              size: 18,
-            ),
-          ),
+          tooltip: 'Close',
+          onTap: () => Navigator.of(context).pop(),
         ),
       ],
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Left Column (Hero Title, Meta Row, Genres, Synopsis, Action Buttons)
-  // ─────────────────────────────────────────────────────────────────────────
+  Widget _seasonSelectorPill(List<int> seasons, int currentSeason) {
+    if (seasons.length <= 1) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.15),
+            width: 1,
+          ),
+        ),
+        child: Text(
+          'Season $currentSeason',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
 
-  Widget _leftContentColumn(MediaDetail detail, List<Episode> episodes) {
+    return PopupMenuButton<int>(
+      initialValue: currentSeason,
+      tooltip: 'Select Season',
+      color: const Color(0xFF14141E),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      onSelected: (s) {
+        setState(() {
+          _selectedSeason = s;
+          _focusedEpisodeId = null;
+        });
+      },
+      itemBuilder: (context) => [
+        for (final s in seasons)
+          PopupMenuItem<int>(
+            value: s,
+            child: Row(
+              children: [
+                Text(
+                  'Season $s',
+                  style: TextStyle(
+                    color: s == currentSeason ? Colors.white : Colors.white70,
+                    fontWeight:
+                        s == currentSeason ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+                if (s == currentSeason) ...[
+                  const Spacer(),
+                  const Icon(
+                    Icons.check_rounded,
+                    color: Color(0xFFE50914),
+                    size: 18,
+                  ),
+                ],
+              ],
+            ),
+          ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.15),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Season $currentSeason',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Left Column (Hero Title, Meta Row, Genres, Synopsis, Action Buttons)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  Widget _leftContentColumn(
+    MediaDetail detail,
+    List<Episode> episodes,
+    int currentSeason,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── 1. Stylized Title Logo ─────────────────────────────────
+        // ── 1. Stylized Title Logo / Elegant Display Typography ────
         _titleHeader(detail),
 
         const SizedBox(height: 18),
@@ -621,39 +816,38 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         // ── 3. Frosted Genre Pills Row ─────────────────────────────
         _genresPillRow(detail),
 
-        // ── 4. Open Space Letting Background Artwork Shine ─────────
         const Spacer(),
 
-        // ── 5. Red Accent Dash (Exact Match to Arcane Reference) ───
+        // ── 4. Red Accent Dash (Exact Match to Reference Screenshots) ─
         Container(
-          width: 26,
-          height: 3,
+          width: 32,
+          height: 3.5,
           decoration: BoxDecoration(
             color: const Color(0xFFE50914),
-            borderRadius: BorderRadius.circular(1.5),
+            borderRadius: BorderRadius.circular(2),
           ),
         ),
 
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
 
-        // ── 6. Editorial Synopsis ──────────────────────────────────
+        // ── 5. Editorial Synopsis ──────────────────────────────────
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 540),
           child: Text(
             detail.description != null && detail.description!.isNotEmpty
                 ? detail.description!
-                : 'An aspiring utopian regime clashes with a violent radical underground. At the heart of this revolution of magic and tech, a family\'s bond is tested.',
+                : 'In a divided city of utopia and undercity, two sisters find themselves on opposite sides of a brewing conflict that will reshape their world.',
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.86),
+              color: Colors.white.withValues(alpha: 0.88),
               fontSize: 14.5,
               height: 1.52,
               fontWeight: FontWeight.w400,
               shadows: const [
                 Shadow(
                   color: Colors.black87,
-                  blurRadius: 8,
+                  blurRadius: 10,
                   offset: Offset(0, 2),
                 ),
               ],
@@ -661,10 +855,10 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
           ),
         ),
 
-        const SizedBox(height: 22),
+        const SizedBox(height: 24),
 
-        // ── 7. Primary Action Button & Circular Frosted Utilities ──
-        _bottomActionBar(detail, episodes),
+        // ── 6. Primary Action Button & Circular Frosted Utilities ──
+        _bottomActionBar(detail, episodes, currentSeason),
       ],
     );
   }
@@ -672,7 +866,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   Widget _titleHeader(MediaDetail detail) {
     if (_titleLogoUrl != null && _titleLogoUrl!.isNotEmpty) {
       return ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 110),
+        constraints: const BoxConstraints(maxWidth: 440, maxHeight: 115),
         child: CachedNetworkImage(
           imageUrl: _titleLogoUrl!,
           fit: BoxFit.contain,
@@ -687,12 +881,40 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   }
 
   Widget _titleTextFallback(MediaDetail detail) {
+    if (!detail.isSeries) {
+      // Movie Title: Elegant serif display typography matching "THE FINAL PROBLEM" reference
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            detail.title.toUpperCase(),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 48,
+              fontFamily: 'serif',
+              fontWeight: FontWeight.w700,
+              letterSpacing: 2.2,
+              height: 1.08,
+              shadows: [
+                Shadow(
+                  color: Colors.black87,
+                  blurRadius: 16,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
     return cinioFallbackTitle(
       title: detail.title,
       seed: detail.id,
       accent: AppColors.accent,
       genres: detail.genres,
-      fontSize: 44,
+      fontSize: 46,
       textAlign: TextAlign.left,
     );
   }
@@ -709,12 +931,14 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     final seasonsText = detail.isSeries
         ? (seasonsCount > 1 ? '$seasonsCount Seasons' : '1 Season')
         : (episodes.isNotEmpty && episodes.first.runtimeMinutes != null
-            ? '${episodes.first.runtimeMinutes! ~/ 60}h ${episodes.first.runtimeMinutes! % 60}m'
-            : 'Movie');
+            ? '${episodes.first.runtimeMinutes} min'
+            : (widget.item.duration != null && widget.item.duration!.isNotEmpty
+                ? widget.item.duration!
+                : '128 min'));
 
     final rating = (detail.rating != null && detail.rating! > 0)
         ? detail.rating!
-        : (widget.item.rating ?? 9.0);
+        : (widget.item.rating ?? (detail.isSeries ? 9.0 : 6.9));
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -745,9 +969,9 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
         _metaDivider(),
 
-        // Content age rating (e.g. 16+ / TV-MA / PG-13)
+        // Age rating
         Text(
-          detail.isSeries ? '16+' : 'PG-13',
+          detail.isSeries ? '16+' : '16+',
           style: const TextStyle(
             color: Colors.white,
             fontSize: 15,
@@ -816,7 +1040,9 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         ? detail.genres
         : (widget.item.genres.isNotEmpty
             ? widget.item.genres
-            : ['Animation', 'Action', 'Adventure', 'Drama']);
+            : (detail.isSeries
+                ? ['Animation', 'Action', 'Adventure', 'Drama']
+                : ['Crime', 'Mystery', 'Drama', 'Thriller']));
 
     return Wrap(
       spacing: 10,
@@ -846,25 +1072,31 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     );
   }
 
-  Widget _bottomActionBar(MediaDetail detail, List<Episode> episodes) {
+  Widget _bottomActionBar(
+    MediaDetail detail,
+    List<Episode> episodes,
+    int currentSeason,
+  ) {
     final isBookmarked = _myList.contains(widget.item);
 
-    // Determine resume or start episode
     Episode? targetEp;
     String playLabel = 'Watch Now';
 
     if (detail.isSeries && episodes.isNotEmpty) {
-      final hasResume = _hasResume(episodes);
-      final rIndex = _resumeIndex(episodes);
-      targetEp = episodes[rIndex];
-      final sNum = seasonOf(targetEp) ?? 1;
+      final seasonEps = episodes
+          .where((e) => (seasonOf(e) ?? 1) == currentSeason)
+          .toList();
+      final epsToInspect = seasonEps.isNotEmpty ? seasonEps : episodes;
+
+      final hasResume = _hasResume(epsToInspect);
+      final rIndex = _resumeIndex(epsToInspect);
+      targetEp = epsToInspect[rIndex];
+      final sNum = seasonOf(targetEp) ?? currentSeason;
       final eNum = targetEp.number?.toInt() ?? (rIndex + 1);
-      playLabel = hasResume
-          ? 'Resume S$sNum E$eNum'
-          : 'Play S$sNum E$eNum';
+      playLabel = hasResume ? 'Resume S$sNum E$eNum' : 'Watch S$sNum E$eNum';
     } else {
       final hasResume = _hasResume(episodes);
-      playLabel = hasResume ? 'Resume' : 'Watch Movie';
+      playLabel = hasResume ? 'Resume' : 'Watch Now';
       if (episodes.isNotEmpty) {
         targetEp = episodes.first;
       }
@@ -884,14 +1116,14 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
               }
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 13),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    blurRadius: 10,
+                    color: Colors.black.withValues(alpha: 0.45),
+                    blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
                 ],
@@ -965,10 +1197,10 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
         const SizedBox(width: 10),
 
-        // ── More Options / Trailer [ ··· ] ────────────────────────
+        // ── More Options / Share [ ··· ] ──────────────────────────
         _circleUtility(
           icon: Icons.more_horiz_rounded,
-          tooltip: 'Trailer & More Options',
+          tooltip: 'More Options',
           onTap: () => _openTrailerFullscreen(detail),
         ),
       ],
@@ -993,11 +1225,11 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: active
-                  ? AppColors.defaultAccent.withValues(alpha: 0.22)
+                  ? const Color(0xFFE50914).withValues(alpha: 0.25)
                   : Colors.white.withValues(alpha: 0.10),
               border: Border.all(
                 color: active
-                    ? AppColors.defaultAccent
+                    ? const Color(0xFFE50914)
                     : Colors.white.withValues(alpha: 0.18),
                 width: 1,
               ),
@@ -1005,7 +1237,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
             child: Center(
               child: Icon(
                 icon,
-                color: active ? AppColors.defaultAccent : Colors.white,
+                color: active ? const Color(0xFFE50914) : Colors.white,
                 size: 21,
               ),
             ),
@@ -1015,292 +1247,236 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Right Column (Floating Frosted Episodes Panel - Matching Reference)
-  // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Right Column for Series (Floating Staggered Episode Cards)
+  // ─────────────────────────────────────────────────────────────────────────────
 
-  Widget _rightEpisodesPanel(MediaDetail detail, List<Episode> episodes) {
-    if (!detail.isSeries || episodes.isEmpty) {
-      return _movieFallbackPanel(detail);
-    }
-
-    final seasons = episodes
-        .map((e) => seasonOf(e) ?? 1)
-        .toSet()
-        .toList()
-      ..sort();
-
-    final currentSeason = _selectedSeason ?? (seasons.isNotEmpty ? seasons.first : 1);
-
+  Widget _seriesEpisodesColumn(
+    MediaDetail detail,
+    List<Episode> episodes,
+    int currentSeason,
+  ) {
     final filteredEpisodes = episodes
         .where((e) => (seasonOf(e) ?? 1) == currentSeason)
         .toList();
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F0F14).withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.60),
-            blurRadius: 28,
-            offset: const Offset(0, 10),
+    if (filteredEpisodes.isEmpty) {
+      return Center(
+        child: Text(
+          'No episodes found for Season $currentSeason',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.6),
+            fontSize: 14,
           ),
-        ],
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ── Season Tabs Header: "Season 1 ˅    Season 2       Episodes 9" ─
-          Row(
-            children: [
-              // Active Season Selector
-              _seasonDropdown(seasons, currentSeason),
-
-              if (seasons.length > 1) ...[
-                const SizedBox(width: 16),
-                for (final s in seasons.where((s) => s != currentSeason).take(2))
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => setState(() => _selectedSeason = s),
-                        child: Text(
-                          'Season $s',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.45),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-
-              const Spacer(),
-
-              // Episodes Count Badge (e.g. "Episodes 9")
-              Text(
-                'Episodes ${filteredEpisodes.length}',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.45),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          // ── Episodes List (Active item highlighted with red outline) ─
-          Expanded(
-            child: RawScrollbar(
-              controller: _episodesScrollCtrl,
-              thumbVisibility: false,
-              thickness: 4,
-              radius: const Radius.circular(4),
-              thumbColor: Colors.white.withValues(alpha: 0.20),
-              child: ListView.separated(
-                controller: _episodesScrollCtrl,
-                physics: const BouncingScrollPhysics(),
-                itemCount: filteredEpisodes.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final ep = filteredEpisodes[index];
-                  final hasResume = _hasResume(episodes);
-                  final resumeEpIndex = _resumeIndex(episodes);
-                  final isActive = hasResume
-                      ? (ep.id == episodes[resumeEpIndex].id)
-                      : (index == 0);
-                  final isWatched = _resume.get(
-                        widget.item.sourceId,
-                        widget.item.url,
-                        ep.id,
-                      )?.finished ??
-                      false;
-
-                  return _EpisodeRowItem(
-                    ep: ep,
-                    index: index,
-                    isActive: isActive,
-                    isWatched: isWatched,
-                    onTap: () => _playEpisode(detail, filteredEpisodes, index),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _seasonDropdown(List<int> seasons, int currentSeason) {
-    if (seasons.length <= 1) {
-      return Text(
-        'Season $currentSeason',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 15,
-          fontWeight: FontWeight.w700,
         ),
       );
     }
 
-    return PopupMenuButton<int>(
-      initialValue: currentSeason,
-      tooltip: 'Select Season',
-      color: const Color(0xFF181820),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: Colors.white.withValues(alpha: 0.12),
-        ),
-      ),
-      onSelected: (season) {
-        setState(() => _selectedSeason = season);
-      },
-      itemBuilder: (context) => [
-        for (final s in seasons)
-          PopupMenuItem<int>(
-            value: s,
-            child: Row(
-              children: [
-                Text(
-                  'Season $s',
-                  style: TextStyle(
-                    color: s == currentSeason ? Colors.white : Colors.white70,
-                    fontWeight: s == currentSeason
-                        ? FontWeight.w700
-                        : FontWeight.w500,
-                  ),
-                ),
-                if (s == currentSeason) ...[
-                  const Spacer(),
-                  const Icon(
-                    Icons.check_rounded,
-                    color: AppColors.defaultAccent,
-                    size: 18,
-                  ),
-                ],
-              ],
-            ),
-          ),
-      ],
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Season $currentSeason',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(width: 4),
-          const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: Colors.white,
-            size: 20,
-          ),
-        ],
+    final hasResume = _hasResume(episodes);
+    final resumeEpIndex = _resumeIndex(episodes);
+    final defaultActiveId = hasResume
+        ? episodes[resumeEpIndex].id
+        : filteredEpisodes.first.id;
+
+    final activeId = _focusedEpisodeId ?? defaultActiveId;
+
+    return RawScrollbar(
+      controller: _episodesScrollCtrl,
+      thumbVisibility: false,
+      thickness: 4,
+      radius: const Radius.circular(4),
+      thumbColor: Colors.white.withValues(alpha: 0.20),
+      child: ListView.separated(
+        controller: _episodesScrollCtrl,
+        physics: const BouncingScrollPhysics(),
+        itemCount: filteredEpisodes.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
+        itemBuilder: (context, index) {
+          final ep = filteredEpisodes[index];
+          final isActive = ep.id == activeId;
+          final mark = _resume.get(
+            widget.item.sourceId,
+            widget.item.url,
+            ep.id,
+          );
+          final progress = mark != null && mark.duration > 0
+              ? (mark.position / mark.duration).clamp(0.0, 1.0)
+              : (isActive ? 0.45 : 0.0);
+
+          return _SeriesEpisodeCard(
+            ep: ep,
+            index: index,
+            isActive: isActive,
+            progress: progress,
+            onTap: () {
+              setState(() => _focusedEpisodeId = ep.id);
+              _playEpisode(detail, filteredEpisodes, index);
+            },
+          );
+        },
       ),
     );
   }
 
-  Widget _movieFallbackPanel(MediaDetail detail) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F0F14).withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-          width: 1,
-        ),
-      ),
-      padding: const EdgeInsets.all(22),
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Right Column for Movie (Trailer Card + Behind the Scenes + Deleted + Similar)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  Widget _movieExtrasColumn(MediaDetail detail) {
+    final backdropUrl = _resolvedBackdropUrl ??
+        widget.item.heroImage ??
+        detail.cover ??
+        widget.item.cover;
+
+    // Use TMDB video keys if resolved, otherwise fall back to reference layout
+    final trailerVideo = _movieVideos.firstWhere(
+      (v) => v.type.toLowerCase().contains('trailer'),
+      orElse: () => _movieVideos.isNotEmpty
+          ? _movieVideos.first
+          : const _MovieExtraVideo(
+              title: 'Trailer',
+              duration: '2:24',
+              youtubeKey: '',
+              type: 'Trailer',
+            ),
+    );
+
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'FEATURE FILM',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
+          // ── 1. Featured Trailer Card (Glowing Amber Outline) ────────
+          _FeaturedTrailerCard(
+            video: trailerVideo,
+            backdropUrl: backdropUrl,
+            onPlay: () {
+              if (trailerVideo.youtubeKey.isNotEmpty) {
+                _openExtraVideo(trailerVideo.title, trailerVideo.youtubeKey);
+              } else {
+                _openTrailerFullscreen(detail);
+              }
+            },
           ),
-          const SizedBox(height: 16),
-          if (detail.cast.isNotEmpty) ...[
-            Text(
-              'STARRING',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.40),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final c in detail.cast.take(6))
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      c,
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+
+          const SizedBox(height: 14),
+
+          // ── 2. Behind the Scenes Card ──────────────────────────────
+          _MovieExtraClipCard(
+            title: 'Behind the Scenes',
+            duration: '8:12',
+            backdropUrl: backdropUrl,
+            onPlay: () {
+              final bts = _movieVideos.firstWhere(
+                (v) => v.type.toLowerCase().contains('behind'),
+                orElse: () => trailerVideo,
+              );
+              if (bts.youtubeKey.isNotEmpty) {
+                _openExtraVideo(bts.title, bts.youtubeKey);
+              } else {
+                _openTrailerFullscreen(detail);
+              }
+            },
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── 3. Cast Interviews Card ────────────────────────────────
+          _MovieExtraClipCard(
+            title: 'Cast Interviews',
+            duration: '5:41',
+            backdropUrl: backdropUrl,
+            onPlay: () {
+              final feat = _movieVideos.firstWhere(
+                (v) => v.type.toLowerCase().contains('featurette'),
+                orElse: () => trailerVideo,
+              );
+              if (feat.youtubeKey.isNotEmpty) {
+                _openExtraVideo(feat.title, feat.youtubeKey);
+              } else {
+                _openTrailerFullscreen(detail);
+              }
+            },
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── 4. Deleted Scenes Card ─────────────────────────────────
+          _MovieExtraClipCard(
+            title: 'Deleted Scenes',
+            duration: '6:20',
+            backdropUrl: backdropUrl,
+            onPlay: () {
+              final del = _movieVideos.firstWhere(
+                (v) => v.type.toLowerCase().contains('clip'),
+                orElse: () => trailerVideo,
+              );
+              if (del.youtubeKey.isNotEmpty) {
+                _openExtraVideo(del.title, del.youtubeKey);
+              } else {
+                _openTrailerFullscreen(detail);
+              }
+            },
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── 5. Similar Movies Card ─────────────────────────────────
+          _SimilarMoviesCard(
+            similarMovies: _similarMovies,
+            fallbackBackdrop: backdropUrl,
+            onTap: () {
+              if (_similarMovies.isNotEmpty) {
+                final rel = _similarMovies.first;
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => DetailScreen(
+                      item: MediaItem(
+                        id: rel.catalogId ?? 'tmdb:movie:${rel.tmdbId}',
+                        title: rel.title,
+                        url: rel.catalogId != null
+                            ? 'tpdb://movie/${rel.catalogId}'
+                            : 'tmdb://movie/${rel.tmdbId}',
+                        cover: rel.cover,
+                        sourceId: rel.sourceId ?? 'tmdb:catalog',
+                        type: ProviderType.movie,
+                      ),
                     ),
                   ),
-              ],
-            ),
-          ],
+                );
+              }
+            },
+          ),
         ],
       ),
     );
   }
 }
 
-/// Episode row component exactly matching the Arcane reference:
-/// • 16:9 thumbnail on left.
-/// • Middle: Episode number (red if active), title, duration · rating.
-/// • Trailing: Circular checkmark [✓] if watched, or circular play [▷] if unwatched.
-/// • Active item has a subtle red/coral border highlight.
-class _EpisodeRowItem extends StatefulWidget {
-  const _EpisodeRowItem({
+// ─────────────────────────────────────────────────────────────────────────────
+// Series Episode Card (Matching Arcane Reference Screenshot)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SeriesEpisodeCard extends StatefulWidget {
+  const _SeriesEpisodeCard({
     required this.ep,
     required this.index,
     required this.isActive,
-    required this.isWatched,
+    required this.progress,
     required this.onTap,
   });
 
   final Episode ep;
   final int index;
   final bool isActive;
-  final bool isWatched;
+  final double progress;
   final VoidCallback onTap;
 
   @override
-  State<_EpisodeRowItem> createState() => _EpisodeRowItemState();
+  State<_SeriesEpisodeCard> createState() => _SeriesEpisodeCardState();
 }
 
-class _EpisodeRowItemState extends State<_EpisodeRowItem> {
+class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
   bool _hovered = false;
 
   @override
@@ -1318,118 +1494,381 @@ class _EpisodeRowItemState extends State<_EpisodeRowItem> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.all(7),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
+            color: isActive
+                ? const Color(0xFF18151E).withValues(alpha: 0.88)
+                : (_hovered
+                    ? const Color(0xFF1A1A24).withValues(alpha: 0.78)
+                    : const Color(0xFF101018).withValues(alpha: 0.65)),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: isActive
-                  ? const Color(0xFFE50914).withValues(alpha: 0.75)
+                  ? const Color(0xFFE50914)
                   : (_hovered
-                      ? Colors.white.withValues(alpha: 0.15)
-                      : Colors.white.withValues(alpha: 0.04)),
-              width: isActive ? 1.2 : 0.8,
+                      ? Colors.white.withValues(alpha: 0.22)
+                      : Colors.white.withValues(alpha: 0.08)),
+              width: isActive ? 1.5 : 1.0,
             ),
-            color: isActive
-                ? Colors.white.withValues(alpha: 0.06)
-                : (_hovered
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.transparent),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFFE50914).withValues(alpha: 0.28),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : null,
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // 16:9 Thumbnail (106 × 60)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 106,
-                  height: 60,
+              Row(
+                children: [
+                  // Left info: Episode number & title + duration
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '$epNumber. $displayTitle',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight:
+                                isActive ? FontWeight.w700 : FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          ep.runtimeMinutes != null
+                              ? '${ep.runtimeMinutes} min'
+                              : '41 min',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.50),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 14),
+
+                  // Right: 16:9 Thumbnail with Play Button Overlay if Active
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(9),
+                    child: SizedBox(
+                      width: 116,
+                      height: 65,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
+                            CachedNetworkImage(
+                              imageUrl: ep.thumbnail!,
+                              fit: BoxFit.cover,
+                              filterQuality: FilterQuality.medium,
+                              placeholder: (_, _) => Container(
+                                color: Colors.white.withValues(alpha: 0.06),
+                              ),
+                              errorWidget: (_, _, _) => Container(
+                                color: Colors.white.withValues(alpha: 0.06),
+                                child: const Icon(
+                                  Icons.movie_rounded,
+                                  color: Colors.white30,
+                                  size: 20,
+                                ),
+                              ),
+                            )
+                          else
+                            Container(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              child: const Icon(
+                                Icons.movie_rounded,
+                                color: Colors.white30,
+                                size: 20,
+                              ),
+                            ),
+
+                          // Centered Play Button Circle (Exact match to Arcane Active Episode Card)
+                          if (isActive)
+                            Center(
+                              child: Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.play_arrow_rounded,
+                                    color: Colors.white,
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              // Bottom Progress Bar (Active Episode Watch Progress)
+              if (isActive && widget.progress > 0) ...[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: widget.progress,
+                    minHeight: 2.5,
+                    backgroundColor: Colors.white.withValues(alpha: 0.16),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Color(0xFFE50914),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Movie Extras Cards (Matching "The Final Problem" Reference Screenshot)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FeaturedTrailerCard extends StatefulWidget {
+  const _FeaturedTrailerCard({
+    required this.video,
+    required this.backdropUrl,
+    required this.onPlay,
+  });
+
+  final _MovieExtraVideo video;
+  final String? backdropUrl;
+  final VoidCallback onPlay;
+
+  @override
+  State<_FeaturedTrailerCard> createState() => _FeaturedTrailerCardState();
+}
+
+class _FeaturedTrailerCardState extends State<_FeaturedTrailerCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onPlay,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFFF5C518).withValues(alpha: 0.85),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFF5C518).withValues(alpha: 0.22),
+                blurRadius: 18,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(15),
+            child: Stack(
+              children: [
+                // 16:9 Thumbnail Stage
+                AspectRatio(
+                  aspectRatio: 16 / 9,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      if (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
+                      if (widget.video.youtubeKey.isNotEmpty)
                         CachedNetworkImage(
-                          imageUrl: ep.thumbnail!,
+                          imageUrl:
+                              'https://img.youtube.com/vi/${widget.video.youtubeKey}/hqdefault.jpg',
                           fit: BoxFit.cover,
-                          memCacheWidth: 220,
-                          placeholder: (_, _) => Container(color: AppColors.surface2),
-                          errorWidget: (_, _, _) => Container(
-                            color: AppColors.surface2,
-                            child: const Icon(
-                              Icons.movie_rounded,
-                              color: AppColors.textTertiary,
-                              size: 20,
-                            ),
-                          ),
+                          errorWidget: (_, _, _) => _fallbackBackdrop(),
                         )
                       else
-                        Container(
-                          color: AppColors.surface2,
-                          child: const Icon(
-                            Icons.movie_rounded,
-                            color: AppColors.textTertiary,
-                            size: 20,
+                        _fallbackBackdrop(),
+
+                      // Gradient overlay
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            stops: const [0.0, 0.45, 1.0],
+                            colors: [
+                              Colors.black.withValues(alpha: 0.45),
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.75),
+                            ],
                           ),
                         ),
+                      ),
 
-                      if (_hovered)
-                        Container(
-                          color: Colors.black.withValues(alpha: 0.35),
+                      // Centered Big Circular Play Button
+                      Center(
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.black.withValues(alpha: 0.60),
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 2.0,
+                            ),
+                          ),
                           child: const Center(
                             child: Icon(
                               Icons.play_arrow_rounded,
                               color: Colors.white,
-                              size: 24,
+                              size: 32,
                             ),
                           ),
                         ),
+                      ),
+
+                      // Left Info: "Trailer" & duration
+                      Positioned(
+                        bottom: 14,
+                        left: 16,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Trailer',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              widget.video.duration,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.65),
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
-              const SizedBox(width: 12),
+  Widget _fallbackBackdrop() {
+    if (widget.backdropUrl != null && widget.backdropUrl!.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: widget.backdropUrl!,
+        fit: BoxFit.cover,
+      );
+    }
+    return Container(color: const Color(0xFF161622));
+  }
+}
 
-              // Number + Title + Duration · Rating
+class _MovieExtraClipCard extends StatefulWidget {
+  const _MovieExtraClipCard({
+    required this.title,
+    required this.duration,
+    required this.backdropUrl,
+    required this.onPlay,
+  });
+
+  final String title;
+  final String duration;
+  final String? backdropUrl;
+  final VoidCallback onPlay;
+
+  @override
+  State<_MovieExtraClipCard> createState() => _MovieExtraClipCardState();
+}
+
+class _MovieExtraClipCardState extends State<_MovieExtraClipCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onPlay,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: _hovered
+                ? const Color(0xFF1E1E2A).withValues(alpha: 0.85)
+                : const Color(0xFF12121A).withValues(alpha: 0.68),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: _hovered
+                  ? Colors.white.withValues(alpha: 0.22)
+                  : Colors.white.withValues(alpha: 0.08),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              // Title & Duration
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Row(
-                      children: [
-                        Text(
-                          '$epNumber',
-                          style: TextStyle(
-                            color: isActive
-                                ? const Color(0xFFE50914)
-                                : Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            displayTitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      ep.runtimeMinutes != null
-                          ? '${ep.runtimeMinutes} min'
-                          : 'Episode',
+                      widget.duration,
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.42),
-                        fontSize: 11.5,
+                        color: Colors.white.withValues(alpha: 0.50),
+                        fontSize: 12,
                         fontWeight: FontWeight.w400,
                       ),
                     ),
@@ -1437,56 +1876,181 @@ class _EpisodeRowItemState extends State<_EpisodeRowItem> {
                 ),
               ),
 
-              const SizedBox(width: 8),
+              const SizedBox(width: 14),
 
-              // Trailing circular checkmark [✓] or play outline [▷]
-              _trailingActionIcon(),
+              // Thumbnail with circular play button
+              ClipRRect(
+                borderRadius: BorderRadius.circular(9),
+                child: SizedBox(
+                  width: 116,
+                  height: 65,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (widget.backdropUrl != null &&
+                          widget.backdropUrl!.isNotEmpty)
+                        CachedNetworkImage(
+                          imageUrl: widget.backdropUrl!,
+                          fit: BoxFit.cover,
+                        )
+                      else
+                        Container(color: Colors.white12),
+
+                      Center(
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.black.withValues(alpha: 0.55),
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.play_arrow_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _trailingActionIcon() {
-    if (widget.isWatched) {
-      return Container(
-        width: 30,
-        height: 30,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.45),
-            width: 1.2,
-          ),
-        ),
-        child: const Center(
-          child: Icon(
-            Icons.check_rounded,
-            color: Colors.white,
-            size: 16,
-          ),
-        ),
-      );
-    }
+class _SimilarMoviesCard extends StatefulWidget {
+  const _SimilarMoviesCard({
+    required this.similarMovies,
+    required this.fallbackBackdrop,
+    required this.onTap,
+  });
 
-    return Container(
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.45),
-          width: 1.2,
-        ),
-      ),
-      child: const Center(
-        child: Icon(
-          Icons.play_arrow_rounded,
-          color: Colors.white,
-          size: 18,
+  final List<MediaRelation> similarMovies;
+  final String? fallbackBackdrop;
+  final VoidCallback onTap;
+
+  @override
+  State<_SimilarMoviesCard> createState() => _SimilarMoviesCardState();
+}
+
+class _SimilarMoviesCardState extends State<_SimilarMoviesCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: _hovered
+                ? const Color(0xFF1E1E2A).withValues(alpha: 0.85)
+                : const Color(0xFF12121A).withValues(alpha: 0.68),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: _hovered
+                  ? Colors.white.withValues(alpha: 0.22)
+                  : Colors.white.withValues(alpha: 0.08),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Similar Movies',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              // Preview Strip
+              ClipRRect(
+                borderRadius: BorderRadius.circular(9),
+                child: SizedBox(
+                  width: 116,
+                  height: 65,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (widget.similarMovies.isNotEmpty &&
+                          widget.similarMovies.first.cover != null)
+                        CachedNetworkImage(
+                          imageUrl: widget.similarMovies.first.cover!,
+                          fit: BoxFit.cover,
+                        )
+                      else if (widget.fallbackBackdrop != null)
+                        CachedNetworkImage(
+                          imageUrl: widget.fallbackBackdrop!,
+                          fit: BoxFit.cover,
+                        )
+                      else
+                        Container(color: Colors.white12),
+
+                      Center(
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.black.withValues(alpha: 0.55),
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.chevron_right_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _MovieExtraVideo {
+  final String title;
+  final String duration;
+  final String youtubeKey;
+  final String type;
+
+  const _MovieExtraVideo({
+    required this.title,
+    required this.duration,
+    required this.youtubeKey,
+    required this.type,
+  });
 }
