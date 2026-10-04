@@ -38,26 +38,8 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
   List<_MovieExtraVideo> _movieVideos = [];
   List<MediaRelation> _similarMovies = [];
+  List<CastMember> _loadedCast = [];
 
-  int _resumeIndex(List<Episode> eps) {
-    if (eps.isEmpty) return 0;
-    int? highestMarked;
-    for (int j = 0; j < eps.length; j++) {
-      final mark = _resume.get(widget.item.sourceId, widget.item.url, eps[j].id);
-      if (mark != null) {
-        highestMarked = j;
-      }
-    }
-    if (highestMarked == null) return 0;
-    final mark = _resume.get(
-      widget.item.sourceId,
-      widget.item.url,
-      eps[highestMarked].id,
-    )!;
-    if (!mark.finished) return highestMarked;
-    if (highestMarked + 1 < eps.length) return highestMarked + 1;
-    return highestMarked;
-  }
 
   bool _hasResume(List<Episode> eps) {
     if (eps.isEmpty) return false;
@@ -212,6 +194,22 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
     if (!detail.isSeries) {
       _loadMovieExtras(detail);
+    }
+
+    if (_loadedCast.isEmpty) {
+      final effectiveDetail = detail.tmdbId != null
+          ? detail
+          : detail.copyWith(tmdbId: tmdbId, tmdbIsTv: isTv);
+      sl<MetadataEnrichment>().fetch(effectiveDetail).then((extras) {
+        if (mounted && extras.cast.isNotEmpty) {
+          setState(() {
+            _loadedCast = extras.cast;
+            if (extras.relations.isNotEmpty && _similarMovies.isEmpty) {
+              _similarMovies = extras.relations;
+            }
+          });
+        }
+      }).catchError((_) {});
     }
   }
 
@@ -515,6 +513,14 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
           final currentSeason =
               _selectedSeason ?? (seasons.isNotEmpty ? seasons.first : 1);
 
+          final castList = state.cast.isNotEmpty
+              ? state.cast
+              : (_loadedCast.isNotEmpty
+                  ? _loadedCast
+                  : (detail.castMembers.isNotEmpty
+                      ? detail.castMembers
+                      : detail.cast.map((n) => CastMember(name: n)).toList()));
+
           return Stack(
             fit: StackFit.expand,
             children: [
@@ -598,7 +604,12 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                   children: [
                     // Left Column: Grouped at bottom with zero gap in middle
                     Expanded(
-                      child: _leftContentColumn(detail, episodes, currentSeason),
+                      child: _leftContentColumn(
+                        detail,
+                        episodes,
+                        currentSeason,
+                        castList,
+                      ),
                     ),
 
                     const SizedBox(width: 48),
@@ -792,72 +803,90 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     MediaDetail detail,
     List<Episode> episodes,
     int currentSeason,
+    List<CastMember> castList,
   ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        // Spacer pushes the entire block to sit elegantly in the lower half
-        const Spacer(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: IntrinsicHeight(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  // Spacer pushes the entire block to sit elegantly in the lower half
+                  const Spacer(),
 
-        // ── 1. Stylized Title Logo / Elegant Display Typography ────
-        _titleHeader(detail),
+                  // ── 1. Stylized Title Logo / Elegant Display Typography ────
+                  _titleHeader(detail),
 
-        const SizedBox(height: 12),
+                  const SizedBox(height: 12),
 
-        // ── 2. Metadata Line: "2021 | 2 Seasons | 16+ | [IMDb] 9.0" ─
-        _metadataRow(detail, episodes),
+                  // ── 2. Metadata Line: "2021 | 2 Seasons | 16+ | [IMDb] 9.0" ─
+                  _metadataRow(detail, episodes),
 
-        const SizedBox(height: 12),
+                  const SizedBox(height: 12),
 
-        // ── 3. Frosted Genre Pills Row ─────────────────────────────
-        _genresPillRow(detail),
+                  // ── 3. Frosted Genre Pills Row ─────────────────────────────
+                  _genresPillRow(detail),
 
-        const SizedBox(height: 14),
+                  if (castList.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    _castSquareRow(castList),
+                  ],
 
-        // ── 4. Red Accent Dash (Exact Match to Reference Screenshots) ─
-        Container(
-          width: 32,
-          height: 3.5,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE50914),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
+                  const SizedBox(height: 14),
 
-        const SizedBox(height: 10),
+                  // ── 4. Red Accent Dash (Exact Match to Reference Screenshots) ─
+                  Container(
+                    width: 32,
+                    height: 3.5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE50914),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
 
-        // ── 5. Editorial Synopsis ──────────────────────────────────
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 540),
-          child: Text(
-            detail.description != null && detail.description!.isNotEmpty
-                ? detail.description!
-                : 'In a divided city of utopia and undercity, two sisters find themselves on opposite sides of a brewing conflict that will reshape their world.',
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.88),
-              fontSize: 14.5,
-              height: 1.52,
-              fontWeight: FontWeight.w400,
-              shadows: const [
-                Shadow(
-                  color: Colors.black87,
-                  blurRadius: 10,
-                  offset: Offset(0, 2),
-                ),
-              ],
+                  const SizedBox(height: 10),
+
+                  // ── 5. Editorial Synopsis ──────────────────────────────────
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 540),
+                    child: Text(
+                      detail.description != null && detail.description!.isNotEmpty
+                          ? detail.description!
+                          : 'In a divided city of utopia and undercity, two sisters find themselves on opposite sides of a brewing conflict that will reshape their world.',
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.88),
+                        fontSize: 14.5,
+                        height: 1.52,
+                        fontWeight: FontWeight.w400,
+                        shadows: const [
+                          Shadow(
+                            color: Colors.black87,
+                            blurRadius: 10,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // ── 6. Primary Action Button & Circular Frosted Utilities ──
+                  _bottomActionBar(detail, episodes, currentSeason),
+                  const SizedBox(height: 6),
+                ],
+              ),
             ),
           ),
-        ),
-
-        const SizedBox(height: 20),
-
-        // ── 6. Primary Action Button & Circular Frosted Utilities ──
-        _bottomActionBar(detail, episodes, currentSeason),
-        const SizedBox(height: 6),
-      ],
+        );
+      },
     );
   }
 
@@ -879,35 +908,19 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   }
 
   Widget _titleTextFallback(MediaDetail detail) {
-    if (!detail.isSeries) {
-      // Movie Title: Elegant serif display typography matching "THE FINAL PROBLEM" reference
-      return Text(
-        detail.title.toUpperCase(),
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 48,
-          fontFamily: 'serif',
-          fontWeight: FontWeight.w700,
-          letterSpacing: 2.2,
-          height: 1.08,
-          shadows: [
-            Shadow(
-              color: Colors.black87,
-              blurRadius: 16,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return cinioFallbackTitle(
-      title: detail.title,
-      seed: detail.id,
-      accent: AppColors.accent,
-      genres: detail.genres,
-      fontSize: 46,
-      textAlign: TextAlign.left,
+    final seed = detail.tmdbId ?? detail.id;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 580),
+      child: cinioFallbackTitle(
+        title: detail.title,
+        seed: seed,
+        accent: AppColors.accent,
+        genres: detail.genres,
+        fontSize: 44,
+        maxLines: 2,
+        maxWidth: 580,
+        textAlign: TextAlign.left,
+      ),
     );
   }
 
@@ -1059,6 +1072,29 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _castSquareRow(List<CastMember> cast) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 580),
+      child: SizedBox(
+        height: 84,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          shrinkWrap: true,
+          physics: const BouncingScrollPhysics(),
+          itemCount: cast.length.clamp(0, 16),
+          separatorBuilder: (_, _) => const SizedBox(width: 10),
+          itemBuilder: (context, index) {
+            final member = cast[index];
+            return _SquareCastCard(
+              member: member,
+              sourceId: widget.item.sourceId,
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -1507,10 +1543,6 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                 ),
                 const SizedBox(height: 12),
               ],
-
-              // ── 4. Real Cast & Starring (ONLY if available) ─────────
-              if (detail.cast.isNotEmpty || detail.castMembers.isNotEmpty)
-                _MovieCastInfoCard(detail: detail),
             ],
           ),
         ),
@@ -1754,13 +1786,13 @@ class _FeaturedTrailerCardState extends State<_FeaturedTrailerCard> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: const Color(0xFFF5C518).withValues(alpha: 0.85),
+              color: const Color(0xFFF5C518).withValues(alpha: _hovered ? 1.0 : 0.85),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFF5C518).withValues(alpha: 0.22),
-                blurRadius: 18,
+                color: const Color(0xFFF5C518).withValues(alpha: _hovered ? 0.35 : 0.22),
+                blurRadius: _hovered ? 22 : 18,
                 offset: const Offset(0, 4),
               ),
             ],
@@ -2104,62 +2136,133 @@ class _SimilarMoviesCardState extends State<_SimilarMoviesCard> {
   }
 }
 
-class _MovieCastInfoCard extends StatelessWidget {
-  const _MovieCastInfoCard({required this.detail});
-  final MediaDetail detail;
+class _SquareCastCard extends StatefulWidget {
+  const _SquareCastCard({required this.member, required this.sourceId});
+
+  final CastMember member;
+  final String sourceId;
+
+  @override
+  State<_SquareCastCard> createState() => _SquareCastCardState();
+}
+
+class _SquareCastCardState extends State<_SquareCastCard> {
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final names = detail.castMembers.isNotEmpty
-        ? detail.castMembers.map((c) => c.name).take(6).toList()
-        : detail.cast.take(6).toList();
+    final m = widget.member;
+    final photo = m.photo;
+    final hasPhoto = photo != null && photo.isNotEmpty;
+    final isTappable = m.person != null;
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF12121A).withValues(alpha: 0.68),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'STARRING',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.45),
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.1,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
+    final card = Tooltip(
+      message: m.role != null && m.role!.isNotEmpty
+          ? '${m.name}\nas ${m.role}'
+          : m.name,
+      waitDuration: const Duration(milliseconds: 300),
+      child: MouseRegion(
+        cursor: isTappable ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: SizedBox(
+          width: 58,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              for (final n in names)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.07),
-                    borderRadius: BorderRadius.circular(12),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _hovered
+                        ? Colors.white.withValues(alpha: 0.6)
+                        : Colors.white.withValues(alpha: 0.15),
+                    width: _hovered ? 1.5 : 1,
                   ),
-                  child: Text(
-                    n,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
+                  boxShadow: _hovered
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ]
+                      : null,
                 ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(11),
+                  child: hasPhoto
+                      ? CachedNetworkImage(
+                          imageUrl: photo,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 150,
+                          placeholder: (_, _) => Container(
+                            color: const Color(0xFF1E1E28),
+                            alignment: Alignment.center,
+                            child: const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                color: Colors.white30,
+                              ),
+                            ),
+                          ),
+                          errorWidget: (_, _, _) => _fallbackSquareAvatar(m.name),
+                        )
+                      : _fallbackSquareAvatar(m.name),
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                m.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _hovered
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.82),
+                  fontSize: 10,
+                  fontWeight: _hovered ? FontWeight.w600 : FontWeight.w500,
+                  letterSpacing: 0.1,
+                ),
+              ),
             ],
           ),
-        ],
+        ),
+      ),
+    );
+
+    if (!isTappable) return card;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        Navigator.of(context).push(
+          PersonPage.route(m.person!, sourceId: widget.sourceId),
+        );
+      },
+      child: card,
+    );
+  }
+
+  Widget _fallbackSquareAvatar(String name) {
+    final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
+    return Container(
+      color: const Color(0xFF222230),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: Colors.white70,
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
