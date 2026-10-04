@@ -157,6 +157,7 @@ dependencies:
   firebase_messaging: ^16.4.3
   fluttertoast: ^8.2.12
   dynamic_color: 1.7.0
+  window_manager: ^0.5.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -77,6 +77,7 @@ import '../../core/provider/provider_registry.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/trailer/trailer_service.dart';

@@ -248,18 +248,118 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   }
 
   void _playEpisode(MediaDetail detail, List<Episode> eps, int index) {
+    final isCatalog = widget.item.sourceId == 'tmdb:catalog' ||
+        widget.item.sourceId.startsWith('tpdb:');
+
+    ({MediaItem item, MediaDetail detail})? cachedResolved;
+
+    Future<({String url, String sourceId})> resolvePlaybackTarget(String u) async {
+      if (!isCatalog) {
+        return (url: u, sourceId: detail.sourceId);
+      }
+      try {
+        final resolved = cachedResolved ??= await sl<SourceRepository>()
+            .resolveCatalogTitle(
+              widget.item,
+              category: 'sub',
+            )
+            .timeout(const Duration(seconds: 10), onTimeout: () => null);
+
+        if (resolved == null) {
+          return (url: u, sourceId: detail.sourceId);
+        }
+
+        final targetSourceId = resolved.item.sourceId;
+
+        if (targetSourceId.startsWith('stremio:')) {
+          final addonId = targetSourceId.substring('stremio:'.length);
+          final imdbId =
+              resolved.item.imdbId ?? detail.imdbId ?? widget.item.imdbId;
+          if (imdbId != null && imdbId.isNotEmpty) {
+            Episode? origEp;
+            for (final e in eps) {
+              if (e.url == u || e.id == u) {
+                origEp = e;
+                break;
+              }
+            }
+            final isTv = detail.isSeries ||
+                widget.item.tmdbIsTv ||
+                (origEp != null && origEp.season != null);
+            if (isTv) {
+              final s = (origEp != null ? seasonOf(origEp) : null) ?? 1;
+              final epNum = origEp?.number?.toInt() ?? 1;
+              return (
+                url: 'stremio://$addonId/stream/series/$imdbId:$s:$epNum',
+                sourceId: targetSourceId
+              );
+            } else {
+              return (
+                url: 'stremio://$addonId/stream/movie/$imdbId',
+                sourceId: targetSourceId
+              );
+            }
+          }
+        }
+
+        if (resolved.detail.episodes.isEmpty) {
+          return (url: resolved.item.url, sourceId: targetSourceId);
+        }
+        for (final e in resolved.detail.episodes) {
+          if (e.url == u || e.id == u) {
+            return (url: e.url, sourceId: targetSourceId);
+          }
+        }
+        Episode? origEp;
+        for (final e in eps) {
+          if (e.url == u || e.id == u) {
+            origEp = e;
+            break;
+          }
+        }
+        if (origEp != null) {
+          final wantedSeason = seasonOf(origEp);
+          final wantedNumber = origEp.number;
+          for (final e in resolved.detail.episodes) {
+            if (e.number == wantedNumber &&
+                (wantedSeason == null || seasonOf(e) == wantedSeason)) {
+              return (url: e.url, sourceId: targetSourceId);
+            }
+          }
+          if (wantedNumber != null) {
+            for (final e in resolved.detail.episodes) {
+              if (e.number == wantedNumber) {
+                return (url: e.url, sourceId: targetSourceId);
+              }
+            }
+          }
+        }
+        return (url: resolved.detail.episodes.first.url, sourceId: targetSourceId);
+      } catch (_) {
+        return (url: u, sourceId: detail.sourceId);
+      }
+    }
+
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PlayerScreen(
-          sourceId: detail.sourceId,
+          sourceId: isCatalog ? sl<ActiveSourceCubit>().state : detail.sourceId,
           episodes: eps,
           startIndex: index,
           resume: _resume,
           resolveSources: (url) async {
+            final target = await resolvePlaybackTarget(url);
             return sl<SourceRepository>().sources(
-              url,
-              sourceId: detail.sourceId,
+              target.url,
+              sourceId: target.sourceId,
               fast: true,
+            );
+          },
+          pollSources: (url) async {
+            final target = await resolvePlaybackTarget(url);
+            return sl<SourceRepository>().polledSources(
+              target.url,
+              sourceId: target.sourceId,
             );
           },
           history: sl<WatchHistory>(),

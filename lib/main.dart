@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'core/ui/elastic_scroll_behavior.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -47,6 +49,13 @@ Future<void> main() async {
   runZonedGuarded(
     () async {
     WidgetsFlutterBinding.ensureInitialized();
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      try {
+        await windowManager.ensureInitialized();
+      } catch (e, st) {
+        AppLogger.instance.logError(e, st);
+      }
+    }
     await AppLogger.instance.init();
     // Mirror debugPrint into the log (still prints to the console too).
     final origDebugPrint = debugPrint;

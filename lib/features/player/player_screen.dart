@@ -1629,6 +1629,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
         ),
+        Positioned(
+          top: 20,
+          left: 20,
+          child: SafeArea(
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 28),
+              tooltip: 'Back',
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+          ),
+        ),
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -1878,23 +1889,62 @@ class _PlayerScreenState extends State<PlayerScreen> {
               );
             }
             if (state.error != null) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.error_outline, size: 40, color: AppColors.textTertiary),
-                      const SizedBox(height: 12),
-                      Text(state.error!, style: AppText.body, textAlign: TextAlign.center),
-                      const SizedBox(height: 16),
-                      TextButton(
-                        onPressed: () => _c.openEpisode(state.currentIndex),
-                        child: Text('Try again', style: AppText.body.copyWith(color: AppColors.accent)),
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Positioned(
+                    top: 20,
+                    left: 20,
+                    child: SafeArea(
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 28),
+                        tooltip: 'Go back',
+                        onPressed: _handleCloseRequest,
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.error_outline, size: 44, color: AppColors.textTertiary),
+                          const SizedBox(height: 14),
+                          Text(state.error!, style: AppText.body, textAlign: TextAlign.center),
+                          const SizedBox(height: 22),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                ),
+                                onPressed: _handleCloseRequest,
+                                icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                                label: const Text('Go back'),
+                              ),
+                              const SizedBox(width: 14),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.accent,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                ),
+                                onPressed: () => _c.openEpisode(state.currentIndex),
+                                child: const Text('Try again'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               );
             }
 
@@ -2426,7 +2476,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (didPop) return;
         _handleCloseRequest();
       },
-      child: scaffold,
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+            _handleCloseRequest();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: scaffold,
+      ),
     );
   }
 }

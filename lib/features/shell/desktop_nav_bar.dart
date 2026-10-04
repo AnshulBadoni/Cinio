@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hugeicons/hugeicons.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -129,6 +130,11 @@ class DesktopNavBar extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        // Full screen toggle (removes upper window border)
+        const _DesktopFullscreenButton(),
+
+        const SizedBox(width: 14),
+
         // Source switcher pill
         BlocBuilder<ActiveSourceCubit, String>(
           bloc: sl<ActiveSourceCubit>(),
@@ -300,6 +306,89 @@ class _DesktopProfileAvatarState extends State<_DesktopProfileAvatar> {
               size: 20,
               color: Colors.white.withValues(alpha: 0.75),
             ),
+    );
+  }
+}
+
+class _DesktopFullscreenButton extends StatefulWidget {
+  const _DesktopFullscreenButton();
+
+  @override
+  State<_DesktopFullscreenButton> createState() => _DesktopFullscreenButtonState();
+}
+
+class _DesktopFullscreenButtonState extends State<_DesktopFullscreenButton> with WindowListener {
+  bool _isFullScreen = false;
+  bool _hovered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    _checkStatus();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  Future<void> _checkStatus() async {
+    try {
+      final isFull = await windowManager.isFullScreen();
+      if (mounted) setState(() => _isFullScreen = isFull);
+    } catch (_) {}
+  }
+
+  @override
+  void onWindowEnterFullScreen() {
+    if (mounted) setState(() => _isFullScreen = true);
+  }
+
+  @override
+  void onWindowLeaveFullScreen() {
+    if (mounted) setState(() => _isFullScreen = false);
+  }
+
+  Future<void> _toggleFullscreen() async {
+    try {
+      final isFull = await windowManager.isFullScreen();
+      await windowManager.setFullScreen(!isFull);
+      if (mounted) setState(() => _isFullScreen = !isFull);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: _isFullScreen ? 'Exit Full Screen' : 'Full Screen',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          onTap: _toggleFullscreen,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedScale(
+            scale: _hovered ? 1.08 : 1.0,
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: HugeIcon(
+                icon: _isFullScreen
+                    ? HugeIcons.strokeRoundedMinimize01
+                    : HugeIcons.strokeRoundedFullScreen,
+                size: 20,
+                color: _hovered
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.72),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
