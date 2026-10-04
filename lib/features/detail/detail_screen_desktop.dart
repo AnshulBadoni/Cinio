@@ -879,22 +879,22 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
             // ── 1. Stylized Title Logo / Elegant Display Typography ────
             _titleHeader(detail),
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
 
             // ── 2. Metadata Line: "2021 | 2 Seasons | 16+ | [IMDb] 9.0" ─
             _metadataRow(detail, episodes, totalSeasons),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
 
             // ── 3. Frosted Genre Pills Row ─────────────────────────────
             _genresPillRow(detail),
 
             if (castList.isNotEmpty) ...[
-              const SizedBox(height: 18),
+              const SizedBox(height: 22),
               _castSquareRow(castList),
             ],
 
-            const SizedBox(height: 18),
+            const SizedBox(height: 22),
 
             // ── 4. Red Accent Dash (Exact Match to Reference Screenshots) ─
             Container(
@@ -906,36 +906,42 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
               ),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
-            // ── 5. Editorial Synopsis (Dynamically updates with episode) ─
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 580),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: Text(
-                  synopsis,
-                  key: ValueKey(focusedEpisode?.id ?? detail.id),
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.88),
-                    fontSize: 14.5,
-                    height: 1.54,
-                    fontWeight: FontWeight.w400,
-                    shadows: const [
-                      Shadow(
-                        color: Colors.black87,
-                        blurRadius: 10,
-                        offset: Offset(0, 2),
+            // ── 5. Editorial Synopsis (Fixed container prevents layout shifting) ─
+            SizedBox(
+              height: 76,
+              width: 580,
+              child: Stack(
+                alignment: Alignment.topLeft,
+                children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    child: Text(
+                      synopsis,
+                      key: ValueKey(focusedEpisode?.id ?? detail.id),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.88),
+                        fontSize: 14.5,
+                        height: 1.54,
+                        fontWeight: FontWeight.w400,
+                        shadows: const [
+                          Shadow(
+                            color: Colors.black87,
+                            blurRadius: 10,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 26),
 
             // ── 6. Primary Action Button & Circular Frosted Utilities ──
             _bottomActionBar(detail, episodes, currentSeason, focusedEpisode),
@@ -1339,6 +1345,36 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     );
   }
 
+  Widget _roundMiniNavButton({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    return MouseRegion(
+      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withValues(alpha: enabled ? 0.09 : 0.03),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: enabled ? 0.22 : 0.06),
+              width: 1,
+            ),
+          ),
+          child: Icon(
+            icon,
+            color: Colors.white.withValues(alpha: enabled ? 0.88 : 0.25),
+            size: 18,
+          ),
+        ),
+      ),
+    );
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Right Column for Series (Cascading Stacked Episode Cards Matching Arcane)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1384,14 +1420,26 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     final total = filteredEpisodes.length;
     final activeIndex = _focusedEpisodeIndex.clamp(0, total - 1);
 
-    // Visible window of 3 cards around activeIndex for clean breathing room
-    int start = activeIndex - 1;
-    if (start < 0) start = 0;
-    if (start + 3 > total) {
-      start = (total - 3).clamp(0, total);
-    }
-    final end = (start + 3).clamp(0, total);
-    final visibleIndices = [for (int i = start; i < end; i++) i];
+    // Visible window: up to 2 above active, up to 3 below active
+    final minIdx = (activeIndex - 2).clamp(0, total - 1);
+    final maxIdx = (activeIndex + 3).clamp(0, total - 1);
+    final visibleIndices = [for (int i = minIdx; i <= maxIdx; i++) i];
+
+    // Priority sort for Stack painting order:
+    // Earlier episodes above active (diff < 0) painted lowest to highest
+    // Later episodes below active (diff > 0) painted highest index first to lowest index
+    // Active episode (diff == 0) painted last, so it sits on TOP of everything!
+    final orderedIndices = List<int>.from(visibleIndices);
+    orderedIndices.sort((a, b) {
+      final diffA = a - activeIndex;
+      final diffB = b - activeIndex;
+      int priority(int diff) {
+        if (diff == 0) return 1000;
+        if (diff < 0) return 100 + diff;
+        return 500 - diff;
+      }
+      return priority(diffA).compareTo(priority(diffB));
+    });
 
     final fallbackBackdrop =
         _resolvedBackdropUrl ?? detail.cover ?? widget.item.cover;
@@ -1419,131 +1467,112 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
             children: [
               // Top Season Header above episode cards
               Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(bottom: 14, right: 8),
                 child: Row(
                   children: [
                     Text(
                       'EPISODES (${filteredEpisodes.length})',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.55),
+                        color: Colors.white.withValues(alpha: 0.60),
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 1.2,
                       ),
                     ),
                     const Spacer(),
+                    _roundMiniNavButton(
+                      icon: Icons.keyboard_arrow_up_rounded,
+                      enabled: activeIndex > 0,
+                      onTap: () {
+                        if (_focusedEpisodeIndex > 0) {
+                          setState(() => _focusedEpisodeIndex--);
+                        }
+                      },
+                    ),
+                    const SizedBox(width: 6),
+                    _roundMiniNavButton(
+                      icon: Icons.keyboard_arrow_down_rounded,
+                      enabled: activeIndex < total - 1,
+                      onTap: () {
+                        if (_focusedEpisodeIndex < total - 1) {
+                          setState(() => _focusedEpisodeIndex++);
+                        }
+                      },
+                    ),
+                    const SizedBox(width: 14),
                     _seasonSelectorPill(seasons, currentSeason),
                   ],
                 ),
               ),
 
-              // Up chevron if earlier episodes exist
-              if (start > 0)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 36, bottom: 6),
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () {
-                          if (_focusedEpisodeIndex > 0) {
-                            setState(() => _focusedEpisodeIndex--);
-                          }
+              // Stacked Deck Container
+              SizedBox(
+                width: 440,
+                height: 500,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    for (final i in orderedIndices)
+                      Builder(
+                        builder: (context) {
+                          final ep = filteredEpisodes[i];
+                          final diff = i - activeIndex;
+                          final isActive = diff == 0;
+
+                          final mark = _resume.get(
+                            widget.item.sourceId,
+                            widget.item.url,
+                            ep.id,
+                          );
+                          final progress = mark != null &&
+                                  mark.duration > Duration.zero
+                              ? (mark.position.inMilliseconds /
+                                      mark.duration.inMilliseconds)
+                                  .clamp(0.0, 1.0)
+                              : (isActive ? 0.40 : 0.0);
+
+                          final double top = isActive
+                              ? 118.0
+                              : (diff < 0
+                                  ? 118.0 + (diff * 48.0)
+                                  : 118.0 + (diff * 58.0));
+                          final double left = isActive ? 12.0 : 46.0;
+
+                          return AnimatedPositioned(
+                            key: ValueKey(ep.id),
+                            duration: const Duration(milliseconds: 260),
+                            curve: Curves.easeOutCubic,
+                            top: top,
+                            left: left,
+                            width: 384,
+                            height: 180,
+                            child: _SeriesEpisodeCard(
+                              key: ValueKey('card_${ep.id}'),
+                              ep: ep,
+                              index: i,
+                              diff: diff,
+                              isActive: isActive,
+                              progress: progress,
+                              fallbackBackdrop: fallbackBackdrop,
+                              onTap: () {
+                                if (!isActive) {
+                                  setState(() => _focusedEpisodeIndex = i);
+                                } else {
+                                  _playEpisode(detail, filteredEpisodes, i);
+                                }
+                              },
+                              onHover: () {
+                                if (_focusedEpisodeIndex != i) {
+                                  setState(() => _focusedEpisodeIndex = i);
+                                }
+                              },
+                            ),
+                          );
                         },
-                        child: Icon(
-                          Icons.keyboard_arrow_up_rounded,
-                          color: Colors.white.withValues(alpha: 0.6),
-                          size: 24,
-                        ),
                       ),
-                    ),
-                  ),
+                  ],
                 ),
-
-              for (final i in visibleIndices) ...[
-                Builder(
-                  builder: (context) {
-                    final ep = filteredEpisodes[i];
-                    final diff = i - activeIndex;
-                    final isActive = diff == 0;
-
-                    final mark = _resume.get(
-                      widget.item.sourceId,
-                      widget.item.url,
-                      ep.id,
-                    );
-                    final progress = mark != null && mark.duration > Duration.zero
-                        ? (mark.position.inMilliseconds /
-                                mark.duration.inMilliseconds)
-                            .clamp(0.0, 1.0)
-                        : (isActive ? 0.40 : 0.0);
-
-                    // Stacked cascading offsets with breathable margins
-                    final double offsetX = isActive
-                        ? -32.0
-                        : (diff.abs() == 1 ? 0.0 : 20.0);
-                    final double scale = isActive ? 1.03 : 0.94;
-                    final double opacity = isActive
-                        ? 1.0
-                        : (diff.abs() == 1 ? 0.72 : 0.48);
-
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      transform: Matrix4.translationValues(offsetX, 0, 0),
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 200),
-                        opacity: opacity,
-                        child: Transform.scale(
-                          scale: scale,
-                          alignment: Alignment.centerRight,
-                          child: _SeriesEpisodeCard(
-                            ep: ep,
-                            index: i,
-                            isActive: isActive,
-                            progress: progress,
-                            fallbackBackdrop: fallbackBackdrop,
-                            onTap: () {
-                              _playEpisode(detail, filteredEpisodes, i);
-                            },
-                            onHover: () {
-                              if (_focusedEpisodeIndex != i) {
-                                setState(() => _focusedEpisodeIndex = i);
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-
-              // Down chevron if more episodes exist
-              if (end < total)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 36, top: 6),
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () {
-                          if (_focusedEpisodeIndex < total - 1) {
-                            setState(() => _focusedEpisodeIndex++);
-                          }
-                        },
-                        child: Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          color: Colors.white.withValues(alpha: 0.6),
-                          size: 24,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+              ),
             ],
           ),
         ),
@@ -1660,12 +1689,14 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
 class _SeriesEpisodeCard extends StatefulWidget {
   const _SeriesEpisodeCard({
+    super.key,
     required this.ep,
     required this.index,
     required this.isActive,
     required this.progress,
     required this.onTap,
     required this.onHover,
+    this.diff = 0,
     this.fallbackBackdrop,
   });
 
@@ -1675,6 +1706,7 @@ class _SeriesEpisodeCard extends StatefulWidget {
   final double progress;
   final VoidCallback onTap;
   final VoidCallback onHover;
+  final int diff;
   final String? fallbackBackdrop;
 
   @override
@@ -1708,6 +1740,10 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
         ? ep.thumbnail
         : widget.fallbackBackdrop;
 
+    final dimAlpha = isActive
+        ? 0.0
+        : (_hovered ? 0.08 : (widget.diff.abs() == 1 ? 0.22 : 0.42));
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) {
@@ -1719,35 +1755,41 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          width: 380,
-          height: 190,
+          width: 384,
+          height: 180,
           decoration: BoxDecoration(
+            color: const Color(0xFF14141E),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isActive
                   ? const Color(0xFFE50914)
                   : (_hovered
-                      ? Colors.white.withValues(alpha: 0.45)
+                      ? Colors.white.withValues(alpha: 0.50)
                       : Colors.white.withValues(alpha: 0.12)),
-              width: isActive ? 2.0 : 1.0,
+              width: isActive ? 2.2 : 1.0,
             ),
             boxShadow: isActive
                 ? [
                     BoxShadow(
-                      color: const Color(0xFFE50914).withValues(alpha: 0.45),
-                      blurRadius: 22,
-                      offset: const Offset(-2, 4),
+                      color: const Color(0xFFE50914).withValues(alpha: 0.55),
+                      blurRadius: 26,
+                      spreadRadius: 2,
+                      offset: const Offset(-4, 4),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.85),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
                     ),
                   ]
-                : (_hovered
-                    ? [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                    : null),
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.70),
+                      blurRadius: 16,
+                      spreadRadius: 1,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(isActive ? 14 : 15),
@@ -1795,17 +1837,25 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
                       stops: const [0.35, 1.0],
                       colors: [
                         Colors.transparent,
-                        Colors.black.withValues(alpha: 0.88),
+                        Colors.black.withValues(alpha: 0.90),
                       ],
                     ),
                   ),
                 ),
 
-                // 3. Bottom-Left Typography (Matching media_1791102530281.png)
+                // 3. Dark dimming layer for inactive overlapping cards (depth of field)
+                if (dimAlpha > 0)
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withValues(alpha: dimAlpha),
+                    ),
+                  ),
+
+                // 4. Bottom-Left Typography (Matching Arcane reference)
                 Positioned(
-                  left: 18,
-                  right: 18,
-                  bottom: 14,
+                  left: 16,
+                  right: 16,
+                  bottom: 12,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -1816,7 +1866,7 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 16,
+                          fontSize: 15,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.2,
                           shadows: [
@@ -1828,12 +1878,12 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 2),
                       Text(
                         durationLabel,
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.75),
-                          fontSize: 13,
+                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w500,
                           shadows: const [
                             Shadow(
@@ -1848,7 +1898,7 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
                   ),
                 ),
 
-                // 4. Red progress bar at the very bottom edge (Matching reference)
+                // 5. Progress bar at bottom edge
                 if (widget.progress > 0)
                   Positioned(
                     left: 0,
@@ -1856,12 +1906,14 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
                     bottom: 0,
                     child: Container(
                       height: 3.5,
-                      color: Colors.white.withValues(alpha: 0.15),
+                      color: Colors.white.withValues(alpha: 0.18),
                       child: FractionallySizedBox(
                         alignment: Alignment.centerLeft,
                         widthFactor: widget.progress.clamp(0.0, 1.0),
                         child: Container(
-                          color: const Color(0xFFE50914),
+                          color: isActive
+                              ? const Color(0xFFE50914)
+                              : Colors.white60,
                         ),
                       ),
                     ),
