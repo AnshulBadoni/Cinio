@@ -35,6 +35,8 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   int? _selectedSeason;
   bool _isFavorited = false;
   int _focusedEpisodeIndex = 0;
+  double _scrollDeltaAccumulator = 0.0;
+  int _lastWheelStepTime = 0;
 
   List<_MovieExtraVideo> _movieVideos = [];
   List<MediaRelation> _similarMovies = [];
@@ -870,7 +872,6 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     return Align(
       alignment: Alignment.bottomLeft,
       child: SingleChildScrollView(
-        reverse: true,
         physics: const BouncingScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1375,6 +1376,39 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     );
   }
 
+  static double _lerpVal(double a, double b, double t) => a + (b - a) * t;
+
+  static double _stackCardTop(double diff) {
+    if (diff == 0.0) return 135.0;
+    if (diff > 0.0) {
+      if (diff <= 1.0) return _lerpVal(135.0, 217.0, diff);
+      if (diff <= 2.0) return _lerpVal(217.0, 291.0, diff - 1.0);
+      if (diff <= 3.0) return _lerpVal(291.0, 357.0, diff - 2.0);
+      return 357.0 + (diff - 3.0) * 45.0;
+    } else {
+      final absD = -diff;
+      if (absD <= 1.0) return _lerpVal(135.0, 81.0, absD);
+      if (absD <= 2.0) return _lerpVal(81.0, 35.0, absD - 1.0);
+      return 35.0 - (absD - 2.0) * 35.0;
+    }
+  }
+
+  static double _stackCardWidth(double diff) {
+    final absD = diff.abs();
+    if (absD <= 1.0) return _lerpVal(340.0, 310.0, absD);
+    if (absD <= 2.0) return _lerpVal(310.0, 280.0, absD - 1.0);
+    if (absD <= 3.0) return _lerpVal(280.0, 250.0, absD - 2.0);
+    return 250.0;
+  }
+
+  static double _stackCardHeight(double diff) {
+    final absD = diff.abs();
+    if (absD <= 1.0) return _lerpVal(220.0, 206.0, absD);
+    if (absD <= 2.0) return _lerpVal(206.0, 192.0, absD - 1.0);
+    if (absD <= 3.0) return _lerpVal(192.0, 178.0, absD - 2.0);
+    return 178.0;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Right Column for Series (Cascading Stacked Episode Cards Matching Arcane)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1447,13 +1481,21 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     return Listener(
       onPointerSignal: (event) {
         if (event is PointerScrollEvent) {
-          if (event.scrollDelta.dy > 12) {
-            if (_focusedEpisodeIndex < total - 1) {
-              setState(() => _focusedEpisodeIndex++);
-            }
-          } else if (event.scrollDelta.dy < -12) {
-            if (_focusedEpisodeIndex > 0) {
-              setState(() => _focusedEpisodeIndex--);
+          final now = DateTime.now().millisecondsSinceEpoch;
+          _scrollDeltaAccumulator += event.scrollDelta.dy;
+          if (now - _lastWheelStepTime > 180 && _scrollDeltaAccumulator.abs() >= 45.0) {
+            if (_scrollDeltaAccumulator > 0) {
+              if (_focusedEpisodeIndex < total - 1) {
+                setState(() => _focusedEpisodeIndex++);
+                _lastWheelStepTime = now;
+                _scrollDeltaAccumulator = 0.0;
+              }
+            } else {
+              if (_focusedEpisodeIndex > 0) {
+                setState(() => _focusedEpisodeIndex--);
+                _lastWheelStepTime = now;
+                _scrollDeltaAccumulator = 0.0;
+              }
             }
           }
         }
@@ -1508,69 +1550,66 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
               // Stacked Deck Container
               SizedBox(
                 width: 440,
-                height: 500,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    for (final i in orderedIndices)
-                      Builder(
-                        builder: (context) {
-                          final ep = filteredEpisodes[i];
-                          final diff = i - activeIndex;
-                          final isActive = diff == 0;
+                height: 560,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(
+                    begin: activeIndex.toDouble(),
+                    end: activeIndex.toDouble(),
+                  ),
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, animatedFocus, _) {
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        for (final i in orderedIndices)
+                          () {
+                            final ep = filteredEpisodes[i];
+                            final diff = i - animatedFocus;
+                            final isActive = i == activeIndex;
 
-                          final mark = _resume.get(
-                            widget.item.sourceId,
-                            widget.item.url,
-                            ep.id,
-                          );
-                          final progress = mark != null &&
-                                  mark.duration > Duration.zero
-                              ? (mark.position.inMilliseconds /
-                                      mark.duration.inMilliseconds)
-                                  .clamp(0.0, 1.0)
-                              : (isActive ? 0.40 : 0.0);
+                            final mark = _resume.get(
+                              widget.item.sourceId,
+                              widget.item.url,
+                              ep.id,
+                            );
+                            final progress = mark != null &&
+                                    mark.duration > Duration.zero
+                                ? (mark.position.inMilliseconds /
+                                        mark.duration.inMilliseconds)
+                                    .clamp(0.0, 1.0)
+                                : (isActive ? 0.40 : 0.0);
 
-                          final double top = isActive
-                              ? 118.0
-                              : (diff < 0
-                                  ? 118.0 + (diff * 48.0)
-                                  : 118.0 + (diff * 58.0));
-                          final double left = isActive ? 12.0 : 46.0;
+                            final double cardWidth = _stackCardWidth(diff);
+                            final double cardHeight = _stackCardHeight(diff);
+                            final double left = (440.0 - cardWidth) / 2.0;
+                            final double top = _stackCardTop(diff);
 
-                          return AnimatedPositioned(
-                            key: ValueKey(ep.id),
-                            duration: const Duration(milliseconds: 260),
-                            curve: Curves.easeOutCubic,
-                            top: top,
-                            left: left,
-                            width: 384,
-                            height: 180,
-                            child: _SeriesEpisodeCard(
-                              key: ValueKey('card_${ep.id}'),
-                              ep: ep,
-                              index: i,
-                              diff: diff,
-                              isActive: isActive,
-                              progress: progress,
-                              fallbackBackdrop: fallbackBackdrop,
-                              onTap: () {
-                                if (!isActive) {
-                                  setState(() => _focusedEpisodeIndex = i);
-                                } else {
-                                  _playEpisode(detail, filteredEpisodes, i);
-                                }
-                              },
-                              onHover: () {
-                                if (_focusedEpisodeIndex != i) {
-                                  setState(() => _focusedEpisodeIndex = i);
-                                }
-                              },
-                            ),
-                          );
-                        },
-                      ),
-                  ],
+                            return Positioned(
+                              top: top,
+                              left: left,
+                              width: cardWidth,
+                              height: cardHeight,
+                              child: _SeriesEpisodeCard(
+                                ep: ep,
+                                index: i,
+                                diff: (i - activeIndex),
+                                isActive: isActive,
+                                progress: progress,
+                                fallbackBackdrop: fallbackBackdrop,
+                                onTap: () {
+                                  if (!isActive) {
+                                    setState(() => _focusedEpisodeIndex = i);
+                                  } else {
+                                    _playEpisode(detail, filteredEpisodes, i);
+                                  }
+                                },
+                              ),
+                            );
+                          }(),
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
@@ -1689,13 +1728,11 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
 class _SeriesEpisodeCard extends StatefulWidget {
   const _SeriesEpisodeCard({
-    super.key,
     required this.ep,
     required this.index,
     required this.isActive,
     required this.progress,
     required this.onTap,
-    required this.onHover,
     this.diff = 0,
     this.fallbackBackdrop,
   });
@@ -1705,7 +1742,6 @@ class _SeriesEpisodeCard extends StatefulWidget {
   final bool isActive;
   final double progress;
   final VoidCallback onTap;
-  final VoidCallback onHover;
   final int diff;
   final String? fallbackBackdrop;
 
@@ -1742,44 +1778,43 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
 
     final dimAlpha = isActive
         ? 0.0
-        : (_hovered ? 0.08 : (widget.diff.abs() == 1 ? 0.22 : 0.42));
+        : (_hovered
+            ? 0.06
+            : (widget.diff.abs() == 1
+                ? 0.20
+                : (widget.diff.abs() == 2 ? 0.35 : 0.50)));
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) {
-        setState(() => _hovered = true);
-        widget.onHover();
-      },
+      onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          width: 384,
-          height: 180,
           decoration: BoxDecoration(
             color: const Color(0xFF14141E),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: isActive
-                  ? const Color(0xFFE50914)
+                  ? Colors.white.withValues(alpha: 0.90)
                   : (_hovered
-                      ? Colors.white.withValues(alpha: 0.50)
+                      ? Colors.white.withValues(alpha: 0.45)
                       : Colors.white.withValues(alpha: 0.12)),
-              width: isActive ? 2.2 : 1.0,
+              width: isActive ? 1.8 : 1.0,
             ),
             boxShadow: isActive
                 ? [
                     BoxShadow(
-                      color: const Color(0xFFE50914).withValues(alpha: 0.55),
-                      blurRadius: 26,
+                      color: Colors.black.withValues(alpha: 0.85),
+                      blurRadius: 28,
                       spreadRadius: 2,
-                      offset: const Offset(-4, 4),
+                      offset: const Offset(0, 8),
                     ),
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.85),
-                      blurRadius: 18,
-                      offset: const Offset(0, 6),
+                      color: const Color(0xFFE50914).withValues(alpha: 0.40),
+                      blurRadius: 20,
+                      spreadRadius: 1,
                     ),
                   ]
                 : [
@@ -1792,7 +1827,7 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
                   ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(isActive ? 14 : 15),
+            borderRadius: BorderRadius.circular(17),
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -1851,11 +1886,11 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
                     ),
                   ),
 
-                // 4. Bottom-Left Typography (Matching Arcane reference)
+                // 4. Bottom-Left Typography (Matching reference screenshot)
                 Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 12,
+                  left: 18,
+                  right: 18,
+                  bottom: 14,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -1866,7 +1901,7 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 15,
+                          fontSize: 16,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.2,
                           shadows: [
@@ -1878,13 +1913,13 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 3),
                       Text(
                         durationLabel,
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.72),
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w500,
+                          color: Colors.white.withValues(alpha: 0.75),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
                           shadows: const [
                             Shadow(
                               color: Colors.black,
@@ -1906,14 +1941,14 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
                     bottom: 0,
                     child: Container(
                       height: 3.5,
-                      color: Colors.white.withValues(alpha: 0.18),
+                      color: Colors.white.withValues(alpha: 0.15),
                       child: FractionallySizedBox(
                         alignment: Alignment.centerLeft,
                         widthFactor: widget.progress.clamp(0.0, 1.0),
                         child: Container(
                           color: isActive
                               ? const Color(0xFFE50914)
-                              : Colors.white60,
+                              : Colors.white38,
                         ),
                       ),
                     ),
