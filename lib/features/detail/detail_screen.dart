@@ -319,8 +319,8 @@ class _DetailView extends StatefulWidget {
 class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
   double _expandedHeightFor({required bool isReading, required bool hasDownload}) {
-    if (isReading) return 460.0;
-    return 490.0;
+    if (isReading) return 510.0;
+    return 570.0;
   }
 
   bool _showAppBarTitle = false;
@@ -2185,36 +2185,7 @@ class _DetailViewState extends State<_DetailView>
               child: _titleHeader(detail, compact: true),
             ),
             centerTitle: true,
-            actions: [
-              _HeroContentEntrance(
-                animation: _entranceAnimation,
-                fadeOnly: true,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 16),
-                  child: Center(
-                    child: Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _showAppBarTitle
-                            ? Colors.transparent
-                            : Colors.black.withValues(alpha: 0.55),
-                      ),
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        icon: Icon(
-                          _inMyList ? CupertinoIcons.checkmark : CupertinoIcons.plus,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        onPressed: () => _openListSheet(detail),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            actions: const [],
             flexibleSpace: _Hero(
               heroTag: widget.heroTag,
               coverUrl: heroCoverUrl,
@@ -2701,9 +2672,9 @@ class _DetailViewState extends State<_DetailView>
             firstChild: Text(
               desc,
               style: const TextStyle(
-                color: Colors.white70,
+                color: Colors.white,
                 fontSize: 13.5,
-                height: 1.45,
+                height: 1.48,
               ),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
@@ -2711,9 +2682,9 @@ class _DetailViewState extends State<_DetailView>
             secondChild: Text(
               desc,
               style: const TextStyle(
-                color: Colors.white70,
+                color: Colors.white,
                 fontSize: 13.5,
-                height: 1.45,
+                height: 1.48,
               ),
             ),
             crossFadeState: _descExpanded
@@ -2741,6 +2712,10 @@ class _DetailViewState extends State<_DetailView>
 
   Widget _buildCastSection(List<CastMember> cast) {
     if (cast.isEmpty) return const SizedBox.shrink();
+    final square = sl<PlaybackPrefs>().peopleCardStyle == 'square';
+    final cardW = square ? 84.0 : 76.0;
+    final avatarSize = square ? 72.0 : 64.0;
+    final listHeight = square ? 138.0 : 128.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2757,7 +2732,7 @@ class _DetailViewState extends State<_DetailView>
           ),
         ),
         SizedBox(
-          height: 128,
+          height: listHeight,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -2775,14 +2750,15 @@ class _DetailViewState extends State<_DetailView>
                   }
                 },
                 child: SizedBox(
-                  width: 76,
+                  width: cardW,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      ClipOval(
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(square ? 12 : 999),
                         child: SizedBox(
-                          width: 64,
-                          height: 64,
+                          width: avatarSize,
+                          height: avatarSize,
                           child: (m.photo != null && m.photo!.isNotEmpty)
                               ? CachedNetworkImage(
                                   imageUrl: m.photo!,
@@ -2834,38 +2810,15 @@ class _DetailViewState extends State<_DetailView>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-          child: Row(
-            children: [
-              const Text(
-                'Trailers',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1C1C26),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Trailer',
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                    SizedBox(width: 4),
-                    Icon(Icons.keyboard_arrow_down, size: 16, color: Colors.white70),
-                  ],
-                ),
-              ),
-            ],
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Text(
+            'Trailers',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
         ),
         SizedBox(

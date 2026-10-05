@@ -2122,6 +2122,20 @@ class _WideEpisodeCarouselState extends State<_WideEpisodeCarousel> {
     }
   }
 
+  void _centerItem(int index) {
+    if (!mounted || !_scrollController.hasClients) return;
+    const cardWidth = 280.0;
+    const spacing = 12.0;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final itemOffset = index * (cardWidth + spacing);
+    final target = itemOffset - (screenWidth - cardWidth) / 2 + 16.0;
+    _scrollController.animateTo(
+      target.clamp(0.0, _scrollController.position.maxScrollExtent),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -2156,9 +2170,16 @@ class _WideEpisodeCarouselState extends State<_WideEpisodeCarousel> {
             sourceId: widget.sourceId,
             showId: widget.showId,
             isTv: widget.isTv,
-            onTap: () => widget.onOpen(fullIndex),
+            onTap: () {
+              _centerItem(i);
+              widget.onOpen(fullIndex);
+            },
+            onHoldCenter: () => _centerItem(i),
             onLongPress: widget.onPickPlayer != null
-                ? () => widget.onPickPlayer!(fullIndex)
+                ? () {
+                    _centerItem(i);
+                    widget.onPickPlayer!(fullIndex);
+                  }
                 : null,
             onDownload: () => widget.onDownload(ep),
           );
@@ -2168,7 +2189,7 @@ class _WideEpisodeCarouselState extends State<_WideEpisodeCarousel> {
   }
 }
 
-class _WideEpisodeCard extends StatelessWidget {
+class _WideEpisodeCard extends StatefulWidget {
   const _WideEpisodeCard({
     required this.ep,
     required this.epNum,
@@ -2187,6 +2208,7 @@ class _WideEpisodeCard extends StatelessWidget {
     required this.isTv,
     required this.onTap,
     this.onLongPress,
+    this.onHoldCenter,
     required this.onDownload,
   });
 
@@ -2207,13 +2229,23 @@ class _WideEpisodeCard extends StatelessWidget {
   final bool isTv;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+  final VoidCallback? onHoldCenter;
   final VoidCallback onDownload;
 
   @override
+  State<_WideEpisodeCard> createState() => _WideEpisodeCardState();
+}
+
+class _WideEpisodeCardState extends State<_WideEpisodeCard> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
+    final ep = widget.ep;
+    final epNum = widget.epNum;
     final thumbUrl = (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
         ? ep.thumbnail!
-        : defaultCoverUrl;
+        : widget.defaultCoverUrl;
 
     final titleText =
         episodeDisplayTitle(ep, sourceTitle: '', number: epNum) ?? '';
@@ -2223,57 +2255,78 @@ class _WideEpisodeCard extends StatelessWidget {
         : null;
 
     final formattedDate = _formatEpisodeDate(ep.date);
-    final seasonNum = ep.season ?? currentSeason;
+    final seasonNum = ep.season ?? widget.currentSeason;
     final seasonEpisodeTag =
-        hasMultipleSeasons ? 'S${seasonNum}E$epNum' : 'EP $epNum';
+        widget.hasMultipleSeasons ? 'S${seasonNum}E$epNum' : 'EP $epNum';
 
-    final borderColor = highlight
+    final borderColor = widget.highlight
         ? AppColors.accent
-        : (isResume
+        : (widget.isResume
             ? AppColors.accent.withValues(alpha: 0.6)
             : Colors.white.withValues(alpha: 0.08));
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(12),
-        splashColor: AppColors.accentSoft,
-        highlightColor: Colors.white10,
-        child: Container(
-          width: 280,
-          height: 195,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: borderColor,
-              width: (highlight || isResume) ? 1.8 : 1.0,
+    return AnimatedScale(
+      scale: _pressed ? 0.96 : 1.0,
+      duration: const Duration(milliseconds: 140),
+      curve: Curves.easeOutCubic,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTapDown: (_) {
+            setState(() => _pressed = true);
+            widget.onHoldCenter?.call();
+          },
+          onTapUp: (_) => setState(() => _pressed = false),
+          onTapCancel: () => setState(() => _pressed = false),
+          onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
+          borderRadius: BorderRadius.circular(12),
+          splashColor: AppColors.accentSoft,
+          highlightColor: Colors.white10,
+          child: Container(
+            width: 280,
+            height: 195,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: borderColor,
+                width: (widget.highlight || widget.isResume) ? 1.8 : 1.0,
+              ),
+              boxShadow: widget.highlight
+                  ? [
+                      BoxShadow(
+                        color: AppColors.accent.withValues(alpha: 0.4),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
             ),
-            boxShadow: highlight
-                ? [
-                    BoxShadow(
-                      color: AppColors.accent.withValues(alpha: 0.4),
-                      blurRadius: 10,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // 1. Thumbnail image
-              thumbUrl.isNotEmpty
-                  ? Image(
-                      image: nativeCoverProvider(thumbUrl, coverHeaders),
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
-                      filterQuality: FilterQuality.medium,
-                      errorBuilder: (context, error, stackTrace) =>
-                          ColoredBox(
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 1. Thumbnail image
+                thumbUrl.isNotEmpty
+                    ? Image(
+                        image: nativeCoverProvider(thumbUrl, widget.coverHeaders),
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                        filterQuality: FilterQuality.medium,
+                        errorBuilder: (context, error, stackTrace) =>
+                            ColoredBox(
+                          color: AppColors.surface2,
+                          child: const Center(
+                            child: Icon(
+                              Icons.movie_outlined,
+                              color: AppColors.textTertiary,
+                              size: 36,
+                            ),
+                          ),
+                        ),
+                      )
+                    : ColoredBox(
                         color: AppColors.surface2,
                         child: const Center(
                           child: Icon(
@@ -2283,193 +2336,184 @@ class _WideEpisodeCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    )
-                  : ColoredBox(
-                      color: AppColors.surface2,
-                      child: const Center(
-                        child: Icon(
-                          Icons.movie_outlined,
-                          color: AppColors.textTertiary,
-                          size: 36,
-                        ),
-                      ),
-                    ),
 
-              // 2. Dark gradient overlay
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.45),
-                      Colors.black.withValues(alpha: 0.05),
-                      Colors.black.withValues(alpha: 0.85),
-                      Colors.black.withValues(alpha: 0.98),
-                    ],
-                    stops: const [0.0, 0.28, 0.65, 1.0],
-                  ),
-                ),
-              ),
-
-              // 3. Top-left season & episode pill badge
-              Positioned(
-                top: 10,
-                left: 10,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                // 2. Dark gradient overlay
+                DecoratedBox(
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.65),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      width: 0.5,
-                    ),
-                  ),
-                  child: Text(
-                    seasonEpisodeTag,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.3,
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.45),
+                        Colors.black.withValues(alpha: 0.05),
+                        Colors.black.withValues(alpha: 0.85),
+                        Colors.black.withValues(alpha: 0.98),
+                      ],
+                      stops: const [0.0, 0.28, 0.65, 1.0],
                     ),
                   ),
                 ),
-              ),
 
-              // 4. Top-right badges (Watched checkmark, Filler tag, Download icon)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (isFiller) ...[
-                      const TagBadge(
-                        text: 'FILLER',
-                        color: Color(0xFFF59E0B),
+                // 3. Top-left season & episode pill badge
+                Positioned(
+                  top: 10,
+                  left: 10,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 0.5,
                       ),
-                      const SizedBox(width: 6),
-                    ],
-                    if (isWatched)
-                      Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: AppColors.accent,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.5),
-                              blurRadius: 4,
-                            ),
-                          ],
+                    ),
+                    child: Text(
+                      seasonEpisodeTag,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // 4. Top-right badges (Watched checkmark, Filler tag, Download icon)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.isFiller) ...[
+                        const TagBadge(
+                          text: 'FILLER',
+                          color: Color(0xFFF59E0B),
                         ),
-                        child: const Icon(
-                          Icons.check_rounded,
-                          color: Colors.white,
-                          size: 15,
+                        const SizedBox(width: 6),
+                      ],
+                      if (widget.isWatched) ...[
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: AppColors.accent,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.5),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.check_rounded,
+                            color: Colors.white,
+                            size: 15,
+                          ),
                         ),
-                      )
-                    else if (!isTv)
+                        const SizedBox(width: 6),
+                      ],
                       DecoratedBox(
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.5),
                           shape: BoxShape.circle,
                         ),
                         child: _EpisodeDownloadIcon(
-                          sourceId: sourceId,
-                          showId: showId,
+                          sourceId: widget.sourceId,
+                          showId: widget.showId,
                           episodeId: ep.id,
-                          onTap: onDownload,
+                          onTap: widget.onDownload,
                         ),
-                      ),
-                  ],
-                ),
-              ),
-
-              // 5. Overlaid bottom content: Title, Description, Meta row
-              Positioned(
-                left: 12,
-                right: 12,
-                bottom: isInProgress ? 8 : 10,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      heading,
-                      style: TextStyle(
-                        color: isResume ? AppColors.accent : Colors.white,
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w800,
-                        shadows: const [
-                          Shadow(color: Colors.black, blurRadius: 4),
-                        ],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (desc != null) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        desc,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.72),
-                          fontSize: 11,
-                          height: 1.25,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        if (ep.runtimeMinutes != null) ...[
-                          Text(
-                            '${ep.runtimeMinutes}m',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        if (ep.rating != null) ...[
-                          _buildImdbBadge(ep.rating!),
-                          const SizedBox(width: 8),
-                        ],
-                        const Spacer(),
-                        if (formattedDate != null)
-                          Text(
-                            formattedDate,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.75),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
-              ),
 
-              // 6. Resume progress bar at bottom edge
-              if (isInProgress)
+                // 5. Overlaid bottom content: Title, Description, Meta row
                 Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: _ThumbnailProgressBar(fraction: fraction),
+                  left: 12,
+                  right: 12,
+                  bottom: widget.isInProgress ? 8 : 10,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        heading,
+                        style: TextStyle(
+                          color: widget.isResume ? AppColors.accent : Colors.white,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w800,
+                          shadows: const [
+                            Shadow(color: Colors.black, blurRadius: 4),
+                          ],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (desc != null) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          desc,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.72),
+                            fontSize: 11,
+                            height: 1.25,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          if (ep.runtimeMinutes != null) ...[
+                            Text(
+                              '${ep.runtimeMinutes}m',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          if (ep.rating != null) ...[
+                            _buildImdbBadge(ep.rating!),
+                            const SizedBox(width: 8),
+                          ],
+                          const Spacer(),
+                          if (formattedDate != null)
+                            Text(
+                              formattedDate,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.75),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-            ],
+
+                // 6. Resume progress bar at bottom edge
+                if (widget.isInProgress)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _ThumbnailProgressBar(fraction: widget.fraction),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
