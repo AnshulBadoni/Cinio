@@ -189,7 +189,7 @@ class DetailCubit extends Cubit<DetailState> {
                 : item.sourceId));
     final isTv = item.tmdbIsTv || url.contains('/tv/') || item.id.contains(':tv:');
     int? tmdbId = item.tmdbId;
-    if (tmdbId == null) {
+    if (tmdbId == null && (sid == 'tmdb:catalog' || url.startsWith('tmdb:') || item.id.startsWith('tmdb:'))) {
       final match = RegExp(r'(?:movie|tv)[/:](\d+)').firstMatch('${item.id} $url');
       if (match != null) {
         tmdbId = int.tryParse(match.group(1)!);
@@ -368,6 +368,24 @@ class DetailCubit extends Cubit<DetailState> {
       return;
     }
     var d = state.detail ?? detail;
+
+    final sid = _effectiveSourceId ?? detail.sourceId;
+    final isCatalog = sid == 'tmdb:catalog' || sid.startsWith('tpdb:');
+
+    // Non-catalog provider items (e.g. streaming or custom provider movies/series)
+    // carry their own metadata. Do NOT attempt title-based TMDB id resolution or
+    // TMDB metadata enrichment for them — searching TMDB by title often matches
+    // a completely unrelated movie, overwriting the page with wrong info.
+    // Anime items still proceed so MAL id can be resolved for episode tracking.
+    if (!isCatalog && d.type != ProviderType.anime) {
+      if (isClosed) return;
+      emit(state.copyWith(
+        cast: detail.castMembers,
+        relations: detail.relations,
+        extrasLoading: false,
+      ));
+      return;
+    }
 
     // TMDB fallback: an id-less movie/series (e.g. some CloudStream sources)
     // can't track on Simkl and can't be id-enriched. Resolve a TMDB id from

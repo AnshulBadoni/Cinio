@@ -51,14 +51,28 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     );
   }
 
+  /// True when the item is from the TMDB/TPDB catalog — these get full TMDB
+  /// enrichment. Provider items (Zangetsu, CloudStream, etc.) already carry
+  /// their own metadata and must NOT be overwritten by a title-matched TMDB result.
+  bool get _isCatalogSource {
+    final sid = widget.item.sourceId;
+    return sid == 'tmdb:catalog' ||
+        sid == 'tpdb:catalog' ||
+        sid.startsWith('tpdb:');
+  }
+
   @override
   void initState() {
     super.initState();
     _resolvedBackdropUrl = widget.item.heroImage;
-    _loadTitleLogo();
 
-    if (_resolvedBackdropUrl == null || _resolvedBackdropUrl!.isEmpty) {
-      _resolve16x9Backdrop();
+    // Only fetch TMDB logo + backdrop for catalog sources. Provider items show
+    // their own artwork — a TMDB title search would pick the wrong movie.
+    if (_isCatalogSource) {
+      _loadTitleLogo();
+      if (_resolvedBackdropUrl == null || _resolvedBackdropUrl!.isEmpty) {
+        _resolve16x9Backdrop();
+      }
     }
 
     final detail = context.read<DetailCubit>().state.detail;
@@ -153,7 +167,9 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     final tmdbId = detail.tmdbId ?? widget.item.tmdbId;
     final isTv = detail.isSeries || widget.item.tmdbIsTv;
 
-    // Resolve trailer
+    // Resolve trailer — always useful even for provider items (they usually have
+    // a real tmdbId from the provider's own metadata, or TrailerService falls
+    // back gracefully).
     if (_trailerSource == null) {
       _trailerResolving = true;
       sl<TrailerService>()
@@ -175,6 +191,12 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
         if (mounted) _trailerResolving = false;
       });
     }
+
+    // For provider sources (non-catalog), skip ALL TMDB title-based lookups.
+    // These searches match by title and return the first TMDB result, which can
+    // be a completely different movie/series — leading to wrong logos, backdrops,
+    // cast, and synopsis. Provider items already have their own metadata.
+    if (!_isCatalogSource) return;
 
     if (_titleLogoUrl == null) {
       sl<TitleLogoService>()
@@ -865,9 +887,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     final epDesc = focusedEpisode?.description;
     final synopsis = (detail.isSeries && epDesc != null && epDesc.trim().isNotEmpty)
         ? epDesc.trim()
-        : (detail.description != null && detail.description!.isNotEmpty
-            ? detail.description!
-            : 'In a divided city of utopia and undercity, two sisters find themselves on opposite sides of a brewing conflict that will reshape their world.');
+        : (detail.description?.isNotEmpty == true ? detail.description! : null);
 
     return Align(
       alignment: Alignment.bottomLeft,
@@ -913,33 +933,35 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
             SizedBox(
               height: 76,
               width: 580,
-              child: Stack(
-                alignment: Alignment.topLeft,
-                children: [
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    child: Text(
-                      synopsis,
-                      key: ValueKey(focusedEpisode?.id ?? detail.id),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.88),
-                        fontSize: 14.5,
-                        height: 1.54,
-                        fontWeight: FontWeight.w400,
-                        shadows: const [
-                          Shadow(
-                            color: Colors.black87,
-                            blurRadius: 10,
-                            offset: Offset(0, 2),
+              child: synopsis != null
+                  ? Stack(
+                      alignment: Alignment.topLeft,
+                      children: [
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          child: Text(
+                            synopsis,
+                            key: ValueKey(focusedEpisode?.id ?? detail.id),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.88),
+                              fontSize: 14.5,
+                              height: 1.54,
+                              fontWeight: FontWeight.w400,
+                              shadows: const [
+                                Shadow(
+                                  color: Colors.black87,
+                                  blurRadius: 10,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                        ),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
             ),
 
             const SizedBox(height: 26),
@@ -992,25 +1014,32 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
     List<Episode> episodes,
     int totalSeasons,
   ) {
-    final year = detail.year != null && detail.year!.isNotEmpty
-        ? detail.year!
-        : (widget.item.year ?? '2021');
+    final year = (detail.year != null && detail.year!.trim().isNotEmpty)
+        ? detail.year!.trim()
+        : ((widget.item.year != null && widget.item.year!.trim().isNotEmpty)
+            ? widget.item.year!.trim()
+            : null);
 
-    final seasonsCount = totalSeasons > 0 ? totalSeasons : 1;
-    final seasonsText = detail.isSeries
-        ? (seasonsCount > 1 ? '$seasonsCount Seasons' : '1 Season')
-        : (episodes.isNotEmpty && episodes.first.runtimeMinutes != null
-            ? '${episodes.first.runtimeMinutes} min'
-            : '128 min');
+    final String? durationOrSeasons;
+    if (detail.isSeries) {
+      final seasonsCount = totalSeasons > 0 ? totalSeasons : 1;
+      durationOrSeasons = seasonsCount > 1 ? '$seasonsCount Seasons' : '1 Season';
+    } else if (episodes.isNotEmpty && episodes.first.runtimeMinutes != null && episodes.first.runtimeMinutes! > 0) {
+      durationOrSeasons = '${episodes.first.runtimeMinutes} min';
+    } else {
+      durationOrSeasons = null;
+    }
 
-    final rating = (detail.rating != null && detail.rating! > 0)
-        ? detail.rating!
-        : (widget.item.rating ?? (detail.isSeries ? 9.0 : 6.9));
+    final double? rating = (detail.rating != null && detail.rating! > 0)
+        ? detail.rating
+        : ((widget.item.rating != null && widget.item.rating! > 0)
+            ? widget.item.rating
+            : null);
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Year
+    final items = <Widget>[];
+
+    if (year != null) {
+      items.add(
         Text(
           year,
           style: const TextStyle(
@@ -1020,12 +1049,14 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
             letterSpacing: 0.2,
           ),
         ),
+      );
+    }
 
-        _metaDivider(),
-
-        // Seasons / Duration
+    if (durationOrSeasons != null) {
+      if (items.isNotEmpty) items.add(_metaDivider());
+      items.add(
         Text(
-          seasonsText,
+          durationOrSeasons,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 15,
@@ -1033,25 +1064,19 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
             letterSpacing: 0.2,
           ),
         ),
+      );
+    }
 
-        _metaDivider(),
+    if (rating != null) {
+      if (items.isNotEmpty) items.add(_metaDivider());
+      items.add(_imdbRatingBadge(rating));
+    }
 
-        // Age rating
-        Text(
-          detail.isSeries ? '16+' : '16+',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.2,
-          ),
-        ),
+    if (items.isEmpty) return const SizedBox.shrink();
 
-        _metaDivider(),
-
-        // IMDb Gold Badge + Rating
-        _imdbRatingBadge(rating),
-      ],
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: items,
     );
   }
 
@@ -1105,11 +1130,9 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
   Widget _genresPillRow(MediaDetail detail) {
     final genres = detail.genres.isNotEmpty
         ? detail.genres
-        : (widget.item.genres.isNotEmpty
-            ? widget.item.genres
-            : (detail.isSeries
-                ? ['Animation', 'Action', 'Adventure', 'Drama']
-                : ['Crime', 'Mystery', 'Drama', 'Thriller']));
+        : widget.item.genres;
+
+    if (genres.isEmpty) return const SizedBox.shrink();
 
     return Wrap(
       spacing: 10,

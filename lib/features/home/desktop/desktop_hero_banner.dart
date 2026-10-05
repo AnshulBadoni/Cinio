@@ -163,7 +163,7 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
     if (widget.items.isEmpty) return const SizedBox.shrink();
 
     final screenHeight = MediaQuery.sizeOf(context).height;
-    final heroHeight = screenHeight.clamp(600.0, double.infinity).toDouble();
+    final heroHeight = (screenHeight * 0.66).clamp(620.0, 820.0).toDouble();
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -269,8 +269,8 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
                   end: Alignment.centerRight,
                   stops: const [0.0, 0.38, 0.68, 1.0],
                   colors: [
-                    Colors.black.withValues(alpha: 0.92),
-                    Colors.black.withValues(alpha: 0.68),
+                    Colors.black.withValues(alpha: 0.84),
+                    Colors.black.withValues(alpha: 0.60),
                     Colors.black.withValues(alpha: 0.20),
                     Colors.transparent,
                   ],
@@ -314,7 +314,7 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withValues(alpha: 0.65),
+                    Colors.black.withValues(alpha: 0.52),
                     Colors.transparent,
                   ],
                 ),

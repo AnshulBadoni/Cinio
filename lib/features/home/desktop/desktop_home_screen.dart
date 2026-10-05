@@ -141,11 +141,20 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
                 itemCount: sections.length,
                 itemBuilder: (context, index) {
                   final section = sections[index];
+                  final title = section.title.toLowerCase();
+                  final landscape =
+                      title.contains('continue watching') ||
+                      title.contains('watch again') ||
+                      title.contains('recommended') ||
+                      title.contains('collection') ||
+                      title.contains('because you watched') ||
+                      index % 4 == 1;
                   return DesktopMediaRow(
                     title: section.title,
                     items: section.items,
                     onTap: _openDetail,
                     onSeeAll: () => _openSeeAll(section),
+                    landscape: landscape,
                   );
                 },
               ),

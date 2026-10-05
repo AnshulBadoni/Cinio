@@ -213,6 +213,7 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
   Future<void> _loadInitialItems() async {
     setState(() {
       _loading = true;
+      _items = [];
       _currentPage = 1;
       _hasMore = true;
     });
@@ -360,8 +361,15 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
 
               const SliverToBoxAdapter(child: SizedBox(height: 14)),
 
+              // ── Shimmering Masonry Skeleton Loader ───────────────
+              if (_loading && _items.isEmpty)
+                _MasonrySkeletonGrid(
+                  crossAxisCount: crossAxisCount,
+                  itemCount: crossAxisCount * 2 + 2,
+                )
+
               // ── Masonry Grid of Mixed Wide / Tall Posters ─────────
-              if (_items.isNotEmpty)
+              else if (_items.isNotEmpty)
                 SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 8),
                   sliver: SliverMasonryGrid.count(
@@ -486,8 +494,8 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
                   ),
                 ),
 
-              // Bottom Loading Spinner
-              if (_loading)
+              // Bottom Loading Spinner (Pagination only)
+              if (_loading && _items.isNotEmpty)
                 const SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.symmetric(vertical: 36),
@@ -1062,6 +1070,156 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shimmering Masonry Skeleton Loader for Desktop UI
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MasonrySkeletonGrid extends StatefulWidget {
+  const _MasonrySkeletonGrid({
+    required this.crossAxisCount,
+    this.itemCount = 12,
+  });
+
+  final int crossAxisCount;
+  final int itemCount;
+
+  @override
+  State<_MasonrySkeletonGrid> createState() => _MasonrySkeletonGridState();
+}
+
+class _MasonrySkeletonGridState extends State<_MasonrySkeletonGrid>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _anim,
+        builder: (context, _) {
+          final shimmerAlpha = 0.28 + 0.22 * _anim.value;
+          final baseColor = AppColors.surface2.withValues(alpha: shimmerAlpha);
+
+          return SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 8),
+            sliver: SliverMasonryGrid.count(
+              crossAxisCount: widget.crossAxisCount,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              childCount: widget.itemCount,
+              itemBuilder: (context, index) {
+                final isWide = (index % 5 == 0) || (index % 5 == 2);
+                final aspectRatio = isWide ? (16 / 9) : (2 / 3);
+
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: AspectRatio(
+                    aspectRatio: aspectRatio,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: baseColor,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Stack(
+                        children: [
+                          // Bottom subtle dark vignette
+                          Positioned.fill(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  stops: const [0.45, 1.0],
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.38),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Placeholder bottom title bars and action button
+                          Positioned(
+                            left: 12,
+                            right: 10,
+                            bottom: 10,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        height: 12,
+                                        width: isWide ? 140 : 100,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.10 + 0.08 * _anim.value,
+                                          ),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        height: 10,
+                                        width: isWide ? 85 : 55,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.06 + 0.06 * _anim.value,
+                                          ),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white.withValues(
+                                      alpha: 0.08 + 0.06 * _anim.value,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        },
       ),
     );
   }

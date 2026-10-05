@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../core/models/media_item.dart';
 import 'desktop_media_card.dart';
 
-/// Desktop content rail matching the reference design: clean section title
-/// with "See All >", portrait 2:3 posters with title underneath, and smooth
-/// hover chevron buttons for fast browsing.
+/// Desktop content rail. Each rail intentionally chooses either portrait or
+/// landscape artwork; cards are never stretched between aspect ratios.
 class DesktopMediaRow extends StatefulWidget {
   const DesktopMediaRow({
     super.key,
@@ -13,12 +12,14 @@ class DesktopMediaRow extends StatefulWidget {
     required this.items,
     required this.onTap,
     this.onSeeAll,
+    this.landscape = false,
   });
 
   final String title;
   final List<MediaItem> items;
   final void Function(MediaItem item) onTap;
   final VoidCallback? onSeeAll;
+  final bool landscape;
 
   @override
   State<DesktopMediaRow> createState() => _DesktopMediaRowState();
@@ -29,6 +30,10 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
   bool _hovered = false;
   bool _canScrollLeft = false;
   bool _canScrollRight = true;
+
+  double get _cardWidth => widget.landscape ? 300 : 165;
+  double get _cardHeight => widget.landscape ? 169 : 275;
+  double get _itemExtent => _cardWidth + 20;
 
   @override
   void initState() {
@@ -48,12 +53,12 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
     if (!_scrollController.hasClients) return;
     final max = _scrollController.position.maxScrollExtent;
     final current = _scrollController.offset;
-    final canLeft = current > 20;
-    final canRight = current < max - 20;
-    if (canLeft != _canScrollLeft || canRight != _canScrollRight) {
+    final left = current > 20;
+    final right = current < max - 20;
+    if (left != _canScrollLeft || right != _canScrollRight) {
       setState(() {
-        _canScrollLeft = canLeft;
-        _canScrollRight = canRight;
+        _canScrollLeft = left;
+        _canScrollRight = right;
       });
     }
   }
@@ -66,7 +71,7 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
     );
     _scrollController.animateTo(
       target,
-      duration: const Duration(milliseconds: 360),
+      duration: const Duration(milliseconds: 320),
       curve: Curves.easeOutCubic,
     );
   }
@@ -75,17 +80,14 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
   Widget build(BuildContext context) {
     if (widget.items.isEmpty) return const SizedBox.shrink();
 
-    // Responsive portrait card sizing (approx 2:3 ratio)
-    const cardWidth = 165.0;
-    const cardHeight = 248.0;
-    const rowHeight = cardHeight + 54.0; // poster + 9px gap + 2 lines of text
+    final cardBottom = widget.landscape ? 48.0 : 54.0;
+    final rowHeight = _cardHeight + cardBottom;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 24, bottom: 10),
+      padding: const EdgeInsets.only(top: 28, bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Section Title & "See All >" ───────────────────────────
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 56),
             child: Row(
@@ -94,7 +96,7 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
                   widget.title,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 21,
+                    fontSize: 20,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.2,
                   ),
@@ -105,59 +107,48 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
               ],
             ),
           ),
-
           const SizedBox(height: 14),
-
-          // ── Scrollable Row with Hover Chevrons ────────────────────
-          MouseRegion(
-            onEnter: (_) => setState(() => _hovered = true),
-            onExit: (_) => setState(() => _hovered = false),
-            child: SizedBox(
-              height: rowHeight,
+          SizedBox(
+            height: rowHeight,
+            child: MouseRegion(
+              onEnter: (_) => setState(() => _hovered = true),
+              onExit: (_) => setState(() => _hovered = false),
               child: Stack(
                 children: [
                   ListView.separated(
                     controller: _scrollController,
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 56),
+                    physics: const ClampingScrollPhysics(),
                     itemCount: widget.items.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 16),
+                    separatorBuilder: (_, _) => const SizedBox(width: 20),
                     itemBuilder: (context, index) {
                       final item = widget.items[index];
                       return DesktopMediaCard(
                         item: item,
-                        width: cardWidth,
-                        height: cardHeight,
+                        landscape: widget.landscape,
+                        width: _cardWidth,
+                        height: _cardHeight,
                         onTap: () => widget.onTap(item),
                       );
                     },
                   ),
-
-                  // Left Chevron
                   if (_hovered && _canScrollLeft)
                     Positioned(
-                      left: 12,
-                      top: 0,
-                      bottom: 50,
-                      child: Center(
-                        child: _RowChevron(
-                          icon: Icons.chevron_left_rounded,
-                          onTap: () => _scroll(-cardWidth * 3.5),
-                        ),
+                      left: 18,
+                      top: rowHeight / 2 - 22,
+                      child: _RowChevron(
+                        icon: Icons.chevron_left_rounded,
+                        onTap: () => _scroll(-_itemExtent * 3),
                       ),
                     ),
-
-                  // Right Chevron
                   if (_hovered && _canScrollRight)
                     Positioned(
-                      right: 12,
-                      top: 0,
-                      bottom: 50,
-                      child: Center(
-                        child: _RowChevron(
-                          icon: Icons.chevron_right_rounded,
-                          onTap: () => _scroll(cardWidth * 3.5),
-                        ),
+                      right: 18,
+                      top: rowHeight / 2 - 22,
+                      child: _RowChevron(
+                        icon: Icons.chevron_right_rounded,
+                        onTap: () => _scroll(_itemExtent * 3),
                       ),
                     ),
                 ],
@@ -170,97 +161,43 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
   }
 }
 
-class _SeeAllButton extends StatefulWidget {
+class _SeeAllButton extends StatelessWidget {
   const _SeeAllButton({required this.onTap});
-
   final VoidCallback onTap;
 
   @override
-  State<_SeeAllButton> createState() => _SeeAllButtonState();
-}
-
-class _SeeAllButtonState extends State<_SeeAllButton> {
-  bool _hovered = false;
-
-  @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedDefaultTextStyle(
-          duration: const Duration(milliseconds: 160),
-          style: TextStyle(
-            color: _hovered
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.55),
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('See All'),
-              const SizedBox(width: 3),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 16,
-                color: _hovered
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.55),
-              ),
-            ],
-          ),
-        ),
+    return TextButton.icon(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        foregroundColor: Colors.white.withValues(alpha: 0.58),
+        padding: EdgeInsets.zero,
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
+      icon: const Icon(Icons.chevron_right_rounded, size: 17),
+      label: const Text('See all'),
     );
   }
 }
 
-class _RowChevron extends StatefulWidget {
+class _RowChevron extends StatelessWidget {
   const _RowChevron({required this.icon, required this.onTap});
-
   final IconData icon;
   final VoidCallback onTap;
 
   @override
-  State<_RowChevron> createState() => _RowChevronState();
-}
-
-class _RowChevronState extends State<_RowChevron> {
-  bool _hovered = false;
-
-  @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedScale(
-          scale: _hovered ? 1.08 : 1.0,
-          duration: const Duration(milliseconds: 140),
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.black.withValues(alpha: _hovered ? 0.85 : 0.65),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: _hovered ? 0.35 : 0.15),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  blurRadius: 10,
-                ),
-              ],
-            ),
-            child: Icon(widget.icon, color: Colors.white, size: 24),
-          ),
+    return Material(
+      color: Colors.black.withValues(alpha: 0.72),
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: Icon(icon, color: Colors.white, size: 27),
         ),
       ),
     );
