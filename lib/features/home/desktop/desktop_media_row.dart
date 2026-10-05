@@ -13,6 +13,8 @@ class DesktopMediaRow extends StatefulWidget {
     required this.onTap,
     this.onSeeAll,
     this.landscape = false,
+    this.showTitles = true,
+    this.padding,
   });
 
   final String title;
@@ -20,6 +22,8 @@ class DesktopMediaRow extends StatefulWidget {
   final void Function(MediaItem item) onTap;
   final VoidCallback? onSeeAll;
   final bool landscape;
+  final bool showTitles;
+  final EdgeInsetsGeometry? padding;
 
   @override
   State<DesktopMediaRow> createState() => _DesktopMediaRowState();
@@ -31,9 +35,9 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
   bool _canScrollLeft = false;
   bool _canScrollRight = true;
 
-  double get _cardWidth => widget.landscape ? 300 : 165;
-  double get _cardHeight => widget.landscape ? 169 : 275;
-  double get _itemExtent => _cardWidth + 20;
+  double get _cardWidth => widget.landscape ? 300 : 155;
+  double get _cardHeight => widget.landscape ? 169 : 230;
+  double get _itemExtent => _cardWidth + 16;
 
   @override
   void initState() {
@@ -80,11 +84,11 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
   Widget build(BuildContext context) {
     if (widget.items.isEmpty) return const SizedBox.shrink();
 
-    final cardBottom = widget.landscape ? 48.0 : 54.0;
+    final cardBottom = widget.showTitles ? (widget.landscape ? 48.0 : 48.0) : 0.0;
     final rowHeight = _cardHeight + cardBottom;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 28, bottom: 8),
+      padding: widget.padding ?? const EdgeInsets.only(top: 20, bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -96,9 +100,9 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
                   widget.title,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
                   ),
                 ),
                 const Spacer(),
@@ -107,7 +111,7 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           SizedBox(
             height: rowHeight,
             child: MouseRegion(
@@ -121,12 +125,13 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
                     padding: const EdgeInsets.symmetric(horizontal: 56),
                     physics: const ClampingScrollPhysics(),
                     itemCount: widget.items.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 20),
+                    separatorBuilder: (_, _) => const SizedBox(width: 16),
                     itemBuilder: (context, index) {
                       final item = widget.items[index];
                       return DesktopMediaCard(
                         item: item,
                         landscape: widget.landscape,
+                        showTitle: widget.showTitles,
                         width: _cardWidth,
                         height: _cardHeight,
                         onTap: () => widget.onTap(item),

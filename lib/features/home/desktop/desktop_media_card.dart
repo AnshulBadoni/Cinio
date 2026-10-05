@@ -1,7 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/di/injector.dart';
+import '../../../core/metadata/tmdb.dart';
 import '../../../core/models/media_item.dart';
 import '../../../core/playback/watch_history.dart';
 import '../../../core/theme/app_colors.dart';
@@ -21,6 +23,7 @@ class DesktopMediaCard extends StatefulWidget {
     this.width = 165,
     this.height = 275,
     this.landscape = false,
+    this.showTitle = true,
   });
 
   final MediaItem item;
@@ -28,13 +31,59 @@ class DesktopMediaCard extends StatefulWidget {
   final double width;
   final double height;
   final bool landscape;
+  final bool showTitle;
 
   @override
   State<DesktopMediaCard> createState() => _DesktopMediaCardState();
 }
 
 class _DesktopMediaCardState extends State<DesktopMediaCard> {
+  static final Map<String, String> _backdropCache = {};
   bool _hovered = false;
+  String? _fetchedBackdrop;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.landscape &&
+        (widget.item.heroImage == null || widget.item.heroImage!.isEmpty)) {
+      _resolveLandscapeBackdrop();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant DesktopMediaCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.landscape &&
+        widget.item.id != oldWidget.item.id &&
+        (widget.item.heroImage == null || widget.item.heroImage!.isEmpty)) {
+      _resolveLandscapeBackdrop();
+    }
+  }
+
+  Future<void> _resolveLandscapeBackdrop() async {
+    final item = widget.item;
+    if (_backdropCache.containsKey(item.id)) {
+      setState(() => _fetchedBackdrop = _backdropCache[item.id]);
+      return;
+    }
+    final tmdbId = item.tmdbId;
+    if (tmdbId == null || tmdbId <= 0) return;
+    try {
+      final dio = sl<Dio>();
+      final path = item.tmdbIsTv ? 'tv/$tmdbId' : 'movie/$tmdbId';
+      final res = await dio.get<Map<String, dynamic>>(
+        'https://${Tmdb.host}/3/$path',
+        queryParameters: {'api_key': Tmdb.apiKey},
+      );
+      final bg = res.data?['backdrop_path']?.toString();
+      if (bg != null && bg.isNotEmpty) {
+        final url = '${Tmdb.img}/w780$bg';
+        _backdropCache[item.id] = url;
+        if (mounted) setState(() => _fetchedBackdrop = url);
+      }
+    } catch (_) {}
+  }
 
   double? _progress() {
     if (!sl.isRegistered<WatchHistory>()) return null;
@@ -50,7 +99,15 @@ class _DesktopMediaCardState extends State<DesktopMediaCard> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final cover = item.cover;
+    final landscapeUrl = item.heroImage != null && item.heroImage!.isNotEmpty
+        ? item.heroImage
+        : (_fetchedBackdrop ?? _backdropCache[item.id]);
+
+    final imageUrl = widget.landscape
+        ? (landscapeUrl ?? item.cover)
+        : (item.cover != null && item.cover!.isNotEmpty
+            ? item.cover
+            : item.heroImage);
     final progress = _progress();
 
     return MouseRegion(
@@ -61,7 +118,7 @@ class _DesktopMediaCardState extends State<DesktopMediaCard> {
         onTap: widget.onTap,
         child: SizedBox(
           width: widget.width,
-          height: widget.height + (widget.landscape ? 48 : 48),
+          height: widget.height + (widget.showTitle ? 48 : 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -69,13 +126,13 @@ class _DesktopMediaCardState extends State<DesktopMediaCard> {
                 width: widget.width,
                 height: widget.height,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(widget.landscape ? 10 : 9),
+                  borderRadius: BorderRadius.circular(widget.landscape ? 10 : 8),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      if (cover != null && cover.isNotEmpty)
+                      if (imageUrl != null && imageUrl.isNotEmpty)
                         CachedNetworkImage(
-                          imageUrl: cover,
+                          imageUrl: imageUrl,
                           fit: BoxFit.cover,
                           memCacheWidth: widget.landscape ? 640 : 360,
                           memCacheHeight: widget.landscape ? 360 : 560,
@@ -201,30 +258,32 @@ class _DesktopMediaCardState extends State<DesktopMediaCard> {
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
-              if (!widget.landscape)
-                Text(
-                  item.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
+              if (widget.showTitle) ...[
+                const SizedBox(height: 8),
+                if (!widget.landscape)
+                  Text(
+                    item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-              if (!widget.landscape) ...[
-                const SizedBox(height: 3),
-                Text(
-                  _metadata(item),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.52),
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w500,
+                if (!widget.landscape) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    _metadata(item),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.52),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
+                ],
               ],
             ],
           ),

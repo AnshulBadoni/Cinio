@@ -293,7 +293,7 @@ class TmdbDiscoverService {
       return _dio.get<dynamic>(
         '${Tmdb.base}/$k/$id',
         queryParameters: {
-          'append_to_response': k == 'tv' ? 'credits,external_ids' : 'credits,release_dates,external_ids',
+          'append_to_response': k == 'tv' ? 'credits,external_ids,content_ratings' : 'credits,release_dates,external_ids',
         },
         options: Options(
           receiveTimeout: const Duration(seconds: 14),
@@ -404,6 +404,74 @@ class TmdbDiscoverService {
     final castRows = row['credits'] is Map ? row['credits']['cast'] : null;
     final cast = <String>[];
     if (castRows is List) { for (final c in castRows) { if (c is Map && c['name'] != null) cast.add(c['name'].toString()); } }
+
+    final int? runtime = !item.tmdbIsTv
+        ? (row['runtime'] as num?)?.toInt()
+        : ((row['episode_run_time'] is List && (row['episode_run_time'] as List).isNotEmpty)
+            ? ((row['episode_run_time'] as List).first as num?)?.toInt()
+            : null);
+
+    final originCountryList = row['origin_country'];
+    final String? originCountry = (originCountryList is List && originCountryList.isNotEmpty)
+        ? originCountryList.first.toString()
+        : null;
+
+    final String? originalLanguage = row['original_language']?.toString().toUpperCase();
+
+    final crewList = row['credits'] is Map ? row['credits']['crew'] : null;
+    String? director;
+    String? writer;
+    if (crewList is List) {
+      final directors = <String>[];
+      final writers = <String>[];
+      for (final c in crewList) {
+        if (c is Map && c['name'] != null) {
+          final job = c['job']?.toString();
+          if (job == 'Director') directors.add(c['name'].toString());
+          if (job == 'Writer' || job == 'Screenplay' || job == 'Story') {
+            writers.add(c['name'].toString());
+          }
+        }
+      }
+      if (directors.isNotEmpty) director = directors.take(2).join(', ');
+      if (writers.isNotEmpty) writer = writers.take(3).join(', ');
+    }
+    if (director == null && item.tmdbIsTv && row['created_by'] is List) {
+      final creators = [
+        for (final c in row['created_by'] as List)
+          if (c is Map && c['name'] != null) c['name'].toString()
+      ];
+      if (creators.isNotEmpty) director = creators.take(2).join(', ');
+    }
+
+    String? certification;
+    if (!item.tmdbIsTv && row['release_dates'] is Map && row['release_dates']['results'] is List) {
+      for (final r in row['release_dates']['results'] as List) {
+        if (r is Map && (r['iso_3166_1'] == 'US' || r['iso_3166_1'] == _deviceRegion)) {
+          if (r['release_dates'] is List) {
+            for (final d in r['release_dates'] as List) {
+              final cert = d['certification']?.toString();
+              if (cert != null && cert.isNotEmpty) {
+                certification = cert;
+                break;
+              }
+            }
+          }
+        }
+        if (certification != null) break;
+      }
+    } else if (item.tmdbIsTv && row['content_ratings'] is Map && row['content_ratings']['results'] is List) {
+      for (final r in row['content_ratings']['results'] as List) {
+        if (r is Map && (r['iso_3166_1'] == 'US' || r['iso_3166_1'] == _deviceRegion)) {
+          final cert = r['rating']?.toString();
+          if (cert != null && cert.isNotEmpty) {
+            certification = cert;
+            break;
+          }
+        }
+      }
+    }
+
     final episodes = <Episode>[];
     if (item.tmdbIsTv) {
       final seasons = row['seasons'];
@@ -440,6 +508,12 @@ class TmdbDiscoverService {
           tmdbStatus: tmdbStatus,
           availableSeasons: seasonNumbers,
           tmdbTheatricalRelease: theatricalRelease,
+          runtime: runtime,
+          certification: certification,
+          originCountry: originCountry,
+          originalLanguage: originalLanguage,
+          director: director,
+          writer: writer,
         );
       }
     } else {
@@ -461,6 +535,12 @@ class TmdbDiscoverService {
       releaseDate: date,
       tmdbStatus: tmdbStatus,
       tmdbTheatricalRelease: theatricalRelease,
+      runtime: runtime,
+      certification: certification,
+      originCountry: originCountry,
+      originalLanguage: originalLanguage,
+      director: director,
+      writer: writer,
     );
   }
 

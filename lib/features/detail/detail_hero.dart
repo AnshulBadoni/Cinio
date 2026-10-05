@@ -152,11 +152,6 @@ class _Hero extends StatelessWidget {
         imageWidget,
         IgnorePointer(
           child: DecoratedBox(
-            decoration: BoxDecoration(gradient: AppColors.topScrim),
-          ),
-        ),
-        IgnorePointer(
-          child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
@@ -164,12 +159,11 @@ class _Hero extends StatelessWidget {
                 colors: [
                   Colors.transparent,
                   Colors.transparent,
-                  AppColors.bg.withValues(alpha: 0.12),
-                  AppColors.bg.withValues(alpha: 0.40),
+                  AppColors.bg.withValues(alpha: 0.35),
                   AppColors.bg.withValues(alpha: 0.75),
                   AppColors.bg,
                 ],
-                stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
+                stops: const [0.0, 0.58, 0.76, 0.90, 1.0],
               ),
             ),
           ),
@@ -540,11 +534,6 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
                     ),
                     IgnorePointer(
                       child: DecoratedBox(
-                        decoration: BoxDecoration(gradient: AppColors.topScrim),
-                      ),
-                    ),
-                    IgnorePointer(
-                      child: DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
@@ -552,12 +541,11 @@ class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
                             colors: [
                               Colors.transparent,
                               Colors.transparent,
-                              AppColors.bg.withValues(alpha: 0.12),
-                              AppColors.bg.withValues(alpha: 0.40),
+                              AppColors.bg.withValues(alpha: 0.35),
                               AppColors.bg.withValues(alpha: 0.75),
                               AppColors.bg,
                             ],
-                            stops: const [0.0, 0.28, 0.50, 0.70, 0.88, 1.0],
+                            stops: const [0.0, 0.58, 0.76, 0.90, 1.0],
                           ),
                         ),
                       ),

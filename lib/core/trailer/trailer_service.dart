@@ -17,6 +17,23 @@ export 'nsfw_trailer_service.dart'
 /// Can represent either a YouTube video ID (resolved to playable streams via
 /// [TrailerService.streamUrl]) or a direct stream URL (e.g. HLS .m3u8) with
 /// required HTTP headers.
+class TrailerInfo {
+  final String key;
+  final String name;
+  final String type;
+  final String site;
+
+  const TrailerInfo({
+    required this.key,
+    required this.name,
+    this.type = 'Trailer',
+    this.site = 'YouTube',
+  });
+
+  String get thumbnailUrl => 'https://img.youtube.com/vi/$key/hqdefault.jpg';
+  TrailerSource toSource() => TrailerSource.youtube(key);
+}
+
 class TrailerSource {
   const TrailerSource.youtube(this.youtubeId)
       : directUrl = null,
@@ -136,6 +153,92 @@ class TrailerService {
       case ProviderType.novel:
         // No trailer source for reading types.
         return null;
+    }
+  }
+
+  /// Fetches all available trailers for the title (e.g. for a horizontal trailer carousel).
+  Future<List<TrailerInfo>> fetchAllTrailers({
+    required String title,
+    String? englishTitle,
+    required ProviderType type,
+    String? year,
+    int? tmdbId,
+    bool? isTv,
+  }) async {
+    if (type == ProviderType.anime) {
+      final ytId = await _anilistTrailer(title: title, englishTitle: englishTitle);
+      if (ytId != null && ytId.isNotEmpty) {
+        return [TrailerInfo(key: ytId, name: 'Official Trailer')];
+      }
+      return const [];
+    }
+    if (type != ProviderType.movie) return const [];
+
+    try {
+      String? resolvedId;
+      String? mediaType;
+      if (tmdbId != null && tmdbId > 0) {
+        resolvedId = tmdbId.toString();
+        mediaType = (isTv ?? false) ? 'tv' : 'movie';
+      } else {
+        final rawQuery = (englishTitle != null && englishTitle.isNotEmpty) ? englishTitle : title;
+        final cleaned = cleanTitle(rawQuery);
+        final query = cleaned.isNotEmpty ? cleaned : rawQuery;
+        final search = await _dio.get<dynamic>(
+          '$_tmdbBase/search/multi',
+          queryParameters: {'query': query},
+        );
+        final results = _asList(_asMap(search.data)?['results']);
+        if (results != null && results.isNotEmpty) {
+          final candidates = results
+              .map(_asMap)
+              .whereType<Map<String, dynamic>>()
+              .where((r) {
+                final mt = r['media_type']?.toString();
+                return mt == 'movie' || mt == 'tv';
+              })
+              .toList();
+          if (candidates.isNotEmpty) {
+            Map<String, dynamic> picked = candidates.first;
+            if (year != null && year.isNotEmpty) {
+              for (final r in candidates) {
+                if (_tmdbYear(r) == year) {
+                  picked = r;
+                  break;
+                }
+              }
+            }
+            mediaType = picked['media_type']?.toString();
+            resolvedId = picked['id']?.toString();
+          }
+        }
+      }
+
+      if (resolvedId == null || mediaType == null) return const [];
+
+      final videos = await _dio.get<dynamic>('$_tmdbBase/$mediaType/$resolvedId/videos');
+      final vids = _asList(_asMap(videos.data)?['results'])
+          ?.map(_asMap)
+          .whereType<Map<String, dynamic>>()
+          .where((v) => v['site']?.toString() == 'YouTube')
+          .toList();
+      if (vids == null || vids.isEmpty) return const [];
+
+      final out = <TrailerInfo>[];
+      for (final v in vids) {
+        final key = v['key']?.toString();
+        if (key != null && key.isNotEmpty) {
+          out.add(TrailerInfo(
+            key: key,
+            name: v['name']?.toString() ?? 'Trailer',
+            type: v['type']?.toString() ?? 'Trailer',
+            site: 'YouTube',
+          ));
+        }
+      }
+      return out;
+    } catch (_) {
+      return const [];
     }
   }
 

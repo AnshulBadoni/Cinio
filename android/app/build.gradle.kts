@@ -45,7 +45,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.spyou.watch_app"
+        applicationId = "com.cinio.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

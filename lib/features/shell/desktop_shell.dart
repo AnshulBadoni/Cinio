@@ -104,7 +104,6 @@ class _DesktopShellState extends State<DesktopShell> {
               child: DesktopNavBar(
                 currentCategory: _category,
                 onCategorySelected: _onCategorySelected,
-                searchController: _searchCtrl,
                 isScrolled: _isScrolled,
               ),
             ),

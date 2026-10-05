@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injector.dart';
 import '../../../core/models/home_section.dart';
 import '../../../core/models/media_item.dart';
+import '../../../core/playback/my_list.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../detail/detail_screen.dart';
 import '../../shell/desktop_nav_bar.dart';
@@ -26,18 +27,25 @@ class DesktopHomeScreen extends StatefulWidget {
 
 class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
   final HomeCubit _homeCubit = sl<HomeCubit>();
+  final MyListStore _myList = sl<MyListStore>();
   final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _myList.revision.addListener(_onMyListChanged);
     if (_homeCubit.state.sections == null) {
       _homeCubit.load();
     }
   }
 
+  void _onMyListChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _myList.revision.removeListener(_onMyListChanged);
     _scrollController.dispose();
     super.dispose();
   }
@@ -117,44 +125,77 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
 
           final sections = _filterSections(rawSections);
           final carouselItems = _buildCarouselItems(sections, state.heroItems);
+          final myListItems = _myList.all();
+
+          // Exclude duplicate My List from backend sections
+          final otherSections = sections.where((s) {
+            final t = s.title.trim().toLowerCase();
+            return t != 'my list' && t != 'watchlist';
+          }).toList();
+
+          // First row to embed cleanly at the bottom of the fullscreen hero
+          final Widget? heroBottomRow;
+          final List<HomeSection> remainingSections;
+
+          if (myListItems.isNotEmpty) {
+            heroBottomRow = DesktopMediaRow(
+              title: 'MY LIST',
+              items: myListItems,
+              onTap: _openDetail,
+              landscape: false,
+              showTitles: false,
+              padding: const EdgeInsets.only(bottom: 8),
+            );
+            remainingSections = otherSections;
+          } else if (otherSections.isNotEmpty) {
+            final first = otherSections.first;
+            heroBottomRow = DesktopMediaRow(
+              title: first.title.toUpperCase(),
+              items: first.items,
+              onTap: _openDetail,
+              landscape: false,
+              showTitles: false,
+              padding: const EdgeInsets.only(bottom: 8),
+            );
+            remainingSections = otherSections.skip(1).toList();
+          } else {
+            heroBottomRow = null;
+            remainingSections = const [];
+          }
 
           return CustomScrollView(
             controller: _scrollController,
             physics: const ClampingScrollPhysics(),
             slivers: [
-              // ── Full-Bleed Hero Carousel at Top ─────────────────────
+              // ── Full-Bleed Fullscreen Hero Carousel with Embedded First Row ──
               if (carouselItems.isNotEmpty)
                 SliverToBoxAdapter(
                   child: DesktopHeroBanner(
                     items: carouselItems,
                     onPlay: _openDetail,
                     onMoreInfo: _openDetail,
+                    bottomRow: heroBottomRow,
                   ),
                 )
               else
                 const SliverToBoxAdapter(child: SizedBox(height: 80)),
 
-              const SliverToBoxAdapter(child: SizedBox(height: 12)),
-
-              // ── Media Rows with Portrait Posters & Clean Titles ───
+              // ── Remaining Media Rows with High-Res Posters ─────────
               SliverList.builder(
-                itemCount: sections.length,
+                itemCount: remainingSections.length,
                 itemBuilder: (context, index) {
-                  final section = sections[index];
+                  final section = remainingSections[index];
                   final title = section.title.toLowerCase();
-                  final landscape =
-                      title.contains('continue watching') ||
-                      title.contains('watch again') ||
-                      title.contains('recommended') ||
-                      title.contains('collection') ||
-                      title.contains('because you watched') ||
-                      index % 4 == 1;
+                  // Only rows with actual 16:9 episode screenshots should be landscape
+                  final isLandscape = (title.contains('continue watching') ||
+                          title.contains('watch again')) &&
+                      section.items.any((it) => it.heroImage != null && it.heroImage!.isNotEmpty);
                   return DesktopMediaRow(
-                    title: section.title,
+                    title: section.title.toUpperCase(),
                     items: section.items,
                     onTap: _openDetail,
                     onSeeAll: () => _openSeeAll(section),
-                    landscape: landscape,
+                    landscape: isLandscape,
                   );
                 },
               ),

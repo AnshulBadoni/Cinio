@@ -88,6 +88,12 @@
                 <data android:scheme="zangetsu" android:host="room"/>
                 <!-- TV pairing QR: zangetsu://pair?code=… (see OpenLinkService). -->
                 <data android:scheme="zangetsu" android:host="pair"/>
+                <data android:scheme="cinio" android:host="anilist-auth"/>
+                <data android:scheme="cinio" android:host="mal-auth"/>
+                <data android:scheme="cinio" android:host="simkl-auth"/>
+                <data android:scheme="cinio" android:host="open"/>
+                <data android:scheme="cinio" android:host="room"/>
+                <data android:scheme="cinio" android:host="pair"/>
             </intent-filter>
             <!-- "Open with" for local video files, so a file manager / Downloads
                  offers Zangetsu the way it offers any other player.

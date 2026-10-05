@@ -118,6 +118,30 @@ class MediaDetail extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final bool tmdbTheatricalRelease;
 
+  /// Movie/TV runtime in minutes. Runtime-only.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final int? runtime;
+
+  /// Content rating (e.g. PG-13, TV-MA). Runtime-only.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? certification;
+
+  /// Origin country ISO code (e.g. US). Runtime-only.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? originCountry;
+
+  /// Original language ISO code (e.g. EN). Runtime-only.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? originalLanguage;
+
+  /// Director(s) / Creator(s). Runtime-only.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? director;
+
+  /// Writer(s). Runtime-only.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? writer;
+
   const MediaDetail({
     required this.id,
     required this.title,
@@ -148,6 +172,12 @@ class MediaDetail extends Equatable {
     this.tmdbStatus,
     this.availableSeasons = const [],
     this.tmdbTheatricalRelease = false,
+    this.runtime,
+    this.certification,
+    this.originCountry,
+    this.originalLanguage,
+    this.director,
+    this.writer,
   });
 
   factory MediaDetail.fromJson(Map<String, dynamic> json) =>
@@ -184,6 +214,12 @@ class MediaDetail extends Equatable {
     String? tmdbStatus,
     List<int>? availableSeasons,
     bool? tmdbTheatricalRelease,
+    int? runtime,
+    String? certification,
+    String? originCountry,
+    String? originalLanguage,
+    String? director,
+    String? writer,
   }) => MediaDetail(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -214,6 +250,12 @@ class MediaDetail extends Equatable {
     tmdbStatus: tmdbStatus ?? this.tmdbStatus,
     availableSeasons: availableSeasons ?? this.availableSeasons,
     tmdbTheatricalRelease: tmdbTheatricalRelease ?? this.tmdbTheatricalRelease,
+    runtime: runtime ?? this.runtime,
+    certification: certification ?? this.certification,
+    originCountry: originCountry ?? this.originCountry,
+    originalLanguage: originalLanguage ?? this.originalLanguage,
+    director: director ?? this.director,
+    writer: writer ?? this.writer,
   );
 
   @override
@@ -247,5 +289,11 @@ class MediaDetail extends Equatable {
     tmdbStatus,
     availableSeasons,
     tmdbTheatricalRelease,
+    runtime,
+    certification,
+    originCountry,
+    originalLanguage,
+    director,
+    writer,
   ];
 }

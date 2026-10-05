@@ -121,12 +121,24 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen>
     _skeletonCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
-    )..repeat(reverse: true);
+    );
     _skeletonAnim = CurvedAnimation(parent: _skeletonCtrl, curve: Curves.easeInOut);
 
     widget.searchController.addListener(_onSearchQueryChanged);
     _scrollController.addListener(_onScroll);
     _loadInitialItems();
+  }
+
+  void _startSkeletonAnimation() {
+    if (!_skeletonCtrl.isAnimating) {
+      _skeletonCtrl.repeat(reverse: true);
+    }
+  }
+
+  void _stopSkeletonAnimation() {
+    if (_skeletonCtrl.isAnimating) {
+      _skeletonCtrl.stop();
+    }
   }
 
   @override
@@ -221,6 +233,7 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen>
   }
 
   Future<void> _loadInitialItems() async {
+    _startSkeletonAnimation();
     setState(() {
       _loading = true;
       _items = [];
@@ -242,6 +255,7 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen>
     }
 
     if (mounted) {
+      _stopSkeletonAnimation();
       setState(() {
         _items = _applyClientFilters(results);
         _loading = false;
@@ -350,9 +364,9 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen>
     final width = MediaQuery.sizeOf(context).width;
     final crossAxisCount = (width / 260).floor().clamp(3, 6);
 
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: Stack(
+    return ColoredBox(
+      color: AppColors.bg,
+      child: Stack(
         children: [
           CustomScrollView(
             controller: _scrollController,
@@ -374,14 +388,17 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen>
               // ── Shimmering Masonry Skeleton Loader ───────────────
               if (_loading && _items.isEmpty)
                 SliverPadding(
+                  key: const ValueKey('discover-skeleton-padding'),
                   padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 8),
                   sliver: SliverMasonryGrid.count(
+                    key: const ValueKey('discover-skeleton-grid'),
                     crossAxisCount: crossAxisCount,
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 16,
                     childCount: crossAxisCount * 2 + 2,
                     itemBuilder: (context, index) {
                       return _MasonrySkeletonCard(
+                        key: ValueKey('skeleton-card-$index'),
                         animation: _skeletonAnim,
                         index: index,
                       );
@@ -392,14 +409,17 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen>
               // ── Masonry Grid of Mixed Wide / Tall Posters ─────────
               else if (_items.isNotEmpty)
                 SliverPadding(
+                  key: const ValueKey('discover-content-padding'),
                   padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 8),
                   sliver: SliverMasonryGrid.count(
+                    key: const ValueKey('discover-content-grid'),
                     crossAxisCount: crossAxisCount,
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 16,
                     itemBuilder: (context, index) {
                       final item = _items[index];
                       return _MasonryCard(
+                        key: ValueKey('content-card-${item.id}-$index'),
                         item: item,
                         index: index,
                         isBookmarked: _myList.contains(item),
@@ -420,6 +440,7 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen>
                 )
               else if (!_loading)
                 SliverFillRemaining(
+                  key: const ValueKey('discover-empty-state'),
                   hasScrollBody: false,
                   child: Center(
                     child: Builder(
@@ -1102,6 +1123,7 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen>
 
 class _MasonrySkeletonCard extends StatelessWidget {
   const _MasonrySkeletonCard({
+    super.key,
     required this.animation,
     required this.index,
   });
@@ -1216,6 +1238,7 @@ class _MasonrySkeletonCard extends StatelessWidget {
 
 class _MasonryCard extends StatefulWidget {
   const _MasonryCard({
+    super.key,
     required this.item,
     required this.index,
     required this.isBookmarked,
