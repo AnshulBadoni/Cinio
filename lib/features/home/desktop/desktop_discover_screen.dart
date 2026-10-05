@@ -33,9 +33,12 @@ class DesktopDiscoverScreen extends StatefulWidget {
   State<DesktopDiscoverScreen> createState() => _DesktopDiscoverScreenState();
 }
 
-class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
+class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen>
+    with SingleTickerProviderStateMixin {
   final MyListStore _myList = sl<MyListStore>();
   final ScrollController _scrollController = ScrollController();
+  late final AnimationController _skeletonCtrl;
+  late final Animation<double> _skeletonAnim;
 
   List<MediaItem> _items = [];
   bool _loading = false;
@@ -115,6 +118,12 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
   @override
   void initState() {
     super.initState();
+    _skeletonCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+    _skeletonAnim = CurvedAnimation(parent: _skeletonCtrl, curve: Curves.easeInOut);
+
     widget.searchController.addListener(_onSearchQueryChanged);
     _scrollController.addListener(_onScroll);
     _loadInitialItems();
@@ -122,6 +131,7 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
 
   @override
   void dispose() {
+    _skeletonCtrl.dispose();
     widget.searchController.removeListener(_onSearchQueryChanged);
     _scrollController.dispose();
     super.dispose();
@@ -363,9 +373,20 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
 
               // ── Shimmering Masonry Skeleton Loader ───────────────
               if (_loading && _items.isEmpty)
-                _MasonrySkeletonGrid(
-                  crossAxisCount: crossAxisCount,
-                  itemCount: crossAxisCount * 2 + 2,
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 8),
+                  sliver: SliverMasonryGrid.count(
+                    crossAxisCount: crossAxisCount,
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 16,
+                    childCount: crossAxisCount * 2 + 2,
+                    itemBuilder: (context, index) {
+                      return _MasonrySkeletonCard(
+                        animation: _skeletonAnim,
+                        index: index,
+                      );
+                    },
+                  ),
                 )
 
               // ── Masonry Grid of Mixed Wide / Tall Posters ─────────
@@ -1076,147 +1097,111 @@ class _DesktopDiscoverScreenState extends State<DesktopDiscoverScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Shimmering Masonry Skeleton Loader for Desktop UI
+// Shimmering Masonry Skeleton Card for Desktop UI
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _MasonrySkeletonGrid extends StatefulWidget {
-  const _MasonrySkeletonGrid({
-    required this.crossAxisCount,
-    this.itemCount = 12,
+class _MasonrySkeletonCard extends StatelessWidget {
+  const _MasonrySkeletonCard({
+    required this.animation,
+    required this.index,
   });
 
-  final int crossAxisCount;
-  final int itemCount;
-
-  @override
-  State<_MasonrySkeletonGrid> createState() => _MasonrySkeletonGridState();
-}
-
-class _MasonrySkeletonGridState extends State<_MasonrySkeletonGrid>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1100),
-    )..repeat(reverse: true);
-    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+  final Animation<double> animation;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
+    final isWide = (index % 5 == 0) || (index % 5 == 2);
+    final aspectRatio = isWide ? (16 / 9) : (2 / 3);
+
     return RepaintBoundary(
       child: AnimatedBuilder(
-        animation: _anim,
+        animation: animation,
         builder: (context, _) {
-          final shimmerAlpha = 0.28 + 0.22 * _anim.value;
+          final shimmerAlpha = 0.28 + 0.22 * animation.value;
           final baseColor = AppColors.surface2.withValues(alpha: shimmerAlpha);
 
-          return SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 8),
-            sliver: SliverMasonryGrid.count(
-              crossAxisCount: widget.crossAxisCount,
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
-              childCount: widget.itemCount,
-              itemBuilder: (context, index) {
-                final isWide = (index % 5 == 0) || (index % 5 == 2);
-                final aspectRatio = isWide ? (16 / 9) : (2 / 3);
-
-                return ClipRRect(
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: AspectRatio(
+              aspectRatio: aspectRatio,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: baseColor,
                   borderRadius: BorderRadius.circular(12),
-                  child: AspectRatio(
-                    aspectRatio: aspectRatio,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: baseColor,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Stack(
-                        children: [
-                          // Bottom subtle dark vignette
-                          Positioned.fill(
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  stops: const [0.45, 1.0],
-                                  colors: [
-                                    Colors.transparent,
-                                    Colors.black.withValues(alpha: 0.38),
-                                  ],
-                                ),
-                              ),
-                            ),
+                ),
+                child: Stack(
+                  children: [
+                    // Bottom subtle dark vignette
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            stops: const [0.45, 1.0],
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.38),
+                            ],
                           ),
-                          // Placeholder bottom title bars and action button
-                          Positioned(
-                            left: 12,
-                            right: 10,
-                            bottom: 10,
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                        ),
+                      ),
+                    ),
+                    // Placeholder bottom title bars and action button
+                    Positioned(
+                      left: 12,
+                      right: 10,
+                      bottom: 10,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        height: 12,
-                                        width: isWide ? 140 : 100,
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.10 + 0.08 * _anim.value,
-                                          ),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Container(
-                                        height: 10,
-                                        width: isWide ? 85 : 55,
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.06 + 0.06 * _anim.value,
-                                          ),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                      ),
-                                    ],
+                                Container(
+                                  height: 12,
+                                  width: isWide ? 140 : 100,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(
+                                      alpha: 0.10 + 0.08 * animation.value,
+                                    ),
+                                    borderRadius: BorderRadius.circular(4),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(height: 6),
                                 Container(
-                                  width: 28,
-                                  height: 28,
+                                  height: 10,
+                                  width: isWide ? 85 : 55,
                                   decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
                                     color: Colors.white.withValues(
-                                      alpha: 0.08 + 0.06 * _anim.value,
+                                      alpha: 0.06 + 0.06 * animation.value,
                                     ),
+                                    borderRadius: BorderRadius.circular(4),
                                   ),
                                 ),
                               ],
                             ),
                           ),
+                          const SizedBox(width: 8),
+                          Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withValues(
+                                alpha: 0.08 + 0.06 * animation.value,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  ),
-                );
-              },
+                  ],
+                ),
+              ),
             ),
           );
         },
