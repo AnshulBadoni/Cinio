@@ -508,7 +508,7 @@ class _HomeViewState extends State<_HomeView>
         return _myList.contains(item);
       },
       onRemoveHistory: () async {
-        await sl<ReadStore>().remove(entry.sourceId, entry.showId);
+        await sl<ReadHistory>().remove(entry.sourceId, entry.showId);
         if (mounted) setState(() {});
       },
     );
