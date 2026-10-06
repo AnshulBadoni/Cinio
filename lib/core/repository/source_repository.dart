@@ -568,6 +568,8 @@ class SourceRepository {
   static const Duration _catalogResolutionTtl = Duration(minutes: 30);
   final Map<String, String> _imdbIdCache = {};
 
+  Future<String?> resolveImdbForCatalog(MediaItem catalog) => _resolveImdbForCatalog(catalog);
+
   Future<String?> _resolveImdbForCatalog(MediaItem catalog) async {
     final cacheKey = '${catalog.sourceId}:${catalog.tmdbId ?? catalog.id}:${catalog.title}';
     final cached = _imdbIdCache[cacheKey];

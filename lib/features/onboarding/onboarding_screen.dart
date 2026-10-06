@@ -53,32 +53,81 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) {
-          final r = _reveal.value;
-          return Stack(
-            children: [
-              // Supplied Cinio watermark: the splash contains only the
-              // transparent wordmark on the app background — no old brand and
-              // no additional glow.
-              Center(
-                child: Opacity(
+      backgroundColor: const Color(0xFF070709),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Ambient soft plum/wine gradient matching reference design
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFF070709),
+              gradient: RadialGradient(
+                center: Alignment(-0.65, -0.4),
+                radius: 1.35,
+                colors: [
+                  Color(0xFF381128),
+                  Color(0xFF240B1A),
+                  Color(0xFF10050C),
+                  Color(0xFF070709),
+                ],
+                stops: [0.0, 0.35, 0.70, 1.0],
+              ),
+            ),
+          ),
+
+          // Center: Main app logo + cinio name + loading indicator
+          Center(
+            child: AnimatedBuilder(
+              animation: _c,
+              builder: (context, _) {
+                final r = _reveal.value;
+                return Opacity(
                   opacity: _fade.value,
                   child: Transform.scale(
-                    scale: 0.92 + (0.08 * r),
-                    child: Image.asset(
-                      'assets/icon/splash_wordmark.png',
-                      width: 330,
-                      fit: BoxFit.contain,
+                    scale: 0.94 + (0.06 * r),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Image.asset(
+                              'assets/icon/logo_mark.png',
+                              width: 48,
+                              height: 48,
+                              fit: BoxFit.contain,
+                            ),
+                            const SizedBox(width: 14),
+                            const Text(
+                              'cinio',
+                              style: TextStyle(
+                                fontFamily: 'Poppins',
+                                color: Colors.white,
+                                fontSize: 36,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 32),
+                        const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            color: Color(0xFF2172ED),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ),
-            ],
-          );
-        },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

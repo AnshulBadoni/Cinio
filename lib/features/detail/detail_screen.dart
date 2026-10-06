@@ -97,12 +97,18 @@ import '../reader/novel_reader_screen.dart';
 import '../trailer/trailer_screen.dart';
 import 'cubit/detail_cubit.dart';
 
+import '../../core/stremio/stremio_client.dart';
+import '../../core/stremio/stremio_manager.dart';
+import '../../core/stremio/stremio_provider.dart';
+import '../../core/stremio/stremio_stream.dart';
+
 part 'detail_hero.dart';
 part 'detail_info.dart';
 part 'detail_episodes.dart';
 part 'detail_sheets.dart';
 part 'detail_tabs.dart';
 part 'detail_skeleton.dart';
+part 'download_stream_picker_page.dart';
 
 part 'detail_screen_tv.dart';
 part 'detail_screen_desktop.dart';
@@ -1715,109 +1721,124 @@ class _DetailViewState extends State<_DetailView>
 
     if (!mounted) return;
 
-    final res = await showModalBottomSheet<SourcePickerResult>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _SourcePickerSheet(
-        title: targetEp.title.trim().isNotEmpty ? targetEp.title : targetDetail.title,
-        loadingMessage: isCatalog
-            ? 'Searching providers for download sources…'
-            : 'Resolving download options…',
-        onChooseProvider: isCatalog
-            ? () async {
-                final picked = await _showProviderPickerSheet(detail, category: category, ignoreActionInFlight: true);
-                if (picked != null && mounted) {
-                  final pickedEp = _matchTargetEpisode(picked.detail, picked.item, ep);
-                  await _pickSourceAndDownload(pickedEp, picked.detail, category);
+    final SourcePickerResult? res;
+    if (sl<AppMode>().isTv) {
+      res = await showModalBottomSheet<SourcePickerResult>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => _SourcePickerSheet(
+          title: targetEp.title.trim().isNotEmpty ? targetEp.title : targetDetail.title,
+          loadingMessage: isCatalog
+              ? 'Searching providers for download sources…'
+              : 'Resolving download options…',
+          onChooseProvider: isCatalog
+              ? () async {
+                  final picked = await _showProviderPickerSheet(detail, category: category, ignoreActionInFlight: true);
+                  if (picked != null && mounted) {
+                    final pickedEp = _matchTargetEpisode(picked.detail, picked.item, ep);
+                    await _pickSourceAndDownload(pickedEp, picked.detail, category);
+                  }
                 }
+              : null,
+          resolve: ([onProgress]) async {
+            if (isCatalog && (targetDetail.sourceId == 'tmdb:catalog' || targetDetail.sourceId.startsWith('tpdb:'))) {
+              final resolved = await _resolveCatalogPlayback(category: category);
+              if (resolved != null) {
+                targetItem = resolved.item;
+                targetDetail = resolved.detail;
+                targetEp = _matchTargetEpisode(targetDetail, targetItem, ep);
+              } else {
+                return (
+                  sources: <VideoSource>[],
+                  resolvedItem: targetItem,
+                  resolvedDetail: targetDetail,
+                  resolvedEpisode: targetEp,
+                  error: 'No matching title found on installed providers',
+                );
               }
-            : null,
-        resolve: ([onProgress]) async {
-          if (isCatalog && (targetDetail.sourceId == 'tmdb:catalog' || targetDetail.sourceId.startsWith('tpdb:'))) {
-            final resolved = await _resolveCatalogPlayback(category: category);
-            if (resolved != null) {
-              targetItem = resolved.item;
-              targetDetail = resolved.detail;
-              targetEp = _matchTargetEpisode(targetDetail, targetItem, ep);
-            } else {
-              return (
-                sources: <VideoSource>[],
+            }
+            var s = await sl<SourceRepository>().sources(
+              targetEp.url,
+              sourceId: targetDetail.sourceId,
+              fast: true,
+            );
+            if (s.isNotEmpty) {
+              onProgress?.call(
+                sources: s,
                 resolvedItem: targetItem,
                 resolvedDetail: targetDetail,
                 resolvedEpisode: targetEp,
-                error: 'No matching title found on installed providers',
               );
             }
-          }
-          var s = await sl<SourceRepository>().sources(
-            targetEp.url,
-            sourceId: targetDetail.sourceId,
-            fast: true,
-          );
-          if (s.isNotEmpty) {
-            onProgress?.call(
+
+            final isCloudStream = targetDetail.sourceId.startsWith('cs:') || targetDetail.sourceId.startsWith('cloudstream:');
+            if (isCloudStream) {
+              var done = false;
+              var pollTries = 0;
+              final knownUrls = s.map((e) => e.url).toSet();
+
+              while (!done && pollTries < 4) {
+                await Future.delayed(const Duration(milliseconds: 700));
+                pollTries++;
+                final polled = await sl<SourceRepository>().polledSources(
+                  targetEp.url,
+                  sourceId: targetDetail.sourceId,
+                );
+                done = polled.done;
+                final newSources = polled.sources.where((e) => !knownUrls.contains(e.url)).toList();
+                if (newSources.isNotEmpty) {
+                  for (final ns in newSources) {
+                    knownUrls.add(ns.url);
+                  }
+                  s = [...s, ...newSources];
+                  onProgress?.call(
+                    sources: s,
+                    resolvedItem: targetItem,
+                    resolvedDetail: targetDetail,
+                    resolvedEpisode: targetEp,
+                  );
+                }
+              }
+            }
+
+            if (s.isEmpty) {
+              final fallbackSources = await sl<SourceRepository>().sources(
+                targetEp.url,
+                sourceId: targetDetail.sourceId,
+                fast: false,
+              );
+              if (fallbackSources.isNotEmpty) {
+                s = fallbackSources;
+              }
+            }
+
+            return (
               sources: s,
               resolvedItem: targetItem,
               resolvedDetail: targetDetail,
               resolvedEpisode: targetEp,
+              error: s.isEmpty ? 'No download sources found on installed providers' : null,
             );
-          }
-
-          final isCloudStream = targetDetail.sourceId.startsWith('cs:') || targetDetail.sourceId.startsWith('cloudstream:');
-          if (isCloudStream) {
-            var done = false;
-            var pollTries = 0;
-            final knownUrls = s.map((e) => e.url).toSet();
-
-            while (!done && pollTries < 4) {
-              await Future.delayed(const Duration(milliseconds: 700));
-              pollTries++;
-              final polled = await sl<SourceRepository>().polledSources(
-                targetEp.url,
-                sourceId: targetDetail.sourceId,
-              );
-              done = polled.done;
-              final newSources = polled.sources.where((e) => !knownUrls.contains(e.url)).toList();
-              if (newSources.isNotEmpty) {
-                for (final ns in newSources) {
-                  knownUrls.add(ns.url);
-                }
-                s = [...s, ...newSources];
-                onProgress?.call(
-                  sources: s,
-                  resolvedItem: targetItem,
-                  resolvedDetail: targetDetail,
-                  resolvedEpisode: targetEp,
-                );
-              }
-            }
-          }
-
-          if (s.isEmpty) {
-            final fallbackSources = await sl<SourceRepository>().sources(
-              targetEp.url,
-              sourceId: targetDetail.sourceId,
-              fast: false,
-            );
-            if (fallbackSources.isNotEmpty) {
-              s = fallbackSources;
-            }
-          }
-
-          return (
-            sources: s,
-            resolvedItem: targetItem,
-            resolvedDetail: targetDetail,
-            resolvedEpisode: targetEp,
-            error: s.isEmpty ? 'No download sources found on installed providers' : null,
-          );
-        },
-      ),
-    );
+          },
+        ),
+      );
+    } else {
+      res = await Navigator.of(context).push<SourcePickerResult>(
+        MaterialPageRoute(
+          builder: (_) => DownloadStreamPickerPage(
+            item: targetItem,
+            detail: targetDetail,
+            episode: targetEp,
+            category: category,
+            titleLogoUrl: _titleLogoUrl,
+          ),
+        ),
+      );
+    }
 
     if (res == null || !mounted) return;
     final finalItem = res.resolvedItem ?? widget.item;
@@ -2713,9 +2734,9 @@ class _DetailViewState extends State<_DetailView>
   Widget _buildCastSection(List<CastMember> cast) {
     if (cast.isEmpty) return const SizedBox.shrink();
     final square = sl<PlaybackPrefs>().peopleCardStyle == 'square';
-    final cardW = square ? 84.0 : 76.0;
-    final avatarSize = square ? 72.0 : 64.0;
-    final listHeight = square ? 138.0 : 128.0;
+    final cardW = square ? 104.0 : 96.0;
+    final avatarSize = square ? 92.0 : 84.0;
+    final listHeight = square ? 172.0 : 164.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2755,7 +2776,7 @@ class _DetailViewState extends State<_DetailView>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(square ? 12 : 999),
+                        borderRadius: BorderRadius.circular(square ? 14 : 999),
                         child: SizedBox(
                           width: avatarSize,
                           height: avatarSize,
@@ -2763,14 +2784,14 @@ class _DetailViewState extends State<_DetailView>
                               ? CachedNetworkImage(
                                   imageUrl: m.photo!,
                                   fit: BoxFit.cover,
-                                  memCacheWidth: 150,
+                                  memCacheWidth: 200,
                                   placeholder: (_, _) => Container(color: AppColors.surface2),
                                   errorWidget: (_, _, _) => const _AvatarFallback(),
                                 )
                               : const _AvatarFallback(),
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
                       Text(
                         m.name,
                         maxLines: 1,
@@ -2778,21 +2799,24 @@ class _DetailViewState extends State<_DetailView>
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 12.5,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      if (m.role != null && m.role!.isNotEmpty)
+                      if (m.role != null && m.role!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 2),
                         Text(
-                          m.role!,
-                          maxLines: 1,
+                          m.role!.trim(),
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 11,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.65),
+                            fontSize: 11.5,
+                            height: 1.2,
                           ),
                         ),
+                      ],
                     ],
                   ),
                 ),
