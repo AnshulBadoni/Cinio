@@ -1,7 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/metadata/favorite_people_store.dart';
@@ -20,6 +19,7 @@ import '../../core/ui/native_cover_provider.dart';
 import '../../core/ui/poster_quick_actions.dart';
 import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
+import '../home/see_all_screen.dart';
 import '../trailer/trailer_screen.dart';
 
 /// Redesigned Actor Profile Page with cinematic hero header,
@@ -60,10 +60,11 @@ class PersonPage extends StatefulWidget {
 
 class _PersonPageState extends State<PersonPage> {
   final ScrollController _scrollController = ScrollController();
-  final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0.0);
   PersonProfile? _profile;
   bool _loading = true;
   final List<PersonWork> _works = [];
+  final List<MediaItem> _providerResults = [];
+  bool _loadingProviders = false;
   int _page = 1;
   bool _loadingMore = false;
   bool _hasMore = true;
@@ -76,13 +77,13 @@ class _PersonPageState extends State<PersonPage> {
     _isFav = sl<FavoritePeopleStore>().isFavorite(widget.person);
     _scrollController.addListener(_onScroll);
     _loadProfile();
+    _loadProviderVideos();
   }
 
   @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _heroStretch.dispose();
     super.dispose();
   }
 
@@ -100,6 +101,32 @@ class _PersonPageState extends State<PersonPage> {
                 widget.person.source == PersonSource.tmdb);
       }
     });
+  }
+
+  Future<void> _loadProviderVideos() async {
+    setState(() => _loadingProviders = true);
+    try {
+      List<MediaItem> results;
+      if (widget.sourceId != null &&
+          widget.sourceId != 'tmdb:catalog' &&
+          !widget.sourceId!.startsWith('tpdb:')) {
+        results = await sl<SourceRepository>().search(
+          widget.person.name,
+          sourceId: widget.sourceId,
+        );
+      } else {
+        results = await sl<SourceRepository>().searchAll(widget.person.name);
+      }
+      if (!mounted) return;
+      setState(() {
+        _providerResults
+          ..clear()
+          ..addAll(results);
+        _loadingProviders = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingProviders = false);
+    }
   }
 
   void _onScroll() {
@@ -206,11 +233,6 @@ class _PersonPageState extends State<PersonPage> {
     }
   }
 
-  void _shareProfile() {
-    Clipboard.setData(ClipboardData(text: '${widget.person.name} on Cinio'));
-    _snack('Copied “${widget.person.name}” to clipboard');
-  }
-
   Future<void> _openWork(PersonWork w, {String? heroTag}) async {
     _snack('Opening “${w.title}”…');
     try {
@@ -305,7 +327,7 @@ class _PersonPageState extends State<PersonPage> {
     if (isTpdb) {
       final cid = w.catalogId;
       return MediaItem(
-        id: cid != null ? 'tpdb:scene:$cid' : 'tpdb:scene:${w.title}',
+        id: cid != null ? 'tpdb:movie:$cid' : 'tpdb:movie:${w.title}',
         title: w.title,
         cover: w.cover,
         url: cid != null ? 'tpdb://movie/$cid' : 'tpdb://movie/${w.title}',
@@ -332,6 +354,10 @@ class _PersonPageState extends State<PersonPage> {
 
   Future<void> _showWorkQuickActions(PersonWork w, String heroTag) async {
     final item = _mediaItemForWork(w);
+    await _showMediaItemQuickActions(item, heroTag: heroTag);
+  }
+
+  Future<void> _showMediaItemQuickActions(MediaItem item, {String? heroTag}) async {
     final myList = sl<MyListStore>();
     final listStatus = sl<ListStatusStore>();
     final inLibrary = myList.contains(item) || listStatus.statusOf(item) != null;
@@ -340,11 +366,11 @@ class _PersonPageState extends State<PersonPage> {
     await showPosterQuickActions(
       context,
       item: item,
-      heroTag: heroTag,
+      heroTag: heroTag ?? 'item-quick:${item.id}',
       inLibrary: inLibrary,
       watched: watched,
-      onPlay: () => _openWork(w, heroTag: heroTag),
-      onInfo: () => _openWork(w, heroTag: heroTag),
+      onPlay: () => Navigator.of(context).push(DetailScreen.route(item, heroTag: heroTag)),
+      onInfo: () => Navigator.of(context).push(DetailScreen.route(item, heroTag: heroTag)),
       onMarkWatched: () async {
         if (!myList.contains(item)) await myList.add(item);
         await listStatus.setStatus(item, WatchStatus.completed);
@@ -367,321 +393,259 @@ class _PersonPageState extends State<PersonPage> {
         .push(PersonPage.route(ref, sourceId: widget.sourceId, heroTag: heroTag));
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: _loading
-          ? Center(
-              child: CircularProgressIndicator(color: AppColors.accent),
-            )
-          : _profile == null
-              ? const EmptyState(
-                  icon: Icons.person_off_outlined,
-                  message: 'Couldn’t load this profile',
-                )
-              : _buildContent(_profile!),
+  void _openSeeAllWorks(String title, List<PersonWork> initialWorks) {
+    final initialItems = initialWorks.map(_mediaItemForWork).toList();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SeeAllScreen(
+          title: title,
+          items: initialItems,
+          onTap: (item) {
+            Navigator.of(context).push(DetailScreen.route(item));
+          },
+          onLongPress: (item) => _showMediaItemQuickActions(item),
+          onLoadMore: (page) async {
+            final more =
+                await sl<PeopleService>().loadWorks(widget.person, page: page);
+            return more.map(_mediaItemForWork).toList();
+          },
+        ),
+      ),
     );
   }
 
-  Widget _buildContent(PersonProfile p) {
+  void _openSeeAllProvider(String title, List<MediaItem> items) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SeeAllScreen(
+          title: title,
+          items: items,
+          onTap: (item) {
+            Navigator.of(context).push(DetailScreen.route(item));
+          },
+          onLongPress: (item) => _showMediaItemQuickActions(item),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = _profile;
     final isTpdb = widget.person.source == PersonSource.thePornDbPerformer ||
         widget.person.source == PersonSource.thePornDbStudio;
 
-    // Categorized filmography rows
-    final popularWorks = List<PersonWork>.from(_works)
-      ..sort((a, b) =>
-          ((b.popularity ?? b.rating ?? 0)).compareTo(a.popularity ?? a.rating ?? 0));
-
-    final latestWorks = List<PersonWork>.from(_works)
-      ..sort((a, b) =>
-          (b.releaseDate ?? '').compareTo(a.releaseDate ?? ''));
-
-    final movieWorks = _works.where((w) => !w.isTv && !w.isScene).toList();
-    final seriesWorks = _works.where((w) => w.isTv).toList();
-    final providerVideos = p.providerVideos.isNotEmpty
-        ? p.providerVideos
-        : _works.where((w) => w.backdrop != null || w.isScene).toList();
-
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        if (notification.metrics.axis == Axis.vertical) {
-          if (notification.metrics.pixels < 0) {
-            _heroStretch.value = (-notification.metrics.pixels).clamp(0.0, 320.0);
-          } else if (_heroStretch.value > 0) {
-            _heroStretch.value = 0.0;
-          }
-        }
-        return false;
-      },
-      child: CustomScrollView(
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      body: CustomScrollView(
         controller: _scrollController,
         physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
         ),
         slivers: [
-          // 1. Full-bleed Hero Header
-          SliverToBoxAdapter(
-            child: _buildHeroHeader(p, isTpdb),
-          ),
+          // 1. Pinned & Stretching SliverAppBar mounted from Frame 1
+          _buildSliverAppBar(p, isTpdb),
 
-        // 2. "Popular" Row
-        if (popularWorks.isNotEmpty) ...[
-          SliverToBoxAdapter(child: _buildSectionHeader('Popular')),
-          SliverToBoxAdapter(child: _buildHorizontalPosters(popularWorks)),
-        ],
-
-        // 3. "Latest" Row
-        if (latestWorks.isNotEmpty && latestWorks.length > 2) ...[
-          SliverToBoxAdapter(child: _buildSectionHeader('Latest Releases')),
-          SliverToBoxAdapter(child: _buildHorizontalPosters(latestWorks)),
-        ],
-
-        // 4. "From Provider" (Wider 16:9 Video Cards)
-        if (providerVideos.isNotEmpty) ...[
-          SliverToBoxAdapter(child: _buildSectionHeader('From Provider')),
-          SliverToBoxAdapter(child: _buildHorizontalWideVideos(providerVideos)),
-        ],
-
-        // 5. "Movies" Row
-        if (movieWorks.isNotEmpty && movieWorks.length != popularWorks.length) ...[
-          SliverToBoxAdapter(child: _buildSectionHeader('Movies')),
-          SliverToBoxAdapter(child: _buildHorizontalPosters(movieWorks)),
-        ],
-
-        // 6. "Series" Row (if actor has TV credits)
-        if (seriesWorks.isNotEmpty) ...[
-          SliverToBoxAdapter(child: _buildSectionHeader('Series')),
-          SliverToBoxAdapter(child: _buildHorizontalPosters(seriesWorks)),
-        ],
-
-        // 7. "Related Actors" (Circular Avatars)
-        if (p.related.isNotEmpty) ...[
-          SliverToBoxAdapter(
-            child: _buildSectionHeader(
-              widget.person.source == PersonSource.anilistCharacter
-                  ? 'Voiced by'
-                  : 'Related Actors',
+          // 2. Body: loading skeleton or loaded filmography
+          if (_loading) ...[
+            SliverToBoxAdapter(child: _buildSkeletonLoader()),
+          ] else if (p == null && _works.isEmpty) ...[
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: EmptyState(
+                icon: Icons.person_off_outlined,
+                message: 'Couldn’t load this profile',
+              ),
             ),
-          ),
-          SliverToBoxAdapter(child: _buildRelatedActorsRow(p.related)),
+          ] else ...[
+            ..._buildContentSlivers(
+              p ?? PersonProfile(name: widget.person.name, works: _works),
+              isTpdb,
+            ),
+          ],
+
+          // Bottom padding
+          const SliverToBoxAdapter(child: SizedBox(height: 48)),
         ],
+      ),
+    );
+  }
 
-        // 8. Description / Biography Card
-        if (p.description != null && p.description!.trim().isNotEmpty) ...[
-          SliverToBoxAdapter(child: _buildDescriptionCard(p.description!)),
-        ],
+  // ── Pinned & Stretching SliverAppBar ───────────────────────────────────────
 
-        // Bottom padding
-        const SliverToBoxAdapter(child: SizedBox(height: 48)),
-      ],
-    ),
-  );
-}
-
-  // ── Hero Header ────────────────────────────────────────────────────────────
-
-  Widget _buildHeroHeader(PersonProfile p, bool isTpdb) {
-    final photo = p.photo ?? widget.person.photo;
+  Widget _buildSliverAppBar(PersonProfile? p, bool isTpdb) {
+    final photo = p?.photo ?? widget.person.photo;
     final totalCount = _works.length;
-    final metaText =
-        '${p.subtitle ?? (isTpdb ? 'Performer' : 'Acting')} · $totalCount ${isTpdb ? 'Releases' : 'Titles'}';
+    final metaText = _loading
+        ? (isTpdb ? 'Performer' : 'Acting')
+        : '${p?.subtitle ?? (isTpdb ? 'Performer' : 'Acting')} · $totalCount ${isTpdb ? 'Releases' : 'Titles'}';
     final effectiveHeroTag = widget.heroTag ??
         'person-avatar:${widget.person.source.name}:${widget.person.externalId ?? widget.person.id}';
 
-    return Stack(
-      children: [
-        // Background portrait with downward dark gradient blend and stretch zoom
-        SizedBox(
-          height: 490,
-          width: double.infinity,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              ValueListenableBuilder<double>(
-                valueListenable: _heroStretch,
-                builder: (context, overscroll, child) {
-                  final scale = 1.0 + (overscroll / 380.0).clamp(0.0, 0.60);
-                  return ClipRect(
-                    child: Transform.scale(
-                      alignment: Alignment.topCenter,
-                      scale: scale,
-                      child: child,
-                    ),
-                  );
-                },
-                child: Hero(
-                  tag: effectiveHeroTag,
-                  createRectTween: (begin, end) =>
-                      MaterialRectArcTween(begin: begin, end: end),
-                  flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
-                    return Material(
-                      color: Colors.transparent,
-                      child: toHeroContext.widget,
-                    );
-                  },
-                  child: (photo != null && photo.isNotEmpty)
-                      ? CachedNetworkImage(
-                          imageUrl: photo,
-                          fit: BoxFit.cover,
-                          alignment: const Alignment(0, -0.2),
-                          placeholder: (_, _) =>
-                              Container(color: AppColors.surface2),
-                          errorWidget: (_, _, _) =>
-                              Container(color: AppColors.surface2),
-                        )
-                      : Container(
-                          color: AppColors.surface2,
-                          child: const Center(
-                            child: Icon(Icons.person, size: 80, color: Colors.white24),
-                          ),
-                        ),
-                ),
-              ),
-
-              // Multi-stop cinematic dark gradient overlay
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.50),
-                      Colors.transparent,
-                      Colors.transparent,
-                      AppColors.bg.withValues(alpha: 0.35),
-                      AppColors.bg.withValues(alpha: 0.85),
-                      AppColors.bg,
-                    ],
-                    stops: const [0.0, 0.18, 0.45, 0.70, 0.90, 1.0],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Floating Top Navigation Bar (Identical to detail page back button)
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.black.withValues(alpha: 0.55),
-                  ),
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 21),
-                    onPressed: () => Navigator.of(context).maybePop(),
-                  ),
-                ),
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.black.withValues(alpha: 0.55),
-                  ),
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(CupertinoIcons.share, color: Colors.white, size: 19),
-                    onPressed: _shareProfile,
-                  ),
-                ),
-              ],
+    return SliverAppBar(
+      expandedHeight: 490,
+      pinned: true,
+      stretch: true,
+      backgroundColor: AppColors.bg,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      clipBehavior: Clip.none,
+      leadingWidth: 68,
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
+        child: Center(
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.55),
+            ),
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 21),
+              onPressed: () => Navigator.of(context).maybePop(),
             ),
           ),
         ),
+      ),
+      actions: const [],
+      flexibleSpace: FlexibleSpaceBar(
+        stretchModes: const [StretchMode.zoomBackground],
+        background: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Background portrait with downward dark gradient blend
+            Hero(
+              tag: effectiveHeroTag,
+              createRectTween: (begin, end) =>
+                  MaterialRectArcTween(begin: begin, end: end),
+              flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+                return Material(
+                  color: Colors.transparent,
+                  child: toHeroContext.widget,
+                );
+              },
+              child: (photo != null && photo.isNotEmpty)
+                  ? CachedNetworkImage(
+                      imageUrl: photo,
+                      fit: BoxFit.cover,
+                      alignment: const Alignment(0, -0.2),
+                      placeholder: (_, _) => Container(color: AppColors.surface2),
+                      errorWidget: (_, _, _) => Container(color: AppColors.surface2),
+                    )
+                  : Container(
+                      color: AppColors.surface2,
+                      child: const Center(
+                        child: Icon(Icons.person, size: 80, color: Colors.white24),
+                      ),
+                    ),
+            ),
 
-        // Actor Name, Subtitle, and 3 Action Buttons positioned at the bottom of the hero
-        Positioned(
-          left: 20,
-          right: 20,
-          bottom: 14,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                widget.person.name.toUpperCase(),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontFamily: 'Arena',
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 2.0,
-                  height: 1.15,
-                  shadows: [
-                    Shadow(color: Colors.black, blurRadius: 14),
-                    Shadow(color: Colors.black87, blurRadius: 4),
+            // Multi-stop cinematic dark gradient overlay
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.50),
+                    Colors.transparent,
+                    Colors.transparent,
+                    AppColors.bg.withValues(alpha: 0.35),
+                    AppColors.bg.withValues(alpha: 0.85),
+                    AppColors.bg,
                   ],
+                  stops: const [0.0, 0.18, 0.45, 0.70, 0.90, 1.0],
                 ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                metaText,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white.withValues(alpha: 0.75),
-                  letterSpacing: 0.2,
-                ),
-              ),
-              const SizedBox(height: 18),
+            ),
 
-              // The 3 Action Buttons Trio (Shuffle / Play Trailer / Favorite)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+            // Actor Name, Subtitle, and 3 Action Buttons positioned at bottom
+            Positioned(
+              left: 20,
+              right: 20,
+              bottom: 14,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // 1. Play Random Button
-                  _buildActionButton(
-                    icon: Icons.shuffle_rounded,
-                    size: 50,
-                    iconSize: 22,
-                    background: Colors.white.withValues(alpha: 0.14),
-                    iconColor: Colors.white,
-                    onTap: _playRandom,
+                  Text(
+                    widget.person.name,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Circular',
+                      fontSize: 34,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: -0.6,
+                      height: 1.1,
+                      shadows: [
+                        Shadow(color: Colors.black, blurRadius: 18),
+                        Shadow(color: Colors.black87, blurRadius: 6),
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: 22),
-
-                  // 2. Play Trailer (Clean Center Circle - No glow)
-                  _buildActionButton(
-                    icon: Icons.play_arrow_rounded,
-                    size: 66,
-                    iconSize: 40,
-                    background: Colors.white,
-                    iconColor: Colors.black,
-                    onTap: _playTrailer,
+                  const SizedBox(height: 6),
+                  Text(
+                    metaText,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withValues(alpha: 0.75),
+                      letterSpacing: 0.2,
+                    ),
                   ),
-                  const SizedBox(width: 22),
+                  const SizedBox(height: 18),
 
-                  // 3. Add to Favorite Actors Button
-                  _buildActionButton(
-                    icon: _isFav
-                        ? Icons.favorite_rounded
-                        : Icons.favorite_border_rounded,
-                    size: 50,
-                    iconSize: 22,
-                    background: Colors.white.withValues(alpha: 0.14),
-                    iconColor: _isFav ? const Color(0xFFFF2D55) : Colors.white,
-                    onTap: _toggleFavorite,
+                  // The 3 Action Buttons Trio (Shuffle / Play Trailer / Favorite)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // 1. Play Random Button
+                      _buildActionButton(
+                        icon: Icons.shuffle_rounded,
+                        size: 50,
+                        iconSize: 22,
+                        background: Colors.white.withValues(alpha: 0.14),
+                        iconColor: Colors.white,
+                        onTap: _playRandom,
+                      ),
+                      const SizedBox(width: 22),
+
+                      // 2. Play Trailer (Clean Center Circle - No glow)
+                      _buildActionButton(
+                        icon: Icons.play_arrow_rounded,
+                        size: 66,
+                        iconSize: 40,
+                        background: Colors.white,
+                        iconColor: Colors.black,
+                        onTap: _playTrailer,
+                      ),
+                      const SizedBox(width: 22),
+
+                      // 3. Add to Favorite Actors Button
+                      _buildActionButton(
+                        icon: _isFav
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
+                        size: 50,
+                        iconSize: 22,
+                        background: Colors.white.withValues(alpha: 0.14),
+                        iconColor: _isFav ? const Color(0xFFFF2D55) : Colors.white,
+                        onTap: _toggleFavorite,
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -720,19 +684,140 @@ class _PersonPageState extends State<PersonPage> {
     );
   }
 
-  // ── Section Header ─────────────────────────────────────────────────────────
+  // ── Content Slivers ────────────────────────────────────────────────────────
 
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 10),
-      child: Text(
-        title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.2,
+  List<Widget> _buildContentSlivers(PersonProfile p, bool isTpdb) {
+    // Categorized filmography rows
+    final popularWorks = List<PersonWork>.from(_works)
+      ..sort((a, b) =>
+          ((b.popularity ?? b.rating ?? 0)).compareTo(a.popularity ?? a.rating ?? 0));
+
+    final latestWorks = List<PersonWork>.from(_works)
+      ..sort((a, b) =>
+          (b.releaseDate ?? '').compareTo(a.releaseDate ?? ''));
+
+    final movieWorks = _works.where((w) => !w.isTv && !w.isScene).toList();
+    final seriesWorks = _works.where((w) => w.isTv).toList();
+
+    return [
+      // 1. "Popular" Row
+      if (popularWorks.isNotEmpty) ...[
+        SliverToBoxAdapter(
+          child: _buildSectionHeader(
+            'Popular',
+            onSeeAll: () => _openSeeAllWorks('Popular', popularWorks),
+          ),
         ),
+        SliverToBoxAdapter(child: _buildHorizontalPosters(popularWorks)),
+      ],
+
+      // 2. "Latest" Row
+      if (latestWorks.isNotEmpty && latestWorks.length > 2) ...[
+        SliverToBoxAdapter(
+          child: _buildSectionHeader(
+            'Latest Releases',
+            onSeeAll: () => _openSeeAllWorks('Latest Releases', latestWorks),
+          ),
+        ),
+        SliverToBoxAdapter(child: _buildHorizontalPosters(latestWorks)),
+      ],
+
+      // 3. "From Provider" (Real Installed Provider Videos)
+      if (_providerResults.isNotEmpty) ...[
+        SliverToBoxAdapter(
+          child: _buildSectionHeader(
+            'From Provider',
+            onSeeAll: () => _openSeeAllProvider('From Provider', _providerResults),
+          ),
+        ),
+        SliverToBoxAdapter(child: _buildHorizontalProviderVideos(_providerResults)),
+      ] else if (_loadingProviders) ...[
+        SliverToBoxAdapter(
+          child: _buildSectionHeader('From Provider'),
+        ),
+        SliverToBoxAdapter(
+          child: Container(
+            height: 140,
+            alignment: Alignment.center,
+            child: const CupertinoActivityIndicator(color: Colors.white54),
+          ),
+        ),
+      ],
+
+      // 4. "Movies" Row
+      if (movieWorks.isNotEmpty && movieWorks.length != popularWorks.length) ...[
+        SliverToBoxAdapter(
+          child: _buildSectionHeader(
+            'Movies',
+            onSeeAll: () => _openSeeAllWorks('Movies', movieWorks),
+          ),
+        ),
+        SliverToBoxAdapter(child: _buildHorizontalPosters(movieWorks)),
+      ],
+
+      // 5. "Series" Row (if actor has TV credits)
+      if (seriesWorks.isNotEmpty) ...[
+        SliverToBoxAdapter(
+          child: _buildSectionHeader(
+            'Series',
+            onSeeAll: () => _openSeeAllWorks('Series', seriesWorks),
+          ),
+        ),
+        SliverToBoxAdapter(child: _buildHorizontalPosters(seriesWorks)),
+      ],
+
+      // 6. "Related Actors" (Circular Avatars - Large)
+      if (p.related.isNotEmpty) ...[
+        SliverToBoxAdapter(
+          child: _buildSectionHeader(
+            widget.person.source == PersonSource.anilistCharacter
+                ? 'Voiced by'
+                : 'Related Actors',
+          ),
+        ),
+        SliverToBoxAdapter(child: _buildRelatedActorsRow(p.related)),
+      ],
+
+      // 7. Description / Biography Card
+      if (p.description != null && p.description!.trim().isNotEmpty) ...[
+        SliverToBoxAdapter(child: _buildDescriptionCard(p.description!)),
+      ],
+    ];
+  }
+
+  // ── Section Header with Optional 'See All' (>) ─────────────────────────────
+
+  Widget _buildSectionHeader(String title, {VoidCallback? onSeeAll}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 16, 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ),
+          if (onSeeAll != null)
+            GestureDetector(
+              onTap: onSeeAll,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Icon(
+                  CupertinoIcons.chevron_right,
+                  size: 18,
+                  color: Colors.white.withValues(alpha: 0.6),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -817,9 +902,9 @@ class _PersonPageState extends State<PersonPage> {
     );
   }
 
-  // ── Wide 16:9 Video Cards ("From Provider") ─────────────────────────────────
+  // ── Wide 16:9 Provider Videos ("From Provider") ─────────────────────────────
 
-  Widget _buildHorizontalWideVideos(List<PersonWork> list) {
+  Widget _buildHorizontalProviderVideos(List<MediaItem> list) {
     return SizedBox(
       height: 205,
       child: ListView.separated(
@@ -829,12 +914,12 @@ class _PersonPageState extends State<PersonPage> {
         itemCount: list.length,
         separatorBuilder: (_, _) => const SizedBox(width: 14),
         itemBuilder: (context, idx) {
-          final w = list[idx];
-          final imgUrl = w.backdrop ?? w.cover ?? '';
-          final heroTag = 'person-wide:${w.catalogId ?? w.title}:$idx';
+          final item = list[idx];
+          final imgUrl = item.cover;
+          final heroTag = 'provider-video:${item.id}:$idx';
           return GestureDetector(
-            onTap: () => _openWork(w, heroTag: heroTag),
-            onLongPress: () => _showWorkQuickActions(w, heroTag),
+            onTap: () => Navigator.of(context).push(DetailScreen.route(item, heroTag: heroTag)),
+            onLongPress: () => _showMediaItemQuickActions(item, heroTag: heroTag),
             behavior: HitTestBehavior.opaque,
             child: SizedBox(
               width: 236,
@@ -854,7 +939,7 @@ class _PersonPageState extends State<PersonPage> {
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
-                            if (imgUrl.isNotEmpty)
+                            if (imgUrl != null && imgUrl.isNotEmpty)
                               Image(
                                 image: nativeCoverProvider(imgUrl, null),
                                 fit: BoxFit.cover,
@@ -901,7 +986,7 @@ class _PersonPageState extends State<PersonPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    w.title,
+                    item.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -910,9 +995,9 @@ class _PersonPageState extends State<PersonPage> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (w.subtitle != null && w.subtitle!.isNotEmpty)
+                  if (item.sourceId.isNotEmpty)
                     Text(
-                      w.subtitle!,
+                      item.sourceId,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -929,11 +1014,11 @@ class _PersonPageState extends State<PersonPage> {
     );
   }
 
-  // ── Related Actors Row (Circular Avatars) ──────────────────────────────────
+  // ── Related Actors Row (Enlarged Circular Avatars) ─────────────────────────
 
   Widget _buildRelatedActorsRow(List<PersonRef> list) {
     return SizedBox(
-      height: 168,
+      height: 200,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 18),
         scrollDirection: Axis.horizontal,
@@ -947,14 +1032,14 @@ class _PersonPageState extends State<PersonPage> {
             onTap: () => _openRelated(ref, heroTag: heroTag),
             behavior: HitTestBehavior.opaque,
             child: SizedBox(
-              width: 112,
+              width: 136,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   ClipOval(
                     child: Container(
-                      width: 104,
-                      height: 104,
+                      width: 128,
+                      height: 128,
                       color: AppColors.surface2,
                       child: (ref.photo != null && ref.photo!.isNotEmpty)
                           ? Hero(
@@ -969,13 +1054,13 @@ class _PersonPageState extends State<PersonPage> {
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, _, _) => const Center(
                                   child: Icon(Icons.person,
-                                      color: Colors.white24, size: 44),
+                                      color: Colors.white24, size: 54),
                                 ),
                               ),
                             )
                           : const Center(
                               child: Icon(Icons.person,
-                                  color: Colors.white24, size: 44),
+                                  color: Colors.white24, size: 54),
                             ),
                     ),
                   ),
@@ -986,11 +1071,11 @@ class _PersonPageState extends State<PersonPage> {
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontFamily: 'Arena',
-                      color: Colors.white,
-                      fontSize: 12.5,
+                      fontFamily: 'Circular',
+                      fontSize: 13,
                       fontWeight: FontWeight.bold,
-                      letterSpacing: 0.6,
+                      color: Colors.white,
+                      letterSpacing: -0.2,
                       height: 1.15,
                     ),
                   ),
@@ -1052,6 +1137,49 @@ class _PersonPageState extends State<PersonPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── Skeleton Loader Below Header ───────────────────────────────────────────
+
+  Widget _buildSkeletonLoader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Container(
+              width: 110,
+              height: 18,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 194,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              scrollDirection: Axis.horizontal,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: 4,
+              separatorBuilder: (_, _) => const SizedBox(width: 14),
+              itemBuilder: (_, _) => Container(
+                width: 134,
+                height: 194,
+                decoration: BoxDecoration(
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

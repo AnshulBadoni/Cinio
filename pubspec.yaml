@@ -298,3 +298,9 @@ flutter:
     - family: Arena
       fonts:
         - asset: assets/fonts/Arena.ttf
+    - family: Circular
+      fonts:
+        - asset: assets/fonts/CircularStd-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/CircularStd-Black.ttf
+          weight: 900

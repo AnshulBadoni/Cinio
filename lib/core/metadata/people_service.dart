@@ -190,9 +190,22 @@ class PeopleService {
         }
       } catch (_) {}
 
+      String? bestPhoto;
+      final posters = row['posters'] ?? row['images'] ?? row['backgrounds'];
+      if (posters is Map) {
+        for (final k in ['original', 'full', 'large', 'medium']) {
+          final v = posters[k]?.toString();
+          if (v != null && v.isNotEmpty) {
+            bestPhoto = v;
+            break;
+          }
+        }
+      }
+      bestPhoto ??= (row['image'] ?? row['thumbnail'] ?? row['face'])?.toString();
+
       return PersonProfile(
         name: name,
-        photo: (row['image'] ?? row['thumbnail'] ?? row['face'])?.toString(),
+        photo: bestPhoto,
         description: (row['description'] ?? row['bio'])?.toString(),
         subtitle: 'Performer',
         works: works,
@@ -308,16 +321,16 @@ class PeopleService {
   }
 
   String? _tpdbImage(Map row) {
-    for (final key in ['poster', 'poster_image', 'image', 'thumbnail']) {
-      final v = row[key]?.toString();
-      if (v != null && v.isNotEmpty) return v;
-    }
-    final posters = row['posters'];
+    final posters = row['posters'] ?? row['images'];
     if (posters is Map) {
-      for (final key in ['large', 'medium', 'small', 'full']) {
+      for (final key in ['original', 'full', 'large', 'medium', 'small']) {
         final v = posters[key]?.toString();
         if (v != null && v.isNotEmpty) return v;
       }
+    }
+    for (final key in ['poster', 'poster_image', 'image', 'thumbnail']) {
+      final v = row[key]?.toString();
+      if (v != null && v.isNotEmpty) return v;
     }
     return null;
   }
