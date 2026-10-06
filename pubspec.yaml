@@ -295,3 +295,6 @@ flutter:
     - family: Lato
       fonts:
         - asset: assets/fonts/Lato-Regular.ttf
+    - family: Arena
+      fonts:
+        - asset: assets/fonts/Arena.ttf

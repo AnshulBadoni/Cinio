@@ -2884,12 +2884,15 @@ class _DetailViewState extends State<_DetailView>
             separatorBuilder: (_, _) => const SizedBox(width: 14),
             itemBuilder: (context, i) {
               final m = cast[i];
+              final ref = m.person;
+              final heroTag = ref != null
+                  ? 'person-avatar:${ref.source.name}:${ref.externalId ?? ref.id}'
+                  : null;
               return GestureDetector(
                 onTap: () {
-                  final ref = m.person;
                   if (ref != null) {
                     Navigator.of(context).push(
-                      PersonPage.route(ref, sourceId: widget.item.sourceId),
+                      PersonPage.route(ref, sourceId: widget.item.sourceId, heroTag: heroTag),
                     );
                   }
                 },
@@ -2904,13 +2907,27 @@ class _DetailViewState extends State<_DetailView>
                           width: avatarSize,
                           height: avatarSize,
                           child: (m.photo != null && m.photo!.isNotEmpty)
-                              ? CachedNetworkImage(
-                                  imageUrl: m.photo!,
-                                  fit: BoxFit.cover,
-                                  memCacheWidth: 200,
-                                  placeholder: (_, _) => Container(color: AppColors.surface2),
-                                  errorWidget: (_, _, _) => const _AvatarFallback(),
-                                )
+                              ? (heroTag != null
+                                  ? Hero(
+                                      tag: heroTag,
+                                      flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+                                        return ClipOval(child: toHeroContext.widget);
+                                      },
+                                      child: CachedNetworkImage(
+                                        imageUrl: m.photo!,
+                                        fit: BoxFit.cover,
+                                        memCacheWidth: 200,
+                                        placeholder: (_, _) => Container(color: AppColors.surface2),
+                                        errorWidget: (_, _, _) => const _AvatarFallback(),
+                                      ),
+                                    )
+                                  : CachedNetworkImage(
+                                      imageUrl: m.photo!,
+                                      fit: BoxFit.cover,
+                                      memCacheWidth: 200,
+                                      placeholder: (_, _) => Container(color: AppColors.surface2),
+                                      errorWidget: (_, _, _) => const _AvatarFallback(),
+                                    ))
                               : const _AvatarFallback(),
                         ),
                       ),

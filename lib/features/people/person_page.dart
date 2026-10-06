@@ -1,5 +1,5 @@
-import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -10,10 +10,14 @@ import '../../core/metadata/theporndb.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/person.dart';
 import '../../core/models/provider_info.dart';
+import '../../core/models/watch_status.dart';
+import '../../core/playback/list_status_store.dart';
+import '../../core/playback/my_list.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/trailer/trailer_service.dart';
 import '../../core/ui/native_cover_provider.dart';
+import '../../core/ui/poster_quick_actions.dart';
 import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
 import '../trailer/trailer_screen.dart';
@@ -22,16 +26,32 @@ import '../trailer/trailer_screen.dart';
 /// quick action trio (Shuffle / Trailer / Favorite), and organized
 /// carousels (Popular, Latest, Movies, Series, Provider Videos, Related, Bio).
 class PersonPage extends StatefulWidget {
-  const PersonPage({super.key, required this.person, this.sourceId});
+  const PersonPage({
+    super.key,
+    required this.person,
+    this.sourceId,
+    this.heroTag,
+  });
 
   final PersonRef person;
 
   /// The source to search when a title on this page is tapped. Null → active.
   final String? sourceId;
 
-  static Route<void> route(PersonRef person, {String? sourceId}) =>
+  /// Hero animation tag for the actor's profile photo.
+  final String? heroTag;
+
+  static Route<void> route(
+    PersonRef person, {
+    String? sourceId,
+    String? heroTag,
+  }) =>
       MaterialPageRoute<void>(
-        builder: (_) => PersonPage(person: person, sourceId: sourceId),
+        builder: (_) => PersonPage(
+          person: person,
+          sourceId: sourceId,
+          heroTag: heroTag,
+        ),
       );
 
   @override
@@ -40,6 +60,7 @@ class PersonPage extends StatefulWidget {
 
 class _PersonPageState extends State<PersonPage> {
   final ScrollController _scrollController = ScrollController();
+  final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0.0);
   PersonProfile? _profile;
   bool _loading = true;
   final List<PersonWork> _works = [];
@@ -61,6 +82,7 @@ class _PersonPageState extends State<PersonPage> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _heroStretch.dispose();
     super.dispose();
   }
 
@@ -189,7 +211,7 @@ class _PersonPageState extends State<PersonPage> {
     _snack('Copied “${widget.person.name}” to clipboard');
   }
 
-  Future<void> _openWork(PersonWork w) async {
+  Future<void> _openWork(PersonWork w, {String? heroTag}) async {
     _snack('Opening “${w.title}”…');
     try {
       if (widget.person.source == PersonSource.thePornDbPerformer ||
@@ -219,7 +241,7 @@ class _PersonPageState extends State<PersonPage> {
           _snack('“${w.title}” isn’t in ThePornDB');
           return;
         }
-        Navigator.of(context).push(DetailScreen.route(match));
+        Navigator.of(context).push(DetailScreen.route(match, heroTag: heroTag));
         return;
       }
 
@@ -235,7 +257,7 @@ class _PersonPageState extends State<PersonPage> {
             wantedMalId: w.malId,
           );
           if (match != null) {
-            Navigator.of(context).push(DetailScreen.route(match));
+            Navigator.of(context).push(DetailScreen.route(match, heroTag: heroTag));
             return;
           }
         }
@@ -254,7 +276,7 @@ class _PersonPageState extends State<PersonPage> {
           tmdbId: tmdbId,
           tmdbIsTv: w.isTv,
         );
-        Navigator.of(context).push(DetailScreen.route(match));
+        Navigator.of(context).push(DetailScreen.route(match, heroTag: heroTag));
         return;
       }
 
@@ -271,15 +293,78 @@ class _PersonPageState extends State<PersonPage> {
         _snack('“${w.title}” isn’t on this source');
         return;
       }
-      Navigator.of(context).push(DetailScreen.route(match));
+      Navigator.of(context).push(DetailScreen.route(match, heroTag: heroTag));
     } catch (_) {
       if (mounted) _snack('Couldn’t open “${w.title}”');
     }
   }
 
-  void _openRelated(PersonRef ref) {
+  MediaItem _mediaItemForWork(PersonWork w) {
+    final isTpdb = widget.person.source == PersonSource.thePornDbPerformer ||
+        widget.person.source == PersonSource.thePornDbStudio;
+    if (isTpdb) {
+      final cid = w.catalogId;
+      return MediaItem(
+        id: cid != null ? 'tpdb:scene:$cid' : 'tpdb:scene:${w.title}',
+        title: w.title,
+        cover: w.cover,
+        url: cid != null ? 'tpdb://movie/$cid' : 'tpdb://movie/${w.title}',
+        type: ProviderType.movie,
+        sourceId: 'tpdb:catalog',
+      );
+    }
+    final tmdbId = int.tryParse(w.catalogId ?? '');
+    return MediaItem(
+      id: tmdbId != null
+          ? 'tmdb:${w.isTv ? 'tv' : 'movie'}:$tmdbId'
+          : 'search:${w.title}',
+      title: w.title,
+      cover: w.cover,
+      url: tmdbId != null
+          ? 'tmdb://${w.isTv ? 'tv' : 'movie'}/$tmdbId'
+          : 'search://${w.title}',
+      type: ProviderType.movie,
+      sourceId: 'tmdb:catalog',
+      tmdbId: tmdbId,
+      tmdbIsTv: w.isTv,
+    );
+  }
+
+  Future<void> _showWorkQuickActions(PersonWork w, String heroTag) async {
+    final item = _mediaItemForWork(w);
+    final myList = sl<MyListStore>();
+    final listStatus = sl<ListStatusStore>();
+    final inLibrary = myList.contains(item) || listStatus.statusOf(item) != null;
+    final watched = listStatus.statusOf(item) == WatchStatus.completed;
+
+    await showPosterQuickActions(
+      context,
+      item: item,
+      heroTag: heroTag,
+      inLibrary: inLibrary,
+      watched: watched,
+      onPlay: () => _openWork(w, heroTag: heroTag),
+      onInfo: () => _openWork(w, heroTag: heroTag),
+      onMarkWatched: () async {
+        if (!myList.contains(item)) await myList.add(item);
+        await listStatus.setStatus(item, WatchStatus.completed);
+        await myList.pushStatus(item);
+        if (mounted) setState(() {});
+      },
+      onToggleLibrary: () async {
+        await myList.toggle(item);
+        if (!myList.contains(item)) {
+          await listStatus.remove(item);
+        }
+        if (mounted) setState(() {});
+        return myList.contains(item);
+      },
+    );
+  }
+
+  void _openRelated(PersonRef ref, {String? heroTag}) {
     Navigator.of(context)
-        .push(PersonPage.route(ref, sourceId: widget.sourceId));
+        .push(PersonPage.route(ref, sourceId: widget.sourceId, heroTag: heroTag));
   }
 
   @override
@@ -318,14 +403,27 @@ class _PersonPageState extends State<PersonPage> {
         ? p.providerVideos
         : _works.where((w) => w.backdrop != null || w.isScene).toList();
 
-    return CustomScrollView(
-      controller: _scrollController,
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        // 1. Full-bleed Hero Header
-        SliverToBoxAdapter(
-          child: _buildHeroHeader(p, isTpdb),
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.axis == Axis.vertical) {
+          if (notification.metrics.pixels < 0) {
+            _heroStretch.value = (-notification.metrics.pixels).clamp(0.0, 320.0);
+          } else if (_heroStretch.value > 0) {
+            _heroStretch.value = 0.0;
+          }
+        }
+        return false;
+      },
+      child: CustomScrollView(
+        controller: _scrollController,
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
         ),
+        slivers: [
+          // 1. Full-bleed Hero Header
+          SliverToBoxAdapter(
+            child: _buildHeroHeader(p, isTpdb),
+          ),
 
         // 2. "Popular" Row
         if (popularWorks.isNotEmpty) ...[
@@ -377,8 +475,9 @@ class _PersonPageState extends State<PersonPage> {
         // Bottom padding
         const SliverToBoxAdapter(child: SizedBox(height: 48)),
       ],
-    );
-  }
+    ),
+  );
+}
 
   // ── Hero Header ────────────────────────────────────────────────────────────
 
@@ -387,33 +486,58 @@ class _PersonPageState extends State<PersonPage> {
     final totalCount = _works.length;
     final metaText =
         '${p.subtitle ?? (isTpdb ? 'Performer' : 'Acting')} · $totalCount ${isTpdb ? 'Releases' : 'Titles'}';
+    final effectiveHeroTag = widget.heroTag ??
+        'person-avatar:${widget.person.source.name}:${widget.person.externalId ?? widget.person.id}';
 
     return Stack(
       children: [
-        // Background portrait with downward dark gradient blend
+        // Background portrait with downward dark gradient blend and stretch zoom
         SizedBox(
-          height: 390,
+          height: 490,
           width: double.infinity,
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (photo != null && photo.isNotEmpty)
-                CachedNetworkImage(
-                  imageUrl: photo,
-                  fit: BoxFit.cover,
-                  alignment: const Alignment(0, -0.4),
-                  placeholder: (_, _) =>
-                      Container(color: AppColors.surface2),
-                  errorWidget: (_, _, _) =>
-                      Container(color: AppColors.surface2),
-                )
-              else
-                Container(
-                  color: AppColors.surface2,
-                  child: const Center(
-                    child: Icon(Icons.person, size: 80, color: Colors.white24),
-                  ),
+              ValueListenableBuilder<double>(
+                valueListenable: _heroStretch,
+                builder: (context, overscroll, child) {
+                  final scale = 1.0 + (overscroll / 380.0).clamp(0.0, 0.60);
+                  return ClipRect(
+                    child: Transform.scale(
+                      alignment: Alignment.topCenter,
+                      scale: scale,
+                      child: child,
+                    ),
+                  );
+                },
+                child: Hero(
+                  tag: effectiveHeroTag,
+                  createRectTween: (begin, end) =>
+                      MaterialRectArcTween(begin: begin, end: end),
+                  flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+                    return Material(
+                      color: Colors.transparent,
+                      child: toHeroContext.widget,
+                    );
+                  },
+                  child: (photo != null && photo.isNotEmpty)
+                      ? CachedNetworkImage(
+                          imageUrl: photo,
+                          fit: BoxFit.cover,
+                          alignment: const Alignment(0, -0.2),
+                          placeholder: (_, _) =>
+                              Container(color: AppColors.surface2),
+                          errorWidget: (_, _, _) =>
+                              Container(color: AppColors.surface2),
+                        )
+                      : Container(
+                          color: AppColors.surface2,
+                          child: const Center(
+                            child: Icon(Icons.person, size: 80, color: Colors.white24),
+                          ),
+                        ),
                 ),
+              ),
 
               // Multi-stop cinematic dark gradient overlay
               DecoratedBox(
@@ -422,12 +546,14 @@ class _PersonPageState extends State<PersonPage> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withValues(alpha: 0.45),
+                      Colors.black.withValues(alpha: 0.50),
                       Colors.transparent,
-                      AppColors.bg.withValues(alpha: 0.70),
+                      Colors.transparent,
+                      AppColors.bg.withValues(alpha: 0.35),
+                      AppColors.bg.withValues(alpha: 0.85),
                       AppColors.bg,
                     ],
-                    stops: const [0.0, 0.35, 0.75, 1.0],
+                    stops: const [0.0, 0.18, 0.45, 0.70, 0.90, 1.0],
                   ),
                 ),
               ),
@@ -435,20 +561,38 @@ class _PersonPageState extends State<PersonPage> {
           ),
         ),
 
-        // Floating Top Navigation Bar
+        // Floating Top Navigation Bar (Identical to detail page back button)
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildGlassCircleBtn(
-                  icon: Icons.arrow_back_rounded,
-                  onTap: () => Navigator.of(context).pop(),
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.black.withValues(alpha: 0.55),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 21),
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
                 ),
-                _buildGlassCircleBtn(
-                  icon: Icons.share_rounded,
-                  onTap: _shareProfile,
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.black.withValues(alpha: 0.55),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(CupertinoIcons.share, color: Colors.white, size: 19),
+                    onPressed: _shareProfile,
+                  ),
                 ),
               ],
             ),
@@ -459,7 +603,7 @@ class _PersonPageState extends State<PersonPage> {
         Positioned(
           left: 20,
           right: 20,
-          bottom: 12,
+          bottom: 14,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -470,13 +614,14 @@ class _PersonPageState extends State<PersonPage> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 27,
-                  fontWeight: FontWeight.w900,
+                  fontFamily: 'Arena',
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
                   color: Colors.white,
-                  letterSpacing: -0.5,
-                  height: 1.1,
+                  letterSpacing: 2.0,
+                  height: 1.15,
                   shadows: [
-                    Shadow(color: Colors.black, blurRadius: 12),
+                    Shadow(color: Colors.black, blurRadius: 14),
                     Shadow(color: Colors.black87, blurRadius: 4),
                   ],
                 ),
@@ -501,32 +646,31 @@ class _PersonPageState extends State<PersonPage> {
                   // 1. Play Random Button
                   _buildActionButton(
                     icon: Icons.shuffle_rounded,
-                    size: 48,
+                    size: 50,
                     iconSize: 22,
                     background: Colors.white.withValues(alpha: 0.14),
                     iconColor: Colors.white,
                     onTap: _playRandom,
                   ),
-                  const SizedBox(width: 20),
+                  const SizedBox(width: 22),
 
-                  // 2. Play Trailer (Prominent Center Circle)
+                  // 2. Play Trailer (Clean Center Circle - No glow)
                   _buildActionButton(
                     icon: Icons.play_arrow_rounded,
-                    size: 64,
-                    iconSize: 38,
+                    size: 66,
+                    iconSize: 40,
                     background: Colors.white,
                     iconColor: Colors.black,
-                    hasGlow: true,
                     onTap: _playTrailer,
                   ),
-                  const SizedBox(width: 20),
+                  const SizedBox(width: 22),
 
                   // 3. Add to Favorite Actors Button
                   _buildActionButton(
                     icon: _isFav
                         ? Icons.favorite_rounded
                         : Icons.favorite_border_rounded,
-                    size: 48,
+                    size: 50,
                     iconSize: 22,
                     background: Colors.white.withValues(alpha: 0.14),
                     iconColor: _isFav ? const Color(0xFFFF2D55) : Colors.white,
@@ -541,28 +685,6 @@ class _PersonPageState extends State<PersonPage> {
     );
   }
 
-  Widget _buildGlassCircleBtn({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return ClipOval(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Material(
-          color: Colors.black.withValues(alpha: 0.35),
-          child: InkWell(
-            onTap: onTap,
-            child: SizedBox(
-              width: 40,
-              height: 40,
-              child: Icon(icon, color: Colors.white, size: 20),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildActionButton({
     required IconData icon,
     required double size,
@@ -570,7 +692,6 @@ class _PersonPageState extends State<PersonPage> {
     required Color background,
     required Color iconColor,
     required VoidCallback onTap,
-    bool hasGlow = false,
   }) {
     return Container(
       width: size,
@@ -578,20 +699,13 @@ class _PersonPageState extends State<PersonPage> {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: background,
-        boxShadow: hasGlow
-            ? [
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.35),
-                  blurRadius: 18,
-                  spreadRadius: 2,
-                ),
-              ]
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.4),
-                  blurRadius: 8,
-                ),
-              ],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -627,52 +741,59 @@ class _PersonPageState extends State<PersonPage> {
 
   Widget _buildHorizontalPosters(List<PersonWork> list) {
     return SizedBox(
-      height: 195,
+      height: 256,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 18),
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
         itemCount: list.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        separatorBuilder: (_, _) => const SizedBox(width: 14),
         itemBuilder: (context, idx) {
           final w = list[idx];
+          final heroTag = 'person-poster:${w.catalogId ?? w.title}:$idx';
           return GestureDetector(
-            onTap: () => _openWork(w),
+            onTap: () => _openWork(w, heroTag: heroTag),
+            onLongPress: () => _showWorkQuickActions(w, heroTag),
             behavior: HitTestBehavior.opaque,
             child: SizedBox(
-              width: 112,
+              width: 134,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      width: 112,
-                      height: 152,
-                      color: AppColors.surface2,
-                      child: (w.cover != null && w.cover!.isNotEmpty)
-                          ? Image(
-                              image: nativeCoverProvider(w.cover!, null),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => const Center(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Hero(
+                      tag: heroTag,
+                      createRectTween: (begin, end) =>
+                          MaterialRectArcTween(begin: begin, end: end),
+                      child: Container(
+                        width: 134,
+                        height: 194,
+                        color: AppColors.surface2,
+                        child: (w.cover != null && w.cover!.isNotEmpty)
+                            ? Image(
+                                image: nativeCoverProvider(w.cover!, null),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => const Center(
+                                  child: Icon(Icons.movie_outlined,
+                                      color: Colors.white24, size: 32),
+                                ),
+                              )
+                            : const Center(
                                 child: Icon(Icons.movie_outlined,
-                                    color: Colors.white24, size: 28),
+                                    color: Colors.white24, size: 32),
                               ),
-                            )
-                          : const Center(
-                              child: Icon(Icons.movie_outlined,
-                                  color: Colors.white24, size: 28),
-                            ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text(
                     w.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 12.5,
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -683,7 +804,7 @@ class _PersonPageState extends State<PersonPage> {
                           : w.releaseDate!,
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.5),
-                        fontSize: 11,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -700,7 +821,7 @@ class _PersonPageState extends State<PersonPage> {
 
   Widget _buildHorizontalWideVideos(List<PersonWork> list) {
     return SizedBox(
-      height: 156,
+      height: 205,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 18),
         scrollDirection: Axis.horizontal,
@@ -710,76 +831,83 @@ class _PersonPageState extends State<PersonPage> {
         itemBuilder: (context, idx) {
           final w = list[idx];
           final imgUrl = w.backdrop ?? w.cover ?? '';
+          final heroTag = 'person-wide:${w.catalogId ?? w.title}:$idx';
           return GestureDetector(
-            onTap: () => _openWork(w),
+            onTap: () => _openWork(w, heroTag: heroTag),
+            onLongPress: () => _showWorkQuickActions(w, heroTag),
             behavior: HitTestBehavior.opaque,
             child: SizedBox(
-              width: 210,
+              width: 236,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      width: 210,
-                      height: 118,
-                      color: AppColors.surface2,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          if (imgUrl.isNotEmpty)
-                            Image(
-                              image: nativeCoverProvider(imgUrl, null),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Container(
-                                color: AppColors.surface2,
+                    child: Hero(
+                      tag: heroTag,
+                      createRectTween: (begin, end) =>
+                          MaterialRectArcTween(begin: begin, end: end),
+                      child: Container(
+                        width: 236,
+                        height: 136,
+                        color: AppColors.surface2,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            if (imgUrl.isNotEmpty)
+                              Image(
+                                image: nativeCoverProvider(imgUrl, null),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => Container(
+                                  color: AppColors.surface2,
+                                ),
                               ),
-                            ),
-                          // Subtle dark gradient
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.transparent,
-                                  Colors.black.withValues(alpha: 0.65),
-                                ],
-                              ),
-                            ),
-                          ),
-                          // Center Play Icon watermark
-                          Center(
-                            child: Container(
-                              width: 38,
-                              height: 38,
+                            // Subtle dark gradient
+                            DecoratedBox(
                               decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.black.withValues(alpha: 0.60),
-                                border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.3),
-                                    width: 1.2),
-                              ),
-                              child: const Icon(
-                                Icons.play_arrow_rounded,
-                                color: Colors.white,
-                                size: 24,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.65),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                            // Center Play Icon watermark
+                            Center(
+                              child: Container(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.black.withValues(alpha: 0.60),
+                                  border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.3),
+                                      width: 1.2),
+                                ),
+                                child: const Icon(
+                                  Icons.play_arrow_rounded,
+                                  color: Colors.white,
+                                  size: 26,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text(
                     w.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   if (w.subtitle != null && w.subtitle!.isNotEmpty)
@@ -789,7 +917,7 @@ class _PersonPageState extends State<PersonPage> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.5),
-                        fontSize: 11,
+                        fontSize: 11.5,
                       ),
                     ),
                 ],
@@ -805,53 +933,64 @@ class _PersonPageState extends State<PersonPage> {
 
   Widget _buildRelatedActorsRow(List<PersonRef> list) {
     return SizedBox(
-      height: 130,
+      height: 168,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 18),
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
         itemCount: list.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 16),
+        separatorBuilder: (_, _) => const SizedBox(width: 18),
         itemBuilder: (context, idx) {
           final ref = list[idx];
+          final heroTag = 'person-avatar:${ref.source.name}:${ref.externalId ?? ref.id}';
           return GestureDetector(
-            onTap: () => _openRelated(ref),
+            onTap: () => _openRelated(ref, heroTag: heroTag),
             behavior: HitTestBehavior.opaque,
             child: SizedBox(
-              width: 82,
+              width: 112,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   ClipOval(
                     child: Container(
-                      width: 76,
-                      height: 76,
+                      width: 104,
+                      height: 104,
                       color: AppColors.surface2,
                       child: (ref.photo != null && ref.photo!.isNotEmpty)
-                          ? Image(
-                              image: nativeCoverProvider(ref.photo!, null),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => const Center(
-                                child: Icon(Icons.person,
-                                    color: Colors.white24, size: 36),
+                          ? Hero(
+                              tag: heroTag,
+                              createRectTween: (begin, end) =>
+                                  MaterialRectArcTween(begin: begin, end: end),
+                              flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+                                return ClipOval(child: toHeroContext.widget);
+                              },
+                              child: Image(
+                                image: nativeCoverProvider(ref.photo!, null),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => const Center(
+                                  child: Icon(Icons.person,
+                                      color: Colors.white24, size: 44),
+                                ),
                               ),
                             )
                           : const Center(
                               child: Icon(Icons.person,
-                                  color: Colors.white24, size: 36),
+                                  color: Colors.white24, size: 44),
                             ),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   Text(
                     ref.name,
                     maxLines: 2,
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
+                      fontFamily: 'Arena',
                       color: Colors.white,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.6,
                       height: 1.15,
                     ),
                   ),

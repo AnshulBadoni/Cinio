@@ -276,6 +276,7 @@ class _SearchViewState extends State<_SearchView>
           photo: item.cover,
         ),
         sourceId: item.sourceId,
+        heroTag: heroTag,
       ));
       return;
     }
@@ -290,6 +291,7 @@ class _SearchViewState extends State<_SearchView>
           photo: item.cover,
         ),
         sourceId: item.sourceId,
+        heroTag: heroTag,
       ));
       return;
     }
