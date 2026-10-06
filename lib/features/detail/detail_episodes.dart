@@ -2524,6 +2524,7 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }

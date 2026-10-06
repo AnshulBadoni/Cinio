@@ -24,6 +24,10 @@ class ResumeMark {
       markedWatched ||
       (duration.inMilliseconds > 0 &&
           position.inMilliseconds >= duration.inMilliseconds * 0.92);
+
+  double get fraction => duration.inMilliseconds > 0
+      ? (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0)
+      : 0.0;
 }
 
 /// Hive-backed per-(sourceId, episodeId) resume positions.

@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/person.dart';
-import '../storage/hive_storage.dart';
+import '../hive/safe_box.dart';
 
 /// Local store for favorited actors and performers.
 class FavoritePeopleStore {
@@ -44,8 +44,8 @@ class FavoritePeopleStore {
     if (box == null) return const [];
     final list = <PersonRef>[];
     for (final raw in box.values) {
-      if (raw is! Map) continue;
-      final sourceStr = raw['source']?.toString() ?? '';
+      final map = raw;
+      final sourceStr = map['source']?.toString() ?? '';
       final source = PersonSource.values.firstWhere(
         (s) => s.name == sourceStr,
         orElse: () => PersonSource.tmdb,

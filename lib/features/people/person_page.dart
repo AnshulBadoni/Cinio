@@ -12,9 +12,8 @@ import '../../core/models/person.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_text.dart';
 import '../../core/trailer/trailer_service.dart';
-import '../../core/ui/native_cover.dart';
+import '../../core/ui/native_cover_provider.dart';
 import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
 import '../trailer/trailer_screen.dart';
@@ -405,7 +404,7 @@ class _PersonPageState extends State<PersonPage> {
                   alignment: const Alignment(0, -0.4),
                   placeholder: (_, _) =>
                       Container(color: AppColors.surface2),
-                  errorBuilder: (_, _, _) =>
+                  errorWidget: (_, _, _) =>
                       Container(color: AppColors.surface2),
                 )
               else
@@ -653,7 +652,7 @@ class _PersonPageState extends State<PersonPage> {
                       color: AppColors.surface2,
                       child: (w.cover != null && w.cover!.isNotEmpty)
                           ? Image(
-                              image: nativeCoverProvider(w.cover!),
+                              image: nativeCoverProvider(w.cover!, null),
                               fit: BoxFit.cover,
                               errorBuilder: (_, _, _) => const Center(
                                 child: Icon(Icons.movie_outlined,
@@ -730,7 +729,7 @@ class _PersonPageState extends State<PersonPage> {
                         children: [
                           if (imgUrl.isNotEmpty)
                             Image(
-                              image: nativeCoverProvider(imgUrl),
+                              image: nativeCoverProvider(imgUrl, null),
                               fit: BoxFit.cover,
                               errorBuilder: (_, _, _) => Container(
                                 color: AppColors.surface2,
@@ -830,7 +829,7 @@ class _PersonPageState extends State<PersonPage> {
                       color: AppColors.surface2,
                       child: (ref.photo != null && ref.photo!.isNotEmpty)
                           ? Image(
-                              image: nativeCoverProvider(ref.photo!),
+                              image: nativeCoverProvider(ref.photo!, null),
                               fit: BoxFit.cover,
                               errorBuilder: (_, _, _) => const Center(
                                 child: Icon(Icons.person,
