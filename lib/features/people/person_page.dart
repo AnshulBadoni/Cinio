@@ -21,6 +21,7 @@ import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
 import '../home/see_all_screen.dart';
 import '../trailer/trailer_screen.dart';
+import 'provider_videos_screen.dart';
 
 /// Redesigned Actor Profile Page with cinematic hero header,
 /// quick action trio (Shuffle / Trailer / Favorite), and organized
@@ -107,15 +108,32 @@ class _PersonPageState extends State<PersonPage> {
     setState(() => _loadingProviders = true);
     try {
       List<MediaItem> results;
-      if (widget.sourceId != null &&
-          widget.sourceId != 'tmdb:catalog' &&
-          !widget.sourceId!.startsWith('tpdb:')) {
-        results = await sl<SourceRepository>().search(
-          widget.person.name,
-          sourceId: widget.sourceId,
-        );
+      final isTpdb = widget.person.source == PersonSource.thePornDbPerformer ||
+          widget.person.source == PersonSource.thePornDbStudio;
+
+      if (isTpdb) {
+        // TPDB performers/studios: only search adult / NSFW sources
+        if (widget.sourceId != null &&
+            sl<SourceRepository>().isAdultSource(widget.sourceId!)) {
+          results = await sl<SourceRepository>().search(
+            widget.person.name,
+            sourceId: widget.sourceId,
+          );
+        } else {
+          results = await sl<SourceRepository>().searchAdult(widget.person.name);
+        }
       } else {
-        results = await sl<SourceRepository>().searchAll(widget.person.name);
+        // TMDB actors: search standard sources as configured
+        if (widget.sourceId != null &&
+            widget.sourceId != 'tmdb:catalog' &&
+            !widget.sourceId!.startsWith('tpdb:')) {
+          results = await sl<SourceRepository>().search(
+            widget.person.name,
+            sourceId: widget.sourceId,
+          );
+        } else {
+          results = await sl<SourceRepository>().searchAll(widget.person.name);
+        }
       }
       if (!mounted) return;
       setState(() {
@@ -415,16 +433,14 @@ class _PersonPageState extends State<PersonPage> {
   }
 
   void _openSeeAllProvider(String title, List<MediaItem> items) {
+    final isTpdb = widget.person.source == PersonSource.thePornDbPerformer ||
+        widget.person.source == PersonSource.thePornDbStudio;
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => SeeAllScreen(
-          title: title,
-          items: items,
-          onTap: (item) {
-            Navigator.of(context).push(DetailScreen.route(item));
-          },
-          onLongPress: (item) => _showMediaItemQuickActions(item),
-        ),
+      ProviderVideosScreen.route(
+        title: title,
+        personName: widget.person.name,
+        initialItems: items,
+        isTpdb: isTpdb,
       ),
     );
   }

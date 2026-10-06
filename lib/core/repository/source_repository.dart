@@ -523,6 +523,57 @@ class SourceRepository {
     return [for (final batch in results) ...batch];
   }
 
+  /// Checks if a provider id belongs to an adult/NSFW provider.
+  bool isAdultSource(String id) {
+    final lower = id.toLowerCase();
+    if (lower.contains('speedporn') ||
+        lower.contains('himeros') ||
+        lower.contains('sora') ||
+        lower.contains('adult') ||
+        lower.contains('porn') ||
+        lower.contains('nsfw') ||
+        lower.contains('hentai') ||
+        lower.contains('jav') ||
+        lower.contains('missav') ||
+        lower.contains('supjav') ||
+        lower.contains('spankbang') ||
+        lower.contains('paradisehill') ||
+        lower.contains('paradise')) {
+      return true;
+    }
+    try {
+      final p = _providerFor(id);
+      if (p is AniyomiProvider && p.info.nsfw) return true;
+      if (p is MihonProvider && p.info.nsfw) return true;
+      final name = p.displayName.toLowerCase();
+      return name.contains('speedporn') ||
+          name.contains('himeros') ||
+          name.contains('sora') ||
+          name.contains('adult') ||
+          name.contains('porn') ||
+          name.contains('nsfw') ||
+          name.contains('hentai') ||
+          name.contains('jav') ||
+          name.contains('paradise');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// All loaded sources identified as adult/NSFW.
+  List<({String id, String name})> get adultSources =>
+      loadedSources.where((s) => isAdultSource(s.id)).toList();
+
+  /// Searches only adult / NSFW streaming providers.
+  Future<List<MediaItem>> searchAdult(String query, {String category = 'sub'}) async {
+    final sources = adultSources;
+    final results = await Future.wait([
+      for (final source in sources)
+        search(query, category: category, sourceId: source.id).catchError((_) => <MediaItem>[]),
+    ]);
+    return [for (final batch in results) ...batch];
+  }
+
   /// Resolve a metadata-catalog item (TMDB/TPDB) to a real installed streaming
   /// provider without making every detail-page open wait on every source.
   ///
@@ -669,44 +720,8 @@ class SourceRepository {
     final preferred = primaryPref.isNotEmpty ? primaryPref : sourceId;
     final allCandidates = loadedSources.map((s) => s.id).toList();
 
-    bool isAdultProvider(String id) {
-      final lower = id.toLowerCase();
-      if (lower.contains('speedporn') ||
-          lower.contains('himeros') ||
-          lower.contains('sora') ||
-          lower.contains('adult') ||
-          lower.contains('porn') ||
-          lower.contains('nsfw') ||
-          lower.contains('hentai') ||
-          lower.contains('jav') ||
-          lower.contains('missav') ||
-          lower.contains('supjav') ||
-          lower.contains('spankbang') ||
-          lower.contains('paradisehill') ||
-          lower.contains('paradise')) {
-        return true;
-      }
-      try {
-        final p = _providerFor(id);
-        if (p is AniyomiProvider && p.info.nsfw) return true;
-        if (p is MihonProvider && p.info.nsfw) return true;
-        final name = p.displayName.toLowerCase();
-        return name.contains('speedporn') ||
-            name.contains('himeros') ||
-            name.contains('sora') ||
-            name.contains('adult') ||
-            name.contains('porn') ||
-            name.contains('nsfw') ||
-            name.contains('hentai') ||
-            name.contains('jav') ||
-            name.contains('paradise');
-      } catch (_) {
-        return false;
-      }
-    }
-
-    final adultSources = allCandidates.where(isAdultProvider).toList();
-    final nonAdultSources = allCandidates.where((id) => !isAdultProvider(id)).toList();
+    final adultSources = allCandidates.where(isAdultSource).toList();
+    final nonAdultSources = allCandidates.where((id) => !isAdultSource(id)).toList();
     final List<String> candidates;
     if (isTpdb) {
       candidates = adultSources.isNotEmpty ? adultSources : allCandidates;
@@ -720,7 +735,7 @@ class SourceRepository {
     }
 
     final tried = <String>{};
-    final preferredMatchesType = !isTpdb || isAdultProvider(preferred);
+    final preferredMatchesType = !isTpdb || isAdultSource(preferred);
     if (preferred.isNotEmpty && hasSource(preferred) && preferredMatchesType) {
       tried.add(preferred);
       final hit = await _resolveCatalogOnSource(catalog, preferred, category)
