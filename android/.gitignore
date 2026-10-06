@@ -12,6 +12,7 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+!app/cinio-release.jks
 
 # Firebase config — keep the project id/key out of the public repo. Each build
 # machine needs its own copy from the Firebase console at android/app/.

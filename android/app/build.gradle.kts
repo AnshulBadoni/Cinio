@@ -19,8 +19,11 @@ plugins {
 // and CI still work without the release keystore.
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
-val hasReleaseKeystore = keystorePropertiesFile.exists()
-if (hasReleaseKeystore) {
+val hasCustomReleaseKeystore = keystorePropertiesFile.exists()
+val defaultReleaseKeystore = file("cinio-release.jks")
+val hasDefaultKeystore = defaultReleaseKeystore.exists()
+val hasReleaseKeystore = hasCustomReleaseKeystore || hasDefaultKeystore
+if (hasCustomReleaseKeystore) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
@@ -87,10 +90,17 @@ android {
     signingConfigs {
         if (hasReleaseKeystore) {
             create("release") {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = (keystoreProperties["storeFile"] as String?)?.let { file(it) }
-                storePassword = keystoreProperties["storePassword"] as String
+                if (hasCustomReleaseKeystore) {
+                    keyAlias = keystoreProperties["keyAlias"] as String
+                    keyPassword = keystoreProperties["keyPassword"] as String
+                    storeFile = (keystoreProperties["storeFile"] as String?)?.let { file(it) }
+                    storePassword = keystoreProperties["storePassword"] as String
+                } else {
+                    keyAlias = "cinio"
+                    keyPassword = "cinioapp"
+                    storeFile = defaultReleaseKeystore
+                    storePassword = "cinioapp"
+                }
             }
         }
     }

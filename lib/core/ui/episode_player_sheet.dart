@@ -420,7 +420,7 @@ class _EpisodeQuickActions extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: fraction.clamp(0.0, 1.0),
                   backgroundColor: Colors.white12,
-                  valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accent),
+                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
                 ),
               ),
             ),

@@ -288,7 +288,7 @@ class _PersonPageState extends State<PersonPage> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: _loading
-          ? const Center(
+          ? Center(
               child: CircularProgressIndicator(color: AppColors.accent),
             )
           : _profile == null
@@ -905,7 +905,7 @@ class _PersonPageState extends State<PersonPage> {
               behavior: HitTestBehavior.opaque,
               child: Text(
                 _bioExpanded ? 'Show less' : 'Read more',
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.accent,
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
