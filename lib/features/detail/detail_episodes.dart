@@ -1805,7 +1805,7 @@ class _EpisodeDownloadIcon extends StatelessWidget {
 // Wide Episode Card Format & Season Poster Strip
 // ─────────────────────────────────────────────────────────────────────────────
 
-String? _formatEpisodeDate(String? raw) {
+String? formatEpisodeDate(String? raw) {
   if (raw == null) return null;
   final trimmed = raw.trim();
   if (trimmed.isEmpty) return null;
@@ -2256,7 +2256,7 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
         ? ep.description!.trim()
         : null;
 
-    final formattedDate = _formatEpisodeDate(ep.date);
+    final formattedDate = formatEpisodeDate(ep.date);
     final seasonNum = ep.season ?? widget.currentSeason;
     final seasonEpisodeTag =
         widget.hasMultipleSeasons ? 'S${seasonNum}E$epNum' : 'EP $epNum';
@@ -2285,37 +2285,37 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
           borderRadius: BorderRadius.circular(12),
           splashColor: AppColors.accentSoft,
           highlightColor: Colors.white10,
-          child: Container(
-            width: 280,
-            height: 195,
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: borderColor,
-                width: (widget.highlight || widget.isResume) ? 1.8 : 1.0,
+          child: Hero(
+            tag: 'episode-card:${widget.sourceId}:${widget.showId}:${ep.id}',
+            createRectTween: (begin, end) => RectTween(begin: begin, end: end),
+            flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
+                direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
+            child: Container(
+              width: 280,
+              height: 195,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: borderColor,
+                  width: (widget.highlight || widget.isResume) ? 1.8 : 1.0,
+                ),
+                boxShadow: widget.highlight
+                    ? [
+                        BoxShadow(
+                          color: AppColors.accent.withValues(alpha: 0.4),
+                          blurRadius: 10,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
               ),
-              boxShadow: widget.highlight
-                  ? [
-                      BoxShadow(
-                        color: AppColors.accent.withValues(alpha: 0.4),
-                        blurRadius: 10,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : null,
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // 1. Thumbnail image
-                Hero(
-                  tag: 'episode-quick:${widget.sourceId}:${widget.showId}:${ep.id}',
-                  createRectTween: (begin, end) => RectTween(begin: begin, end: end),
-                  flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
-                      direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
-                  child: thumbUrl.isNotEmpty
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // 1. Thumbnail image
+                  thumbUrl.isNotEmpty
                       ? Image(
                           image: nativeCoverProvider(thumbUrl, widget.coverHeaders),
                           fit: BoxFit.cover,
@@ -2343,7 +2343,6 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
                             ),
                           ),
                         ),
-                ),
 
                 // 2. Dark gradient overlay
                 DecoratedBox(

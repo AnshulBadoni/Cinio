@@ -1082,6 +1082,16 @@ class _DetailViewState extends State<_DetailView>
 
     final resume = sl<ResumeStore>();
     final hub = sl<TrackerHub>();
+    final resumeEntry = resume.get(widget.item.sourceId, widget.item.url, ep.id);
+    final isWatched = resumeEntry?.finished ?? false;
+    final isResume = resumeEntry != null && !resumeEntry.finished;
+    final fraction = resumeEntry?.fraction ?? 0.0;
+    final isInProgress = isResume && fraction > 0;
+    final epNum = ep.number?.toInt() ?? index + 1;
+    final isTv = detail.isSeries || detail.tmdbIsTv || widget.item.tmdbIsTv;
+    final seasonNum = ep.season ?? 1;
+    final seasonEpisodeTag = isTv ? 'S${seasonNum}E$epNum' : 'EP $epNum';
+
     final action = await showEpisodeActionSheet(
       context,
       episodeLabel: label,
@@ -1090,9 +1100,7 @@ class _DetailViewState extends State<_DetailView>
           : (prefs.externalPlayerLabel.isEmpty
                 ? 'External'
                 : prefs.externalPlayerLabel),
-      isWatched:
-          resume.get(widget.item.sourceId, widget.item.url, ep.id)?.finished ??
-          false,
+      isWatched: isWatched,
       tracksToServices: hub.anyConnected,
       thumbnailUrl: (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
           ? ep.thumbnail
@@ -1104,7 +1112,15 @@ class _DetailViewState extends State<_DetailView>
       fallbackThumbnailUrl: detail.cover ?? widget.item.cover,
       fallbackThumbnailHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
       rating: ep.rating,
-      heroTag: 'episode-quick:${widget.item.sourceId}:${widget.item.id}:${ep.id}',
+      heroTag: 'episode-card:${detail.sourceId}:${detail.id}:${ep.id}',
+      episodeTag: seasonEpisodeTag,
+      description: ep.description,
+      runtimeMinutes: ep.runtimeMinutes,
+      formattedDate: formatEpisodeDate(ep.date),
+      isFiller: _fillerEps.contains(epNum),
+      isResume: isResume,
+      fraction: fraction,
+      isInProgress: isInProgress,
     );
     if (action == null || !mounted) return;
 

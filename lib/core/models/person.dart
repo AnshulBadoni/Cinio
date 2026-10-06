@@ -42,6 +42,7 @@ class PersonProfile extends Equatable {
     this.description,
     this.subtitle,
     this.works = const [],
+    this.providerVideos = const [],
     this.related = const [],
   });
 
@@ -59,12 +60,15 @@ class PersonProfile extends Equatable {
   /// Media this person appears in / worked on.
   final List<PersonWork> works;
 
-  /// Linked people (e.g. a character's voice actors) shown as tappable chips.
+  /// Provider videos / scene clips with wider 16:9 images.
+  final List<PersonWork> providerVideos;
+
+  /// Linked people (e.g. co-stars / voice actors) shown as circular avatars.
   final List<PersonRef> related;
 
   @override
   List<Object?> get props =>
-      [name, nativeName, photo, description, subtitle, works, related];
+      [name, nativeName, photo, description, subtitle, works, providerVideos, related];
 }
 
 /// One media entry on a person page (a role / appearance). Tapping opens the
@@ -77,6 +81,12 @@ class PersonWork extends Equatable {
     this.subtitle,
     this.malId,
     this.catalogId,
+    this.isTv = false,
+    this.releaseDate,
+    this.rating,
+    this.popularity,
+    this.backdrop,
+    this.isScene = false,
   });
 
   final String title;
@@ -96,6 +106,37 @@ class PersonWork extends Equatable {
   /// Catalog-native id for source-owned works (e.g. ThePornDB movie id).
   final String? catalogId;
 
+  /// Whether this title is a television series (vs feature film).
+  final bool isTv;
+
+  /// Release date (e.g. "2023-11-10" or "2023").
+  final String? releaseDate;
+
+  /// Viewer rating score (0.0 to 10.0).
+  final double? rating;
+
+  /// Popularity score for ranking.
+  final double? popularity;
+
+  /// Wide backdrop/thumbnail image for 16:9 video representation.
+  final String? backdrop;
+
+  /// Whether this entry is an individual provider scene/video clip.
+  final bool isScene;
+
   @override
-  List<Object?> get props => [title, romaji, cover, subtitle, malId, catalogId];
+  List<Object?> get props => [
+        title,
+        romaji,
+        cover,
+        subtitle,
+        malId,
+        catalogId,
+        isTv,
+        releaseDate,
+        rating,
+        popularity,
+        backdrop,
+        isScene,
+      ];
 }

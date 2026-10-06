@@ -71,10 +71,16 @@ class PeopleService {
         if (m is! Map) continue;
         final title = (m['title'] ?? m['name'])?.toString();
         if (title == null || title.isEmpty) continue;
+        final bdrop = (m['background'] is Map ? m['background']['large'] : null) ??
+            m['image'] ??
+            m['poster'];
+        final date = (m['date'] ?? m['release_date'])?.toString();
         works.add(PersonWork(
           title: title,
           cover: _tpdbImage(m),
+          backdrop: bdrop?.toString(),
           catalogId: (m['id'] ?? m['_id'] ?? m['uuid'] ?? m['slug'])?.toString(),
+          releaseDate: date,
         ));
       }
       return works;
@@ -125,12 +131,73 @@ class PeopleService {
 
       final works = await _tpdbPerformerWorks(resolvedId, page: 1);
 
+      // Fetch scenes for wide 16:9 cards and related co-performers
+      final providerVideos = <PersonWork>[];
+      final relatedMap = <String, PersonRef>{};
+      try {
+        final scenesRes = await _dio.get<dynamic>(
+          '$_tpdbBase/scenes',
+          queryParameters: {
+            'q': name,
+            'per_page': 15,
+            'orderBy': 'most_relevant',
+          },
+          options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
+        );
+        final sceneRows = scenesRes.data is Map ? scenesRes.data['data'] : null;
+        if (sceneRows is List) {
+          for (final s in sceneRows) {
+            if (s is! Map) continue;
+            final sTitle = (s['title'] ?? s['name'])?.toString();
+            if (sTitle == null || sTitle.isEmpty) continue;
+            final sImg = (s['background'] is Map ? s['background']['large'] : null) ??
+                s['image'] ??
+                s['poster'] ??
+                _tpdbImage(s);
+            final sId = (s['id'] ?? s['_id'] ?? s['uuid'])?.toString();
+            final sDate = s['date']?.toString();
+
+            providerVideos.add(PersonWork(
+              title: sTitle,
+              cover: sImg?.toString(),
+              backdrop: sImg?.toString(),
+              catalogId: sId,
+              releaseDate: sDate,
+              isScene: true,
+            ));
+
+            final perfs = s['performers'];
+            if (perfs is List) {
+              for (final p in perfs) {
+                if (p is! Map) continue;
+                final pName = (p['name'] ?? p['full_name'])?.toString();
+                final pId = (p['id'] ?? p['_id'] ?? p['slug'])?.toString();
+                if (pName != null && pName.isNotEmpty && pName.toLowerCase() != name.toLowerCase() && pId != null) {
+                  relatedMap.putIfAbsent(
+                    pId,
+                    () => PersonRef(
+                      id: int.tryParse(pId) ?? 0,
+                      source: PersonSource.thePornDbPerformer,
+                      name: pName,
+                      photo: (p['image'] ?? p['thumbnail'] ?? p['face'])?.toString(),
+                      externalId: pId,
+                    ),
+                  );
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
       return PersonProfile(
         name: name,
         photo: (row['image'] ?? row['thumbnail'] ?? row['face'])?.toString(),
         description: (row['description'] ?? row['bio'])?.toString(),
-        subtitle: 'Acting',
+        subtitle: 'Performer',
         works: works,
+        providerVideos: providerVideos,
+        related: relatedMap.values.take(12).toList(),
       );
     } catch (_) {
       return null;
@@ -446,8 +513,10 @@ class PeopleService {
     if (name == null || name.isEmpty) return null;
 
     final works = <PersonWork>[];
+    final providerVideos = <PersonWork>[];
     final credits = await _get('$_tmdbBase/person/$id/combined_credits');
     final castList = credits?['cast'];
+    final related = <PersonRef>[];
     if (castList is List) {
       final seenIds = <String>{};
       final sorted = castList.whereType<Map>().toList()
@@ -457,27 +526,73 @@ class PeopleService {
         final title = (c['title'] ?? c['name']) as String?;
         if (title == null || title.isEmpty) continue;
         final poster = c['poster_path'] as String?;
+        final backdrop = c['backdrop_path'] as String?;
         final mediaId = c['id']?.toString();
         final key = mediaId ?? title;
         if (!seenIds.add(key)) continue;
-        works.add(PersonWork(
+
+        final isTv = c['media_type'] == 'tv';
+        final releaseDate = (c['release_date'] ?? c['first_air_date'])?.toString();
+        final rating = (c['vote_average'] as num?)?.toDouble();
+        final pop = (c['popularity'] as num?)?.toDouble();
+
+        final work = PersonWork(
           title: title,
           cover: (poster != null && poster.isNotEmpty) ? '$_img/w342$poster' : null,
+          backdrop: (backdrop != null && backdrop.isNotEmpty) ? '$_img/w780$backdrop' : null,
           subtitle: c['character'] as String?,
           catalogId: mediaId,
-        ));
+          isTv: isTv,
+          releaseDate: releaseDate,
+          rating: rating,
+          popularity: pop,
+        );
+        works.add(work);
+
+        if (backdrop != null && backdrop.isNotEmpty && providerVideos.length < 15) {
+          providerVideos.add(work);
+        }
+      }
+
+      // Fetch co-stars from top movie/series for the Related row
+      if (sorted.isNotEmpty) {
+        try {
+          final top = sorted.first;
+          final topType = top['media_type'] == 'tv' ? 'tv' : 'movie';
+          final topId = top['id'];
+          final topCredits = await _get('$_tmdbBase/$topType/$topId/credits');
+          final topCast = topCredits?['cast'];
+          if (topCast is List) {
+            for (final personRow in topCast.whereType<Map>()) {
+              final pId = (personRow['id'] as num?)?.toInt();
+              final pName = personRow['name'] as String?;
+              final pPic = personRow['profile_path'] as String?;
+              if (pId != null && pId != id && pName != null && pName.isNotEmpty) {
+                related.add(PersonRef(
+                  id: pId,
+                  source: PersonSource.tmdb,
+                  name: pName,
+                  photo: (pPic != null && pPic.isNotEmpty) ? '$_img/w185$pPic' : null,
+                ));
+                if (related.length >= 12) break;
+              }
+            }
+          }
+        } catch (_) {}
       }
     }
     _tmdbCreditsCache[id] = works;
     final profile = person['profile_path'] as String?;
     return PersonProfile(
       name: name,
-      photo: (profile != null && profile.isNotEmpty) ? '$_img/w300$profile' : null,
+      photo: (profile != null && profile.isNotEmpty) ? '$_img/w780$profile' : null,
       description: (person['biography'] as String?)?.trim().isEmpty ?? true
           ? null
           : (person['biography'] as String).trim(),
       subtitle: person['known_for_department'] as String?,
-      works: works.take(30).toList(),
+      works: works,
+      providerVideos: providerVideos,
+      related: related,
     );
   }
 

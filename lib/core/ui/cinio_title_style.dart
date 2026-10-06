@@ -56,6 +56,12 @@ enum CinioTitlePreset {
   /// Strong stylized display, bold punch, chromatic artwork-tinted outline/shadow.
   /// Good for: Anime, manga, animation, fantasy.
   animeGraphic,
+
+  /// 11 — Sweaty / Movie Display (Inspired by Sweaty Font & high-impact movie display typography)
+  /// Ultra-heavy chunky display lettering, intense poster palette gradient,
+  /// 3D layered drop shadows and vibrant edge glow.
+  /// Good for: Blockbusters, action, animated movies, comedy, punchy titles.
+  sweatyMovie,
 }
 
 class CinioTitleStyle {
@@ -66,7 +72,7 @@ class CinioTitleStyle {
   ///    monopolize the selection.
   /// 2. Uses deterministic seed hashing within genre clusters to distribute across
   ///    multiple matching styles.
-  /// 3. Falls back to equal 1-in-10 seed hash distribution when genres are omitted.
+  /// 3. Falls back to equal distribution across archetypes when genres are omitted.
   static CinioTitlePreset presetFor(Object seed, {List<String> genres = const []}) {
     final hash = seed.hashCode.abs();
 
@@ -76,7 +82,10 @@ class CinioTitleStyle {
       // 1. Anime / Manga / Animation
       if (joined.contains('anime') || joined.contains('manga') || joined.contains('animation')) {
         if (joined.contains('superhero') || joined.contains('comic') || joined.contains('comedy') || joined.contains('family')) {
-          return (hash % 2 == 0) ? CinioTitlePreset.comicBook : CinioTitlePreset.animeGraphic;
+          final mod = hash % 3;
+          if (mod == 0) return CinioTitlePreset.sweatyMovie;
+          if (mod == 1) return CinioTitlePreset.comicBook;
+          return CinioTitlePreset.animeGraphic;
         }
         return (hash % 3 == 0) ? CinioTitlePreset.comicBook : CinioTitlePreset.animeGraphic;
       }
@@ -98,6 +107,9 @@ class CinioTitleStyle {
 
       // 5. Romance / Comedy / Family
       if (joined.contains('romance') || joined.contains('comedy') || joined.contains('coming-of-age') || joined.contains('family')) {
+        if (joined.contains('comedy') || joined.contains('family')) {
+          return (hash % 2 == 0) ? CinioTitlePreset.sweatyMovie : CinioTitlePreset.handwrittenIndie;
+        }
         return (hash % 2 == 0) ? CinioTitlePreset.handwrittenIndie : CinioTitlePreset.elegantLuxury;
       }
 
@@ -117,17 +129,17 @@ class CinioTitleStyle {
         return CinioTitlePreset.handwrittenIndie;
       }
 
-      // 8. Action / Adventure
-      if (joined.contains('action') || joined.contains('adventure')) {
+      // 8. Action / Adventure / Superhero / Blockbuster
+      if (joined.contains('action') || joined.contains('adventure') || joined.contains('superhero')) {
         final mod = hash % 4;
-        if (mod == 0) return CinioTitlePreset.blockbusterHeavySans;
-        if (mod == 1) return CinioTitlePreset.cinematicPrestige;
+        if (mod == 0) return CinioTitlePreset.sweatyMovie;
+        if (mod == 1) return CinioTitlePreset.blockbusterHeavySans;
         if (mod == 2) return CinioTitlePreset.retro80s;
         return CinioTitlePreset.westernAmericana;
       }
     }
 
-    // Default: Uniform 10-way hash distribution across all archetypes
+    // Default: Uniform hash distribution across all archetypes
     return CinioTitlePreset.values[hash % CinioTitlePreset.values.length];
   }
 
@@ -145,10 +157,15 @@ class CinioTitleStyle {
     // 5% global reduction for balanced cinematic proportions
     final effSize = fontSize * 0.95;
 
-    // Derived restrained palette based on poster accent
-    final tintLight = Color.lerp(Colors.white, accent, 0.18) ?? Colors.white;
-    final tintMid = Color.lerp(const Color(0xFFE2E8F0), accent, 0.28) ?? const Color(0xFFE2E8F0);
-    final tintDark = Color.lerp(const Color(0xFF94A3B8), accent, 0.38) ?? const Color(0xFF94A3B8);
+    // Vibrant poster color tones directly derived from the extracted palette
+    final bool hasVibrantAccent = accent != Colors.white && accent != Colors.transparent;
+    final Color posterAccent = hasVibrantAccent ? accent : const Color(0xFFE50914);
+
+    // Multi-stop rich color highlights and shades tuned to the poster's dominant hue
+    final tintLight = Color.lerp(Colors.white, posterAccent, 0.40) ?? Colors.white;
+    final tintMid = posterAccent;
+    final tintDeep = Color.lerp(posterAccent, Colors.black, 0.65) ?? Colors.black;
+    final tintDark = Color.lerp(posterAccent, const Color(0xFF1E293B), 0.50) ?? const Color(0xFF1E293B);
 
     // Tracking compression factor for long titles so wide-spaced styles
     // (Sci-Fi, Luxury, Horror) don't overflow the container width.
@@ -421,6 +438,47 @@ class CinioTitleStyle {
         shadows: [
           Shadow(color: accent, offset: const Offset(-1.5, -1.0), blurRadius: 0),
           const Shadow(color: Colors.black, offset: Offset(2.5, 3.0), blurRadius: 4),
+        ],
+        uppercase: true,
+      ),
+
+      // 11 — SWEATY / MOVIE DISPLAY (Inspired by Sweaty Font, chunky movie display titles)
+      CinioTitlePreset.sweatyMovie => (
+        baseStyle: AppText.display.copyWith(
+          fontFamily: 'Rubik',
+          fontSize: effSize * 1.14,
+          fontWeight: FontWeight.w900,
+          fontStyle: FontStyle.italic,
+          height: 0.88,
+          letterSpacing: (-0.6 * trackingScale).clamp(-1.2, 0.2),
+        ),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white,
+            tintLight,
+            tintMid,
+            tintDeep,
+          ],
+          stops: const [0.0, 0.25, 0.65, 1.0],
+        ),
+        shadows: [
+          Shadow(
+            color: Color.lerp(tintMid, Colors.black, 0.80)!,
+            offset: const Offset(2.2, 3.2),
+            blurRadius: 0,
+          ),
+          Shadow(
+            color: Colors.black.withValues(alpha: 0.95),
+            offset: const Offset(4.0, 5.5),
+            blurRadius: 4,
+          ),
+          Shadow(
+            color: tintMid.withValues(alpha: 0.5),
+            offset: Offset.zero,
+            blurRadius: 18,
+          ),
         ],
         uppercase: true,
       ),

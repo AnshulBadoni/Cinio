@@ -57,6 +57,7 @@ import '../metadata/tmdb.dart';
 import '../metadata/theporndb.dart';
 import '../metadata/title_logo_service.dart';
 import '../metadata/tmdb_discover_service.dart';
+import '../metadata/favorite_people_store.dart';
 import '../metadata/imdb_rating_service.dart';
 import '../mode/content_mode_cubit.dart';
 import '../trailer/trailer_service.dart';
@@ -393,6 +394,8 @@ Future<void> initDependencies() async {
   // Person pages (characters + voice actors/staff from AniList, movie/TV people
   // from TMDB), opened from the Detail screen's Cast tab.
   sl.registerSingleton<PeopleService>(PeopleService(dio));
+  await FavoritePeopleStore.init();
+  sl.registerSingleton<FavoritePeopleStore>(FavoritePeopleStore());
 
   // TMDB title-logo lookup for the home hero (stylized title art; falls back to
   // text when absent). Cached per title (in-memory + a persisted Hive box, so

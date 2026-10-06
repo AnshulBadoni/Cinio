@@ -54,6 +54,14 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   Map<String, String>? fallbackThumbnailHeaders,
   double? rating,
   String? heroTag,
+  String? episodeTag,
+  String? description,
+  int? runtimeMinutes,
+  String? formattedDate,
+  bool isFiller = false,
+  bool isResume = false,
+  double fraction = 0.0,
+  bool isInProgress = false,
 }) async {
   if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
     unawaited(precacheImage(
@@ -87,6 +95,14 @@ Future<EpisodeAction?> showEpisodeActionSheet(
         fallbackThumbnailHeaders: fallbackThumbnailHeaders,
         rating: rating,
         heroTag: heroTag,
+        episodeTag: episodeTag,
+        description: description,
+        runtimeMinutes: runtimeMinutes,
+        formattedDate: formattedDate,
+        isFiller: isFiller,
+        isResume: isResume,
+        fraction: fraction,
+        isInProgress: isInProgress,
       ),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         final curved = CurvedAnimation(
@@ -112,6 +128,14 @@ class _EpisodeQuickActions extends StatelessWidget {
     this.fallbackThumbnailHeaders,
     this.rating,
     this.heroTag,
+    this.episodeTag,
+    this.description,
+    this.runtimeMinutes,
+    this.formattedDate,
+    this.isFiller = false,
+    this.isResume = false,
+    this.fraction = 0.0,
+    this.isInProgress = false,
   });
 
   final String episodeLabel;
@@ -124,12 +148,16 @@ class _EpisodeQuickActions extends StatelessWidget {
   final Map<String, String>? fallbackThumbnailHeaders;
   final double? rating;
   final String? heroTag;
+  final String? episodeTag;
+  final String? description;
+  final int? runtimeMinutes;
+  final String? formattedDate;
+  final bool isFiller;
+  final bool isResume;
+  final double fraction;
+  final bool isInProgress;
 
-
-  Widget _thumbnail(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final width = (size.width * 0.79).clamp(286.0, 480.0);
-    final height = width * 9 / 16;
+  Widget _centeredEpisodeCard(BuildContext context) {
     final effectiveUrl = (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
         ? thumbnailUrl!
         : (fallbackThumbnailUrl ?? '');
@@ -137,74 +165,279 @@ class _EpisodeQuickActions extends StatelessWidget {
         ? thumbnailHeaders
         : fallbackThumbnailHeaders;
 
-    Widget image = ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: SizedBox(
-        width: width,
-        height: height,
-        child: effectiveUrl.isNotEmpty
-            ? Image(
-                image: nativeCoverProvider(effectiveUrl, effectiveHeaders),
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
-                filterQuality: FilterQuality.high,
-                errorBuilder: (context, error, stackTrace) =>
-                    ColoredBox(color: AppColors.surface2),
-              )
-            : ColoredBox(color: AppColors.surface2),
+    Widget card = Container(
+      width: 295,
+      height: 200,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.16),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.65),
+            blurRadius: 20,
+            spreadRadius: 2,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
-    );
-
-    if (heroTag != null && heroTag!.isNotEmpty) {
-      image = Hero(
-        tag: heroTag!,
-        createRectTween: (begin, end) => RectTween(begin: begin, end: end),
-        flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
-            direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
-        child: image,
-      );
-    }
-
-    if (rating != null && rating! > 0) {
-      image = SizedBox(
-        width: width,
-        height: height,
-        child: Stack(
-          children: [
-            image,
-            Positioned(
-              top: 8,
-              left: 8,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.72),
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.star_rounded, color: Color(0xFFFFC107), size: 13),
-                      const SizedBox(width: 3),
-                      Text(
-                        rating!.toStringAsFixed(1),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. Thumbnail Image
+          effectiveUrl.isNotEmpty
+              ? Image(
+                  image: nativeCoverProvider(effectiveUrl, effectiveHeaders),
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder: (_, __, ___) => ColoredBox(
+                    color: AppColors.surface2,
+                    child: const Center(
+                      child: Icon(
+                        Icons.movie_outlined,
+                        color: AppColors.textTertiary,
+                        size: 36,
                       ),
-                    ],
+                    ),
+                  ),
+                )
+              : ColoredBox(
+                  color: AppColors.surface2,
+                  child: const Center(
+                    child: Icon(
+                      Icons.movie_outlined,
+                      color: AppColors.textTertiary,
+                      size: 36,
+                    ),
+                  ),
+                ),
+
+          // 2. Dark Gradient Overlay (Exact match to _WideEpisodeCard)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.45),
+                  Colors.black.withValues(alpha: 0.05),
+                  Colors.black.withValues(alpha: 0.85),
+                  Colors.black.withValues(alpha: 0.98),
+                ],
+                stops: const [0.0, 0.28, 0.65, 1.0],
+              ),
+            ),
+          ),
+
+          // 3. Top-left Season/Episode Badge
+          if (episodeTag != null && episodeTag!.isNotEmpty)
+            Positioned(
+              top: 10,
+              left: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.65),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    width: 0.5,
+                  ),
+                ),
+                child: Text(
+                  episodeTag!,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.3,
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+
+          // 4. Top-right Badges (Watched checkmark, Filler tag)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isFiller) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'FILLER',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                if (isWatched)
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: AppColors.accent,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: 15,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // 5. Overlaid bottom content (Title, Overview synopsis, runtime, rating, date)
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: (isInProgress || fraction > 0) ? 8 : 10,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  episodeLabel,
+                  style: TextStyle(
+                    color: isResume ? AppColors.accent : Colors.white,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                    shadows: const [
+                      Shadow(color: Colors.black, blurRadius: 4),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (description != null && description!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    description!.trim(),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.72),
+                      fontSize: 11,
+                      height: 1.25,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    if (runtimeMinutes != null) ...[
+                      Text(
+                        '${runtimeMinutes}m',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.8),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (rating != null && rating! > 0) ...[
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF5C518),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: const Text(
+                              'IMDb',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            rating!.toStringAsFixed(1),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    const Spacer(),
+                    if (formattedDate != null && formattedDate!.isNotEmpty)
+                      Text(
+                        formattedDate!,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.75),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // 6. Resume progress bar at bottom edge
+          if (isInProgress || fraction > 0)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SizedBox(
+                height: 3,
+                child: LinearProgressIndicator(
+                  value: fraction.clamp(0.0, 1.0),
+                  backgroundColor: Colors.white12,
+                  valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accent),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+
+    if (heroTag != null && heroTag!.isNotEmpty) {
+      card = Hero(
+        tag: heroTag!,
+        createRectTween: (begin, end) => RectTween(begin: begin, end: end),
+        flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
+            direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
+        child: card,
       );
     }
-    return image;
+    return card;
   }
 
   void _close(BuildContext context, EpisodeAction action) {
@@ -243,16 +476,8 @@ class _EpisodeQuickActions extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _thumbnail(context),
-                      const SizedBox(height: 18),
-                      Text(
-                        episodeLabel,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.title,
-                      ),
-                      const SizedBox(height: 18),
+                      _centeredEpisodeCard(context),
+                      const SizedBox(height: 20),
                       _EpisodeActionButton(
                         icon: Icons.play_arrow_rounded,
                         label: 'Play with',
