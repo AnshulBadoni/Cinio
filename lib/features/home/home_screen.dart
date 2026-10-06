@@ -463,6 +463,10 @@ class _HomeViewState extends State<_HomeView>
         if (mounted) setState(() {});
         return _myList.contains(item);
       },
+      onRemoveHistory: () async {
+        await sl<WatchHistory>().remove(entry.sourceId, entry.showId);
+        if (mounted) setState(() {});
+      },
     );
   }
 
@@ -502,6 +506,10 @@ class _HomeViewState extends State<_HomeView>
         if (!_myList.contains(item)) await _listStatus.remove(item);
         if (mounted) setState(() {});
         return _myList.contains(item);
+      },
+      onRemoveHistory: () async {
+        await sl<ReadStore>().remove(entry.sourceId, entry.showId);
+        if (mounted) setState(() {});
       },
     );
   }

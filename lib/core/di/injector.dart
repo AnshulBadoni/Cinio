@@ -57,6 +57,7 @@ import '../metadata/tmdb.dart';
 import '../metadata/theporndb.dart';
 import '../metadata/title_logo_service.dart';
 import '../metadata/tmdb_discover_service.dart';
+import '../metadata/imdb_rating_service.dart';
 import '../mode/content_mode_cubit.dart';
 import '../trailer/trailer_service.dart';
 import '../anilist/anilist_service.dart';
@@ -398,6 +399,8 @@ Future<void> initDependencies() async {
   // the logo doesn't re-resolve / pop-in on later launches).
   await TitleLogoService.init();
   sl.registerSingleton<TitleLogoService>(TitleLogoService(dio));
+  await ImdbRatingService.init();
+  sl.registerSingleton<ImdbRatingService>(ImdbRatingService(dio));
   sl.registerSingleton<TmdbDiscoverService>(TmdbDiscoverService(dio));
   sl.registerSingleton<ThePornDb>(ThePornDb(dio));
 

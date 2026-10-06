@@ -167,11 +167,11 @@ class CinioTitleStyle {
       // 01 — CINEMATIC — PRESTIGE (e.g. The Last of Us, Apple TV+, HBO)
       CinioTitlePreset.cinematicPrestige => (
         baseStyle: AppText.display.copyWith(
-          fontFamily: 'serif',
+          fontFamily: 'Poppins',
           fontSize: effSize * 1.04,
           fontWeight: FontWeight.w700,
           height: 0.95,
-          letterSpacing: (1.8 * trackingScale).clamp(-0.4, 2.0),
+          letterSpacing: (2.0 * trackingScale).clamp(-0.4, 2.4),
         ),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -247,9 +247,9 @@ class CinioTitleStyle {
       // 04 — HORROR — DISTRESSED (e.g. The Ritual)
       CinioTitlePreset.horrorDistressed => (
         baseStyle: AppText.display.copyWith(
-          fontFamily: 'serif',
+          fontFamily: 'Montserrat',
           fontSize: effSize * 0.94,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           fontStyle: FontStyle.italic,
           height: 1.04,
           letterSpacing: (4.8 * trackingScale).clamp(0.2, 4.8),
@@ -377,7 +377,7 @@ class CinioTitleStyle {
       // 09 — ELEGANT / LUXURY (e.g. Succession)
       CinioTitlePreset.elegantLuxury => (
         baseStyle: AppText.display.copyWith(
-          fontFamily: 'serif',
+          fontFamily: 'Inter',
           fontSize: effSize * 0.88,
           fontWeight: FontWeight.w300,
           height: 1.10,

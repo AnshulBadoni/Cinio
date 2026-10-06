@@ -25,6 +25,7 @@ Future<void> showPosterQuickActions(
   required Future<bool> Function() onToggleLibrary,
   required VoidCallback onInfo,
   VoidCallback? onStatus,
+  Future<void> Function()? onRemoveHistory,
   String? playLabel,
   bool inLibrary = false,
   bool watched = false,
@@ -37,7 +38,8 @@ Future<void> showPosterQuickActions(
       opaque: false,
       barrierDismissible: true,
       barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 320),
+      transitionDuration: const Duration(milliseconds: 260),
+      reverseTransitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (context, animation, secondaryAnimation) =>
           _PosterQuickActions(
         item: item,
@@ -47,6 +49,7 @@ Future<void> showPosterQuickActions(
         onToggleLibrary: onToggleLibrary,
         onInfo: onInfo,
         onStatus: onStatus,
+        onRemoveHistory: onRemoveHistory,
         playLabel: playLabel,
         initialInLibrary: inLibrary,
         initialWatched: watched,
@@ -54,7 +57,7 @@ Future<void> showPosterQuickActions(
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         final curved = CurvedAnimation(
           parent: animation,
-          curve: Curves.easeOutCubic,
+          curve: Curves.fastOutSlowIn,
           reverseCurve: Curves.easeInCubic,
         );
         return FadeTransition(
@@ -75,6 +78,7 @@ class _PosterQuickActions extends StatefulWidget {
     required this.onToggleLibrary,
     required this.onInfo,
     this.onStatus,
+    this.onRemoveHistory,
     required this.initialInLibrary,
     required this.initialWatched,
     this.playLabel,
@@ -87,6 +91,7 @@ class _PosterQuickActions extends StatefulWidget {
   final Future<bool> Function() onToggleLibrary;
   final VoidCallback onInfo;
   final VoidCallback? onStatus;
+  final Future<void> Function()? onRemoveHistory;
   final bool initialInLibrary;
   final bool initialWatched;
   final String? playLabel;
@@ -169,33 +174,14 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (widget.item.cover?.isNotEmpty == true)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: ImageFiltered(
-                  imageFilter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-                  child: Opacity(
-                    opacity: 0.12,
-                    child: Image(
-                      image: nativeCoverProvider(
-                        widget.item.cover!,
-                        widget.item.coverHeaders,
-                      ),
-                      fit: BoxFit.cover,
-                      filterQuality: FilterQuality.low,
-                    ),
-                  ),
-                ),
-              ),
-            ),
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => Navigator.of(context).pop(),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                 child: ColoredBox(
-                  color: Colors.black.withValues(alpha: 0.42),
+                  color: Colors.black.withValues(alpha: 0.65),
                 ),
               ),
             ),
@@ -212,7 +198,7 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                       Hero(
                         tag: widget.heroTag,
                         createRectTween: (begin, end) =>
-                            MaterialRectArcTween(begin: begin, end: end),
+                            RectTween(begin: begin, end: end),
                         flightShuttleBuilder:
                             (context, animation, direction, fromHero, toHero) =>
                                 direction == HeroFlightDirection.push
@@ -314,6 +300,24 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                         destructive: _inLibrary,
                         onTap: _toggleLibrary,
                       ),
+                      if (widget.onRemoveHistory != null) ...[
+                        const SizedBox(height: 8),
+                        _QuickActionButton(
+                          icon: Icons.history_toggle_off_rounded,
+                          label: 'Remove from History',
+                          destructive: true,
+                          onTap: () async {
+                            if (_busy) return;
+                            setState(() => _busy = true);
+                            try {
+                              await widget.onRemoveHistory!();
+                              if (mounted) Navigator.of(context).pop();
+                            } finally {
+                              if (mounted) setState(() => _busy = false);
+                            }
+                          },
+                        ),
+                      ],
                       if (_busy) ...[
                         const SizedBox(height: 12),
                         const SizedBox(

@@ -331,8 +331,20 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                       mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _wrap(_playButton(), widget.onPlay, autofocus: true),
-                        const SizedBox(width: 10),
+                        _wrap(
+                          _circleBtn(
+                            widget.reading
+                                ? Icons.menu_book_rounded
+                                : Icons.play_arrow_rounded,
+                            widget.onPlay,
+                            semanticLabel: widget.reading ? 'Read' : 'Play',
+                          ),
+                          widget.onPlay,
+                          autofocus: true,
+                        ),
+                        const SizedBox(width: 14),
+                        _wrap(_viewDetailButton(), widget.onInfo),
+                        const SizedBox(width: 14),
                         _wrap(
                           _circleBtn(
                             widget.inList ? Icons.check_rounded : Icons.add_rounded,
@@ -343,15 +355,6 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                                 : 'Add to My List',
                           ),
                           widget.onToggleList,
-                        ),
-                        const SizedBox(width: 10),
-                        _wrap(
-                          _circleBtn(
-                            Icons.info_outline_rounded,
-                            widget.onInfo,
-                            semanticLabel: 'Details',
-                          ),
-                          widget.onInfo,
                         ),
                       ],
                     ),
@@ -451,38 +454,26 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     );
   }
 
-  Widget _playButton() {
+  Widget _viewDetailButton() {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(24),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: widget.onPlay,
-        child: SizedBox(
-          width: 138,
+        borderRadius: BorderRadius.circular(24),
+        onTap: widget.onInfo,
+        child: Container(
           height: 44,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                widget.reading
-                    ? Icons.menu_book_rounded
-                    : Icons.play_arrow_rounded,
-                color: AppColors.bg,
-                size: 20,
-              ),
-              SizedBox(width: 7),
-              Text(
-                widget.reading ? 'Read' : 'Play',
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  color: AppColors.bg,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                  letterSpacing: -0.2,
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.symmetric(horizontal: 22),
+          alignment: Alignment.center,
+          child: Text(
+            'View Detail',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              color: AppColors.bg,
+              fontWeight: FontWeight.w700,
+              fontSize: 14.5,
+              letterSpacing: -0.2,
+            ),
           ),
         ),
       ),

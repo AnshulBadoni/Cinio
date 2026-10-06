@@ -13,6 +13,8 @@ import '../../../core/models/media_extras.dart';
 import '../../../core/models/media_item.dart';
 import '../../../core/models/provider_info.dart';
 import '../../../core/playback/title_prefs.dart';
+import '../../../core/playback/watch_history.dart';
+import '../../../core/playback/resume_store.dart';
 import '../../../core/repository/source_repository.dart';
 
 export '../../../core/models/episode_title.dart' show cleanTitle;
@@ -234,15 +236,17 @@ class DetailCubit extends Cubit<DetailState> {
     }
 
     if (detail != null) {
+      final initialSeason = _resolveInitialSeason(detail) ?? state.selectedSeason;
       emit(state.copyWith(
         status: DetailStatus.success,
         detail: detail,
+        selectedSeason: initialSeason,
         cast: detail.castMembers,
         relations: detail.relations,
         extrasLoading: _sourceId == 'tmdb:catalog' || _sourceId == 'tpdb:catalog',
         clearError: true,
       ));
-      unawaited(selectSeason(state.selectedSeason));
+      unawaited(selectSeason(initialSeason));
       _enrichTimer?.cancel();
       _enrichTimer = Timer(const Duration(milliseconds: 1200), () {
         if (!isClosed) {
@@ -262,6 +266,78 @@ class DetailCubit extends Cubit<DetailState> {
   Future<void> close() {
     _enrichTimer?.cancel();
     return super.close();
+  }
+
+  int? _resolveInitialSeason(MediaDetail detail) {
+    final srcId = _sourceId ?? detail.sourceId;
+    final showId = _catalogItem?.id ?? detail.id;
+    final showTitle = detail.title.trim().toLowerCase();
+
+    // 1. Check WatchHistory
+    if (sl.isRegistered<WatchHistory>()) {
+      try {
+        final history = sl<WatchHistory>();
+        HistoryEntry? entry = history.get(srcId, showId) ?? history.get(detail.sourceId, detail.id);
+        if (entry == null) {
+          final all = history.all();
+          for (final h in all) {
+            if (h.showId == showId ||
+                h.showId == detail.id ||
+                h.showTitle.trim().toLowerCase() == showTitle) {
+              entry = h;
+              break;
+            }
+          }
+        }
+
+        if (entry != null) {
+          if (detail.episodes.isNotEmpty) {
+            for (final ep in detail.episodes) {
+              if (ep.id == entry.episodeId || ep.url == entry.episodeUrl) {
+                final s = seasonOf(ep);
+                if (s != null && s > 0) return s;
+              }
+            }
+          }
+          final sId = entry.episodeId;
+          final sUrl = entry.episodeUrl;
+          final mId = RegExp(r':s(\d+):').firstMatch(sId) ??
+              RegExp(r':(\d+):\d+$').firstMatch(sId) ??
+              RegExp(r'[sS](\d+)[eE]\d+').firstMatch(sId);
+          if (mId != null) {
+            final parsed = int.tryParse(mId.group(1)!);
+            if (parsed != null && parsed > 0) return parsed;
+          }
+          final mUrl = RegExp(r'season[/_=-](\d+)').firstMatch(sUrl) ??
+              RegExp(r'/s(\d+)/').firstMatch(sUrl);
+          if (mUrl != null) {
+            final parsed = int.tryParse(mUrl.group(1)!);
+            if (parsed != null && parsed > 0) return parsed;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 2. Check ResumeStore across episodes if available
+    if (detail.episodes.isNotEmpty && sl.isRegistered<ResumeStore>()) {
+      try {
+        final resume = sl<ResumeStore>();
+        Episode? lastMarked;
+        for (final ep in detail.episodes) {
+          final mark = resume.get(srcId, _url, ep.id) ??
+              resume.get(detail.sourceId, detail.url, ep.id);
+          if (mark != null) {
+            lastMarked = ep;
+          }
+        }
+        if (lastMarked != null) {
+          final s = seasonOf(lastMarked);
+          if (s != null && s > 0) return s;
+        }
+      } catch (_) {}
+    }
+
+    return null;
   }
 
   Future<void> retry() async {
@@ -397,7 +473,8 @@ class DetailCubit extends Cubit<DetailState> {
     // Task 1 added those to ProviderType. Manga often shares its anime
     // adaptation's title, so that resolved a real TMDB id and displayed the
     // ANIME's Cast/Relations on the manga's own detail page.
-    if (d.malId == null &&
+    if (!sid.startsWith('tpdb:') &&
+        d.malId == null &&
         d.tmdbId == null &&
         d.type == ProviderType.movie) {
       try {

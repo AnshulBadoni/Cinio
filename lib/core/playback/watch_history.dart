@@ -125,6 +125,12 @@ class WatchHistory {
   String _key(String sourceId, String showId) => '$sourceId::$showId';
   final Map<String, int> _lastCloudPush = {};
 
+  HistoryEntry? get(String sourceId, String showId) {
+    final raw = _box.get(_key(sourceId, showId));
+    if (raw == null) return null;
+    return _fromMap(raw);
+  }
+
   /// Persist progress. The local write is ALWAYS immediate (instant resume);
   /// the cloud push is throttled unless [flush] is true, which forces it on the
   /// moments that matter for an accurate cross-device resume — pause, stop,

@@ -1939,7 +1939,7 @@ class _SeasonPosterRowState extends State<_SeasonPosterRow> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 168,
+      height: 188,
       child: ListView.separated(
         controller: _scrollController,
         scrollDirection: Axis.horizontal,
@@ -1954,14 +1954,14 @@ class _SeasonPosterRowState extends State<_SeasonPosterRow> {
           return GestureDetector(
             onTap: () => widget.onSelectSeason(s),
             child: SizedBox(
-              width: 86,
+              width: 98,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
-                    width: 86,
-                    height: 128,
+                    width: 98,
+                    height: 146,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
@@ -1980,18 +1980,28 @@ class _SeasonPosterRowState extends State<_SeasonPosterRow> {
                             ]
                           : null,
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: posterUrl.isNotEmpty
-                        ? Image(
-                            image: nativeCoverProvider(
-                              posterUrl,
-                              widget.coverHeaders,
-                            ),
-                            fit: BoxFit.cover,
-                            gaplessPlayback: true,
-                            filterQuality: FilterQuality.medium,
-                            errorBuilder: (context, error, stackTrace) =>
-                                ColoredBox(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: posterUrl.isNotEmpty
+                          ? Image(
+                              image: nativeCoverProvider(
+                                posterUrl,
+                                widget.coverHeaders,
+                              ),
+                              fit: BoxFit.cover,
+                              gaplessPlayback: true,
+                              filterQuality: FilterQuality.medium,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  ColoredBox(
+                                color: AppColors.surface2,
+                                child: const Icon(
+                                  Icons.movie_outlined,
+                                  color: AppColors.textTertiary,
+                                  size: 28,
+                                ),
+                              ),
+                            )
+                          : ColoredBox(
                               color: AppColors.surface2,
                               child: const Icon(
                                 Icons.movie_outlined,
@@ -1999,15 +2009,7 @@ class _SeasonPosterRowState extends State<_SeasonPosterRow> {
                                 size: 28,
                               ),
                             ),
-                          )
-                        : ColoredBox(
-                            color: AppColors.surface2,
-                            child: const Icon(
-                              Icons.movie_outlined,
-                              color: AppColors.textTertiary,
-                              size: 28,
-                            ),
-                          ),
+                    ),
                   ),
                   const SizedBox(height: 7),
                   Text(
@@ -2308,14 +2310,30 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
               fit: StackFit.expand,
               children: [
                 // 1. Thumbnail image
-                thumbUrl.isNotEmpty
-                    ? Image(
-                        image: nativeCoverProvider(thumbUrl, widget.coverHeaders),
-                        fit: BoxFit.cover,
-                        gaplessPlayback: true,
-                        filterQuality: FilterQuality.medium,
-                        errorBuilder: (context, error, stackTrace) =>
-                            ColoredBox(
+                Hero(
+                  tag: 'episode-quick:${widget.sourceId}:${widget.showId}:${ep.id}',
+                  createRectTween: (begin, end) => RectTween(begin: begin, end: end),
+                  flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
+                      direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
+                  child: thumbUrl.isNotEmpty
+                      ? Image(
+                          image: nativeCoverProvider(thumbUrl, widget.coverHeaders),
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                          filterQuality: FilterQuality.medium,
+                          errorBuilder: (context, error, stackTrace) =>
+                              ColoredBox(
+                            color: AppColors.surface2,
+                            child: const Center(
+                              child: Icon(
+                                Icons.movie_outlined,
+                                color: AppColors.textTertiary,
+                                size: 36,
+                              ),
+                            ),
+                          ),
+                        )
+                      : ColoredBox(
                           color: AppColors.surface2,
                           child: const Center(
                             child: Icon(
@@ -2325,17 +2343,7 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
                             ),
                           ),
                         ),
-                      )
-                    : ColoredBox(
-                        color: AppColors.surface2,
-                        child: const Center(
-                          child: Icon(
-                            Icons.movie_outlined,
-                            color: AppColors.textTertiary,
-                            size: 36,
-                          ),
-                        ),
-                      ),
+                ),
 
                 // 2. Dark gradient overlay
                 DecoratedBox(

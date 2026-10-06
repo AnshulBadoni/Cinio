@@ -73,7 +73,8 @@ Future<EpisodeAction?> showEpisodeActionSheet(
       opaque: false,
       barrierDismissible: true,
       barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 320),
+      transitionDuration: const Duration(milliseconds: 260),
+      reverseTransitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (dialogContext, animation, secondaryAnimation) =>
           _EpisodeQuickActions(
         episodeLabel: episodeLabel,
@@ -90,7 +91,7 @@ Future<EpisodeAction?> showEpisodeActionSheet(
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         final curved = CurvedAnimation(
           parent: animation,
-          curve: Curves.easeOutCubic,
+          curve: Curves.fastOutSlowIn,
           reverseCurve: Curves.easeInCubic,
         );
         return FadeTransition(opacity: curved, child: child);
@@ -157,6 +158,9 @@ class _EpisodeQuickActions extends StatelessWidget {
     if (heroTag != null && heroTag!.isNotEmpty) {
       image = Hero(
         tag: heroTag!,
+        createRectTween: (begin, end) => RectTween(begin: begin, end: end),
+        flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
+            direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
         child: image,
       );
     }
@@ -216,25 +220,15 @@ class _EpisodeQuickActions extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           Positioned.fill(
-            child: AnimatedBuilder(
-              animation: ModalRoute.of(context)?.animation ?? kAlwaysCompleteAnimation,
-              builder: (context, _) {
-                final progress = (ModalRoute.of(context)?.animation?.value ?? 1.0)
-                    .clamp(0.0, 1.0);
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).pop(),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(
-                      sigmaX: 22 * progress,
-                      sigmaY: 22 * progress,
-                    ),
-                    child: ColoredBox(
-                      color: Colors.black.withValues(alpha: 0.72 * progress),
-                    ),
-                  ),
-                );
-              },
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).pop(),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.68),
+                ),
+              ),
             ),
           ),
           SafeArea(

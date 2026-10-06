@@ -69,6 +69,7 @@ class TitleLogoService {
     String? year,
     String sourceId = 'tmdb:logo',
   }) async {
+    if (sourceId.startsWith('tpdb:')) return null;
     final item = MediaItem(
       id: 'logo:$tmdbId:${isTv ? 'tv' : 'movie'}:$title',
       title: title,
@@ -205,6 +206,7 @@ class TitleLogoService {
   }
 
   Future<String?> _resolve(MediaItem item) async {
+    if (item.sourceId.startsWith('tpdb:')) return null;
     final id = item.tmdbId;
     final isTv = item.tmdbIsTv;
 

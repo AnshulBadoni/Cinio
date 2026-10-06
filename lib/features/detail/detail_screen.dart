@@ -29,6 +29,7 @@ import '../../core/discord/discord_rpc.dart';
 import '../../core/metadata/episode_metadata_service.dart';
 import '../../core/metadata/tmdb_discover_service.dart';
 import '../../core/metadata/title_logo_service.dart';
+import '../../core/metadata/imdb_rating_service.dart';
 import '../../core/notify/cs_notify.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/notify/subscription_store.dart';
@@ -374,6 +375,11 @@ class _DetailViewState extends State<_DetailView>
   String? _titleAccentKey;
   static final Map<String, Color> _paletteCache = {};
 
+  double? _imdbRating;
+  String? _imdbRatingKey;
+  int _episodeRangeChunkIndex = 0;
+  String? _highlightEpId;
+
   String? _prefetchedEpUrl;
   bool _actionInFlight = false;
   List<TrailerInfo> _trailers = const [];
@@ -645,6 +651,106 @@ class _DetailViewState extends State<_DetailView>
         setState(() => _seasonPosterUrl = url);
       }
     });
+  }
+
+  void _loadImdbRating(MediaDetail detail) {
+    if (!sl.isRegistered<ImdbRatingService>()) return;
+    final imdbId = detail.imdbId ?? widget.item.imdbId;
+    if (imdbId == null || !imdbId.startsWith('tt')) return;
+    final key = imdbId;
+    if (_imdbRatingKey == key) return;
+    _imdbRatingKey = key;
+    final isTv = detail.tmdbIsTv || widget.item.tmdbIsTv || detail.isSeries;
+    sl<ImdbRatingService>().getRating(imdbId, isTv: isTv).then((rating) {
+      if (!mounted || _imdbRatingKey != key) return;
+      if (rating != null && rating > 0) {
+        setState(() => _imdbRating = rating);
+      }
+    });
+  }
+
+  Future<void> _promptJumpToEpisode(List<Episode> visible) async {
+    final controller = TextEditingController();
+    final choice = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Jump to Episode',
+          style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Enter episode number (1 – ${visible.length}):',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: AppColors.surface2,
+                hintText: 'e.g. ${(visible.length ~/ 2) + 1}',
+                hintStyle: const TextStyle(color: Colors.white38),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onSubmitted: (val) {
+                final n = int.tryParse(val.trim());
+                Navigator.of(ctx).pop(n);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              final n = int.tryParse(controller.text.trim());
+              Navigator.of(ctx).pop(n);
+            },
+            child: const Text('Jump'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice != null && choice > 0 && mounted) {
+      int targetIdx = -1;
+      for (var i = 0; i < visible.length; i++) {
+        if (visible[i].number?.toInt() == choice) {
+          targetIdx = i;
+          break;
+        }
+      }
+      if (targetIdx < 0) {
+        targetIdx = (choice - 1).clamp(0, visible.length - 1);
+      }
+      final chunkIdx = episodeRangeIndex(targetIdx);
+      setState(() {
+        _episodeRangeChunkIndex = chunkIdx;
+        _highlightEpId = visible[targetIdx].id;
+      });
+    }
   }
 
   void _onScroll() {
@@ -2086,6 +2192,7 @@ class _DetailViewState extends State<_DetailView>
         _maybeFetchTrackerProgress(detail);
         _loadTitleAccent(detail);
         _loadSeasonPoster(detail, currentSeason);
+        _loadImdbRating(detail);
         _scheduleTrailerResolution(detail);
       });
     }
@@ -2325,7 +2432,7 @@ class _DetailViewState extends State<_DetailView>
                             color: Colors.white.withValues(alpha: 0.16),
                           ),
                           child: IconButton(
-                            icon: const Icon(Icons.more_horiz, color: Colors.white, size: 24),
+                            icon: const Icon(CupertinoIcons.ellipsis_vertical, color: Colors.white, size: 20),
                             onPressed: () => _openMoreActionsSheet(
                               detail,
                               category: category,
@@ -2562,7 +2669,7 @@ class _DetailViewState extends State<_DetailView>
         ? '${runtime ~/ 60}h ${runtime % 60}m'
         : null;
     final cert = detail.certification;
-    final rating = detail.rating;
+    final rating = _imdbRating ?? detail.rating;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
@@ -2957,6 +3064,17 @@ class _DetailViewState extends State<_DetailView>
     final visible = seasonEps.isNotEmpty ? seasonEps : eps;
     final indexById = {for (var i = 0; i < eps.length; i++) eps[i].id: i};
 
+    final totalEps = visible.length;
+    final needsChunking = totalEps > kEpisodeRangeChunk;
+    final rangeCount = needsChunking ? episodeRangeCount(totalEps) : 1;
+    final clampedChunkIndex = _episodeRangeChunkIndex.clamp(0, rangeCount - 1);
+    final slice = needsChunking
+        ? episodeRangeSlice(clampedChunkIndex, totalEps)
+        : (start: 0, end: totalEps);
+    final chunkVisible = needsChunking
+        ? visible.sublist(slice.start, slice.end)
+        : visible;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2997,15 +3115,79 @@ class _DetailViewState extends State<_DetailView>
             child: _SeasonPosterRow(
               seasons: seasonSet.toList()..sort(),
               currentSeason: currentSeason,
-              onSelectSeason: cubit.selectSeason,
+              onSelectSeason: (s) {
+                if (_episodeRangeChunkIndex != 0) {
+                  setState(() => _episodeRangeChunkIndex = 0);
+                }
+                cubit.selectSeason(s);
+              },
               tmdbId: detail.tmdbId ?? widget.item.tmdbId,
               defaultCoverUrl: heroCoverUrl,
               coverHeaders: coverHeaders,
             ),
           ),
+        if (needsChunking)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+            child: SizedBox(
+              height: 36,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: rangeCount + 1,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, i) {
+                  if (i == 0) {
+                    return ActionChip(
+                      avatar: const Icon(
+                        CupertinoIcons.arrow_right_to_line,
+                        size: 13,
+                        color: Colors.white,
+                      ),
+                      label: const Text(
+                        'Jump',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      backgroundColor: AppColors.surface2,
+                      side: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      onPressed: () => _promptJumpToEpisode(visible),
+                    );
+                  }
+                  final chunkIdx = i - 1;
+                  final isSelected = chunkIdx == clampedChunkIndex;
+                  final label = episodeRangeLabel(visible, chunkIdx);
+                  return ChoiceChip(
+                    label: Text(
+                      label,
+                      style: TextStyle(
+                        color: isSelected ? Colors.black : Colors.white70,
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                      ),
+                    ),
+                    selected: isSelected,
+                    selectedColor: Colors.white,
+                    backgroundColor: AppColors.surface,
+                    side: BorderSide(
+                      color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.12),
+                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    onSelected: (val) {
+                      if (val) setState(() => _episodeRangeChunkIndex = chunkIdx);
+                    },
+                  );
+                },
+              ),
+            ),
+          ),
         _WideEpisodeCarousel(
-          visible: visible,
-          offset: 0,
+          visible: chunkVisible,
+          offset: slice.start,
+          highlightEpId: _highlightEpId,
           indexById: indexById,
           resumeIdx: resumeIdx,
           stateFor: (ep, fullIdx) => _computeEpState(ep, fullIdx, resumeIdx, detail, hasAnyMark),
