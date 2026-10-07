@@ -31,6 +31,21 @@ class PersonRef extends Equatable {
 
   @override
   List<Object?> get props => [id, source, name, photo, externalId];
+
+  PersonRef copyWith({
+    int? id,
+    PersonSource? source,
+    String? name,
+    String? photo,
+    String? externalId,
+  }) =>
+      PersonRef(
+        id: id ?? this.id,
+        source: source ?? this.source,
+        name: name ?? this.name,
+        photo: photo ?? this.photo,
+        externalId: externalId ?? this.externalId,
+      );
 }
 
 /// A fully-loaded person profile shown on the person page.

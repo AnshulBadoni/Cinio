@@ -12,6 +12,7 @@ import '../../core/models/media_item.dart';
 import '../../core/models/person.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/metadata/pornpics_service.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/search_history.dart';
@@ -263,17 +264,26 @@ class _SearchViewState extends State<_SearchView>
     return t;
   }
 
+  String? _performerCover(MediaItem item) {
+    if (item.sourceId == 'tpdb:performer' &&
+        sl<PlaybackPrefs>().tpdbModelPhotoSource == 'pornpics') {
+      return sl<PornPicsService>().cachedPhoto(item.title) ?? item.cover;
+    }
+    return item.cover;
+  }
+
   Future<void> _openDetail(MediaItem item, {String? heroTag}) async {
     if (!mounted) return;
     if (item.sourceId == 'tpdb:performer') {
       final raw = item.id.replaceFirst('tpdb:performer:', '');
+      final photo = _performerCover(item);
       Navigator.of(context).push(PersonPage.route(
         PersonRef(
           id: 0,
           externalId: raw,
           source: PersonSource.thePornDbPerformer,
           name: item.title,
-          photo: item.cover,
+          photo: photo,
         ),
         sourceId: item.sourceId,
         heroTag: heroTag,
@@ -1596,7 +1606,7 @@ class _SearchViewState extends State<_SearchView>
                       index: i,
                       child: PosterCard(
                         title: item.title,
-                        imageUrl: item.cover,
+                        imageUrl: _performerCover(item),
                         headers: item.coverHeaders,
                         tags: _tagsFor(item),
                         qualityBadge: item.quality,
@@ -1656,7 +1666,7 @@ class _SearchViewState extends State<_SearchView>
               index: i,
               child: PosterCard(
                 title: item.title,
-                imageUrl: item.cover,
+                imageUrl: _performerCover(item),
                 headers: item.coverHeaders,
                 tags: _tagsFor(item),
                 qualityBadge: item.quality,
@@ -1897,7 +1907,7 @@ class _SearchViewState extends State<_SearchView>
         final heroTag = _posterHeroTag(item);
         return PosterCard(
           title: item.title,
-          imageUrl: item.cover,
+          imageUrl: _performerCover(item),
           headers: item.coverHeaders,
           tags: _tagsFor(item),
           qualityBadge: item.quality,
@@ -1956,7 +1966,7 @@ class _SearchViewState extends State<_SearchView>
         final heroTag = _posterHeroTag(item);
         return PosterCard(
           title: item.title,
-          imageUrl: item.cover,
+          imageUrl: _performerCover(item),
           headers: item.coverHeaders,
           tags: _tagsFor(item),
           qualityBadge: item.quality,

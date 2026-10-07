@@ -1,12 +1,14 @@
 import 'package:dio/dio.dart';
-
-import '../models/home_section.dart';
-import '../models/media_item.dart';
-import '../models/media_detail.dart';
+import '../di/injector.dart';
 import '../models/episode.dart';
+import '../models/home_section.dart';
+import '../models/media_detail.dart';
 import '../models/media_extras.dart';
-import '../models/provider_info.dart';
+import '../models/media_item.dart';
 import '../models/person.dart';
+import '../models/provider_info.dart';
+import '../playback/playback_prefs.dart';
+import 'pornpics_service.dart';
 
 /// ThePornDB-backed catalog. It is catalog/metadata only; playback is still
 /// resolved by the normal streaming-provider pipeline.
@@ -196,7 +198,21 @@ class ThePornDb {
         if (row is Map && _qualifiesAsActor(row, requireRating: !isSearch)) _performer(row),
     ];
     list.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-    return list.take(24).toList();
+    final taken = list.take(24).toList();
+    if (isSearch && sl<PlaybackPrefs>().tpdbModelPhotoSource == 'pornpics' && taken.isNotEmpty) {
+      try {
+        final photos = await Future.wait(
+          taken.map((item) => sl<PornPicsService>().fetchModelPhoto(item.title)),
+        );
+        for (var i = 0; i < taken.length; i++) {
+          final pp = photos[i];
+          if (pp != null && pp.isNotEmpty) {
+            taken[i] = taken[i].copyWith(cover: pp);
+          }
+        }
+      } catch (_) {}
+    }
+    return taken;
   }
 
   double? _extractPerformerRating(Map row) {
@@ -404,6 +420,25 @@ class ThePornDb {
         } else {
           members.add(CastMember(name: name, photo: photo));
         }
+      }
+      if (sl<PlaybackPrefs>().tpdbModelPhotoSource == 'pornpics' && members.isNotEmpty) {
+        try {
+          final photos = await Future.wait(
+            members.map((m) => sl<PornPicsService>().fetchModelPhoto(m.name)),
+          );
+          for (var i = 0; i < members.length; i++) {
+            final pp = photos[i];
+            if (pp != null && pp.isNotEmpty) {
+              final old = members[i];
+              members[i] = CastMember(
+                name: old.name,
+                role: old.role,
+                photo: pp,
+                person: old.person?.copyWith(photo: pp),
+              );
+            }
+          }
+        } catch (_) {}
       }
     }
     final cover = _firstImage(row) ?? _firstHeroImage(row) ?? item.cover;

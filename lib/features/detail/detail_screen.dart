@@ -16,6 +16,7 @@ import 'package:dio/dio.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/metadata/pornpics_service.dart';
 import '../../core/metadata/tmdb.dart';
 
 import '../../core/ui/native_cover_provider.dart';
@@ -98,7 +99,6 @@ import '../reader/novel_reader_screen.dart';
 import '../trailer/trailer_screen.dart';
 import 'cubit/detail_cubit.dart';
 
-import '../../core/stremio/stremio_client.dart';
 import '../../core/stremio/stremio_manager.dart';
 import '../../core/stremio/stremio_provider.dart';
 import '../../core/stremio/stremio_stream.dart';
@@ -2885,14 +2885,21 @@ class _DetailViewState extends State<_DetailView>
             itemBuilder: (context, i) {
               final m = cast[i];
               final ref = m.person;
+              final isTpdb = ref?.source == PersonSource.thePornDbPerformer;
+              final effectivePhoto = (isTpdb && sl<PlaybackPrefs>().tpdbModelPhotoSource == 'pornpics')
+                  ? (sl<PornPicsService>().cachedPhoto(m.name) ?? m.photo)
+                  : m.photo;
               final heroTag = ref != null
                   ? 'person-avatar:${ref.source.name}:${ref.externalId ?? ref.id}'
                   : null;
               return GestureDetector(
                 onTap: () {
                   if (ref != null) {
+                    final effectiveRef = (isTpdb && effectivePhoto != null && effectivePhoto.isNotEmpty)
+                        ? ref.copyWith(photo: effectivePhoto)
+                        : ref;
                     Navigator.of(context).push(
-                      PersonPage.route(ref, sourceId: widget.item.sourceId, heroTag: heroTag),
+                      PersonPage.route(effectiveRef, sourceId: widget.item.sourceId, heroTag: heroTag),
                     );
                   }
                 },
@@ -2906,7 +2913,7 @@ class _DetailViewState extends State<_DetailView>
                         child: SizedBox(
                           width: avatarSize,
                           height: avatarSize,
-                          child: (m.photo != null && m.photo!.isNotEmpty)
+                          child: (effectivePhoto != null && effectivePhoto.isNotEmpty)
                               ? (heroTag != null
                                   ? Hero(
                                       tag: heroTag,
@@ -2914,7 +2921,7 @@ class _DetailViewState extends State<_DetailView>
                                         return ClipOval(child: toHeroContext.widget);
                                       },
                                       child: CachedNetworkImage(
-                                        imageUrl: m.photo!,
+                                        imageUrl: effectivePhoto,
                                         fit: BoxFit.cover,
                                         memCacheWidth: 200,
                                         placeholder: (_, _) => Container(color: AppColors.surface2),
@@ -2922,7 +2929,7 @@ class _DetailViewState extends State<_DetailView>
                                       ),
                                     )
                                   : CachedNetworkImage(
-                                      imageUrl: m.photo!,
+                                      imageUrl: effectivePhoto,
                                       fit: BoxFit.cover,
                                       memCacheWidth: 200,
                                       placeholder: (_, _) => Container(color: AppColors.surface2),

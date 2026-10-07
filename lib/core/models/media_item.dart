@@ -117,6 +117,7 @@ class MediaItem extends Equatable {
 
   MediaItem copyWith({
     String? sourceId,
+    String? cover,
     int? subCount,
     int? dubCount,
     int? malId,
@@ -127,7 +128,7 @@ class MediaItem extends Equatable {
     id: id,
     title: title,
     englishTitle: englishTitle,
-    cover: cover,
+    cover: cover ?? this.cover,
     coverHeaders: coverHeaders,
     heroImage: heroImage,
     url: url,

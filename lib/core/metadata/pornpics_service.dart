@@ -20,6 +20,13 @@ class PornPicsService {
   final Dio _dio;
   final Map<String, String?> _cache = {};
 
+  /// Returns synchronous cached photo if already fetched.
+  String? cachedPhoto(String name) {
+    final clean = name.trim();
+    if (clean.isEmpty) return null;
+    return _cache[clean.toLowerCase()];
+  }
+
   /// Looks up a high-resolution performer photo by name from pornpics catalog galleries.
   /// 1. Scrapes the performer page for catalog gallery photos and upgrades to 1280px resolution.
   /// 2. Falls back to search endpoint JSON, also upgrading catalog items to 1280px resolution.

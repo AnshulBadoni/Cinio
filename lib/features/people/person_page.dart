@@ -492,20 +492,34 @@ class _PersonPageState extends State<PersonPage> {
     final isTpdb = widget.person.source == PersonSource.thePornDbPerformer ||
         widget.person.source == PersonSource.thePornDbStudio;
 
+    final photo = p?.photo ?? widget.person.photo;
+    final totalCount = _works.length;
+    final metaText = _loading
+        ? (isTpdb ? 'Performer' : 'Acting')
+        : '${p?.subtitle ?? (isTpdb ? 'Performer' : 'Acting')} · $totalCount ${isTpdb ? 'Releases' : 'Titles'}';
+    final effectiveHeroTag = widget.heroTag ??
+        'person-avatar:${widget.person.source.name}:${widget.person.externalId ?? widget.person.id}';
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Stack(
         children: [
-          // ── 1. Unified Scroll View with Natural Scroll ───────────────────
+          // ── 1. Hero Background Layer (Behind Scroll View) ──────────────────
+          // Anchored to top: 0 when pulling down (zero black gap at top!)
+          // Expands height downwards on overscroll.
+          // Translates up naturally with scroll: top = -offset.
+          _buildBackgroundHeroLayer(photo, effectiveHeroTag),
+
+          // ── 2. Unified Scroll View with Natural Scroll ─────────────────────
           CustomScrollView(
             controller: _scrollController,
             physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             ),
             slivers: [
-              // Natural hero header that scrolls off-screen with content:
+              // Natural hero header spacer with Name & 3 Action Buttons:
               SliverToBoxAdapter(
-                child: _buildNaturalHeroHeader(p, isTpdb),
+                child: _buildHeaderContent(metaText),
               ),
 
               // Body: loading skeleton or loaded filmography
@@ -531,7 +545,7 @@ class _PersonPageState extends State<PersonPage> {
             ],
           ),
 
-          // ── 2. Sticky Floating Back Button & Animated Title ─────────────
+          // ── 3. Sticky Floating Back Button & Animated Title ───────────────
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -582,76 +596,63 @@ class _PersonPageState extends State<PersonPage> {
     );
   }
 
-  // ── Natural Hero Header (Parallax Fade + Stretch Zoom) ──────────────────────
+  // ── Hero Background Layer (Anchored to top: 0 on stretch; natural scroll up) ──
 
-  Widget _buildNaturalHeroHeader(PersonProfile? p, bool isTpdb) {
-    final photo = p?.photo ?? widget.person.photo;
-    final totalCount = _works.length;
-    final metaText = _loading
-        ? (isTpdb ? 'Performer' : 'Acting')
-        : '${p?.subtitle ?? (isTpdb ? 'Performer' : 'Acting')} · $totalCount ${isTpdb ? 'Releases' : 'Titles'}';
-    final effectiveHeroTag = widget.heroTag ??
-        'person-avatar:${widget.person.source.name}:${widget.person.externalId ?? widget.person.id}';
+  Widget _buildBackgroundHeroLayer(String? photo, String effectiveHeroTag) {
+    return ValueListenableBuilder<double>(
+      valueListenable: _scrollOffset,
+      builder: (context, offset, _) {
+        // When pulling down / overscrolling (offset < 0):
+        // top stays 0.0 (anchored at physical top of screen - no black bar!)
+        // height expands to 490 - offset (stretches downwards).
+        // When scrolling up (offset >= 0):
+        // top translates up naturally: -offset.
+        // height stays 490.
+        final top = offset < 0 ? 0.0 : -offset;
+        final height = offset < 0 ? 490.0 - offset : 490.0;
+        final fadeOpacity = offset > 0
+            ? (1.0 - (offset / 340.0)).clamp(0.0, 1.0)
+            : 1.0;
 
-    return Container(
-      height: 490,
-      width: double.infinity,
-      color: AppColors.bg,
-      child: ValueListenableBuilder<double>(
-        valueListenable: _scrollOffset,
-        builder: (context, offset, _) {
-          // Downward pull / overscroll (offset < 0): zoom and stretch without black gaps
-          final overscroll = offset < 0 ? -offset : 0.0;
-          final scale = 1.0 + (overscroll / 320.0).clamp(0.0, 0.65);
-
-          // Upward scroll (offset > 0): gentle fade into dark background as it scrolls off
-          final fadeOpacity = offset > 0
-              ? (1.0 - (offset / 340.0)).clamp(0.0, 1.0)
-              : 1.0;
-
-          return ClipRect(
+        return Positioned(
+          top: top,
+          left: 0,
+          right: 0,
+          height: height,
+          child: Opacity(
+            opacity: fadeOpacity,
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // 1. Background portrait image with stretch zoom on overscroll
-                Positioned.fill(
-                  child: Opacity(
-                    opacity: fadeOpacity,
-                    child: Transform.scale(
-                      alignment: Alignment.topCenter,
-                      scale: scale,
-                      child: Hero(
-                        tag: effectiveHeroTag,
-                        createRectTween: (begin, end) =>
-                            MaterialRectArcTween(begin: begin, end: end),
-                        flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
-                          return Material(
-                            color: Colors.transparent,
-                            child: toHeroContext.widget,
-                          );
-                        },
-                        child: (photo != null && photo.isNotEmpty)
-                            ? CachedNetworkImage(
-                                imageUrl: photo,
-                                fit: BoxFit.cover,
-                                alignment: const Alignment(0, -0.2),
-                                placeholder: (_, _) => Container(color: AppColors.surface2),
-                                errorWidget: (_, _, _) => Container(color: AppColors.surface2),
-                              )
-                            : Container(
-                                color: AppColors.surface2,
-                                child: const Center(
-                                  child: Icon(Icons.person, size: 80, color: Colors.white24),
-                                ),
-                              ),
-                      ),
-                    ),
-                  ),
+                // 1. Portrait image
+                Hero(
+                  tag: effectiveHeroTag,
+                  createRectTween: (begin, end) =>
+                      MaterialRectArcTween(begin: begin, end: end),
+                  flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+                    return Material(
+                      color: Colors.transparent,
+                      child: toHeroContext.widget,
+                    );
+                  },
+                  child: (photo != null && photo.isNotEmpty)
+                      ? CachedNetworkImage(
+                          imageUrl: photo,
+                          fit: BoxFit.cover,
+                          alignment: const Alignment(0, -0.2),
+                          placeholder: (_, _) => Container(color: AppColors.surface2),
+                          errorWidget: (_, _, _) => Container(color: AppColors.surface2),
+                        )
+                      : Container(
+                          color: AppColors.surface2,
+                          child: const Center(
+                            child: Icon(Icons.person, size: 80, color: Colors.white24),
+                          ),
+                        ),
                 ),
 
-              // 2. Cinematic Multi-stop Dark Gradient Overlay
-              Positioned.fill(
-                child: DecoratedBox(
+                // 2. Cinematic Multi-stop Dark Gradient Overlay ending in solid AppColors.bg
+                DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
@@ -664,103 +665,116 @@ class _PersonPageState extends State<PersonPage> {
                         AppColors.bg.withValues(alpha: 0.85),
                         AppColors.bg,
                       ],
-                      stops: const [0.0, 0.18, 0.42, 0.68, 0.88, 1.0],
+                      stops: const [0.0, 0.16, 0.40, 0.65, 0.85, 1.0],
                     ),
                   ),
                 ),
-              ),
-
-              // 3. Actor Name, Subtitle, and 3 Action Buttons positioned at bottom
-              Positioned(
-                left: 20,
-                right: 20,
-                bottom: 14,
-                child: Opacity(
-                  opacity: fadeOpacity,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        widget.person.name,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontFamily: 'Circular',
-                          fontSize: 34,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: -0.6,
-                          height: 1.1,
-                          shadows: [
-                            Shadow(color: Colors.black, blurRadius: 18),
-                            Shadow(color: Colors.black87, blurRadius: 6),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        metaText,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white.withValues(alpha: 0.75),
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-
-                      // The 3 Action Buttons Trio (Shuffle / Play Trailer / Favorite)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          // 1. Play Random Button
-                          _buildActionButton(
-                            icon: Icons.shuffle_rounded,
-                            size: 50,
-                            iconSize: 22,
-                            background: Colors.white.withValues(alpha: 0.14),
-                            iconColor: Colors.white,
-                            onTap: _playRandom,
-                          ),
-                          const SizedBox(width: 22),
-
-                          // 2. Play Trailer (Clean Center Circle - No glow)
-                          _buildActionButton(
-                            icon: Icons.play_arrow_rounded,
-                            size: 66,
-                            iconSize: 40,
-                            background: Colors.white,
-                            iconColor: Colors.black,
-                            onTap: _playTrailer,
-                          ),
-                          const SizedBox(width: 22),
-
-                          // 3. Add to Favorite Actors Button
-                          _buildActionButton(
-                            icon: _isFav
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
-                            size: 50,
-                            iconSize: 22,
-                            background: Colors.white.withValues(alpha: 0.14),
-                            iconColor: _isFav ? const Color(0xFFFF2D55) : Colors.white,
-                            onTap: _toggleFavorite,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
-    ),
-  );
+    );
+  }
+
+  // ── Header Content (Actor Name, Subtitle & 3 Action Buttons) ────────────────
+
+  Widget _buildHeaderContent(String metaText) {
+    return SizedBox(
+      height: 490,
+      width: double.infinity,
+      child: ValueListenableBuilder<double>(
+        valueListenable: _scrollOffset,
+        builder: (context, offset, _) {
+          final fadeOpacity = offset > 0
+              ? (1.0 - (offset / 340.0)).clamp(0.0, 1.0)
+              : 1.0;
+
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+            child: Opacity(
+              opacity: fadeOpacity,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    widget.person.name,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Circular',
+                      fontSize: 34,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: -0.6,
+                      height: 1.1,
+                      shadows: [
+                        Shadow(color: Colors.black, blurRadius: 18),
+                        Shadow(color: Colors.black87, blurRadius: 6),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    metaText,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withValues(alpha: 0.75),
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // The 3 Action Buttons Trio (Shuffle / Play / Favorite)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // 1. Play Random Button
+                      _buildActionButton(
+                        icon: Icons.shuffle_rounded,
+                        size: 50,
+                        iconSize: 22,
+                        background: Colors.white.withValues(alpha: 0.14),
+                        iconColor: Colors.white,
+                        onTap: _playRandom,
+                      ),
+                      const SizedBox(width: 22),
+
+                      // 2. Play Trailer (Clean Center Circle - No glow)
+                      _buildActionButton(
+                        icon: Icons.play_arrow_rounded,
+                        size: 66,
+                        iconSize: 40,
+                        background: Colors.white,
+                        iconColor: Colors.black,
+                        onTap: _playTrailer,
+                      ),
+                      const SizedBox(width: 22),
+
+                      // 3. Add to Favorite Actors Button
+                      _buildActionButton(
+                        icon: _isFav
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
+                        size: 50,
+                        iconSize: 22,
+                        background: Colors.white.withValues(alpha: 0.14),
+                        iconColor: _isFav ? const Color(0xFFFF2D55) : Colors.white,
+                        onTap: _toggleFavorite,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Widget _buildActionButton({
