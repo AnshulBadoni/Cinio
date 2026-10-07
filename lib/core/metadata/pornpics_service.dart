@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 /// Fetches high-resolution performer portraits and photos from pornpics.de.
+/// Extracts full-resolution catalog photos (1280px) instead of low-res header avatars.
 class PornPicsService {
   PornPicsService({Dio? dio})
       : _dio = dio ??
@@ -19,9 +20,9 @@ class PornPicsService {
   final Dio _dio;
   final Map<String, String?> _cache = {};
 
-  /// Looks up a model/performer photo by name.
-  /// First checks the direct performer page (entity-card-avatar),
-  /// then falls back to searching pornpics search JSON.
+  /// Looks up a high-resolution performer photo by name from pornpics catalog galleries.
+  /// 1. Scrapes the performer page for catalog gallery photos and upgrades to 1280px resolution.
+  /// 2. Falls back to search endpoint JSON, also upgrading catalog items to 1280px resolution.
   Future<String?> fetchModelPhoto(String name) async {
     final cleanName = name.trim();
     if (cleanName.isEmpty) return null;
@@ -33,6 +34,7 @@ class PornPicsService {
         .replaceAll(RegExp(r'^-+|-+$'), '');
 
     // 1. Direct performer model page: https://www.pornpics.de/pornstars/{slug}/
+    // Extract full-resolution catalog photos (upgraded to 1280px) rather than low-res header avatars.
     if (slug.isNotEmpty) {
       try {
         final res = await _dio.get<String>(
@@ -40,16 +42,18 @@ class PornPicsService {
         );
         if (res.statusCode == 200 && res.data != null) {
           final html = res.data!;
-          // Pattern: <div class="entity-card-avatar" ...><img src="https://cdni.pornpics.de/models/..."
-          final match = RegExp(
-            r'<div class="entity-card-avatar"[^>]*>\s*<img[^>]+src="([^"]+)"',
+          // Find catalog gallery thumbnails: https://cdni.pornpics.de/460/...
+          final catalogMatches = RegExp(
+            r'https://cdni\.pornpics\.de/460/[a-zA-Z0-9/_.-]+\.jpg',
             caseSensitive: false,
-          ).firstMatch(html);
-          if (match != null) {
-            final url = match.group(1);
-            if (url != null && url.isNotEmpty) {
-              _cache[key] = url;
-              return url;
+          ).allMatches(html);
+
+          for (final m in catalogMatches) {
+            final thumbUrl = m.group(0);
+            if (thumbUrl != null && thumbUrl.isNotEmpty) {
+              final hdUrl = thumbUrl.replaceAll('/460/', '/1280/');
+              _cache[key] = hdUrl;
+              return hdUrl;
             }
           }
         }
@@ -66,11 +70,14 @@ class PornPicsService {
         final list = searchRes.data as List;
         for (final item in list) {
           if (item is Map) {
-            final tUrl = item['t_url_460'] ?? item['t_url'];
-            if (tUrl != null && tUrl.toString().isNotEmpty) {
-              final photo = tUrl.toString();
-              _cache[key] = photo;
-              return photo;
+            final tUrl = (item['t_url_460'] ?? item['t_url'])?.toString();
+            if (tUrl != null && tUrl.isNotEmpty) {
+              // Upgrade to 1280px high-resolution catalog photo
+              final hdUrl = tUrl.contains('/460/')
+                  ? tUrl.replaceAll('/460/', '/1280/')
+                  : tUrl;
+              _cache[key] = hdUrl;
+              return hdUrl;
             }
           }
         }

@@ -593,9 +593,10 @@ class _PersonPageState extends State<PersonPage> {
     final effectiveHeroTag = widget.heroTag ??
         'person-avatar:${widget.person.source.name}:${widget.person.externalId ?? widget.person.id}';
 
-    return SizedBox(
+    return Container(
       height: 490,
       width: double.infinity,
+      color: AppColors.bg,
       child: ValueListenableBuilder<double>(
         valueListenable: _scrollOffset,
         builder: (context, offset, _) {
@@ -603,22 +604,19 @@ class _PersonPageState extends State<PersonPage> {
           final overscroll = offset < 0 ? -offset : 0.0;
           final scale = 1.0 + (overscroll / 320.0).clamp(0.0, 0.65);
 
-          // Upward scroll (offset > 0): smooth parallax translation and gentle fade into dark bg
-          final parallaxY = offset > 0 ? (offset * 0.45).clamp(0.0, 180.0) : 0.0;
+          // Upward scroll (offset > 0): gentle fade into dark background as it scrolls off
           final fadeOpacity = offset > 0
               ? (1.0 - (offset / 340.0)).clamp(0.0, 1.0)
               : 1.0;
 
-          return Stack(
-            fit: StackFit.expand,
-            clipBehavior: Clip.none,
-            children: [
-              // 1. Background portrait image with parallax & zoom stretch
-              Positioned.fill(
-                child: Opacity(
-                  opacity: fadeOpacity,
-                  child: Transform.translate(
-                    offset: Offset(0, parallaxY),
+          return ClipRect(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 1. Background portrait image with stretch zoom on overscroll
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: fadeOpacity,
                     child: Transform.scale(
                       alignment: Alignment.topCenter,
                       scale: scale,
@@ -650,7 +648,6 @@ class _PersonPageState extends State<PersonPage> {
                     ),
                   ),
                 ),
-              ),
 
               // 2. Cinematic Multi-stop Dark Gradient Overlay
               Positioned.fill(
@@ -759,10 +756,11 @@ class _PersonPageState extends State<PersonPage> {
                 ),
               ),
             ],
-          );
-        },
-      ),
-    );
+          ),
+        );
+      },
+    ),
+  );
   }
 
   Widget _buildActionButton({
