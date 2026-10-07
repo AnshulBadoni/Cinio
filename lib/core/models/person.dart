@@ -54,6 +54,7 @@ class PersonProfile extends Equatable {
     required this.name,
     this.nativeName,
     this.photo,
+    this.photos = const [],
     this.description,
     this.subtitle,
     this.works = const [],
@@ -64,6 +65,9 @@ class PersonProfile extends Equatable {
   final String name;
   final String? nativeName;
   final String? photo;
+
+  /// High-resolution portrait / poster gallery (e.g. from TPDB posters array).
+  final List<String> photos;
 
   /// Bio / description. May carry light HTML/markdown from AniList — the page
   /// strips tags and renders it as plain text.
@@ -82,8 +86,17 @@ class PersonProfile extends Equatable {
   final List<PersonRef> related;
 
   @override
-  List<Object?> get props =>
-      [name, nativeName, photo, description, subtitle, works, providerVideos, related];
+  List<Object?> get props => [
+    name,
+    nativeName,
+    photo,
+    photos,
+    description,
+    subtitle,
+    works,
+    providerVideos,
+    related,
+  ];
 }
 
 /// One media entry on a person page (a role / appearance). Tapping opens the

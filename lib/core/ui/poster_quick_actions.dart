@@ -109,6 +109,44 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
   late bool _inLibrary = widget.initialInLibrary;
   late bool _watched = widget.initialWatched;
   bool _busy = false;
+  double? _aspectRatio;
+  ImageStream? _imageStream;
+  ImageStreamListener? _imageStreamListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveImageAspectRatio();
+  }
+
+  @override
+  void dispose() {
+    if (_imageStream != null && _imageStreamListener != null) {
+      _imageStream!.removeListener(_imageStreamListener!);
+    }
+    super.dispose();
+  }
+
+  void _resolveImageAspectRatio() {
+    final cover = widget.item.cover;
+    if (cover == null || cover.isEmpty) return;
+    try {
+      final provider = nativeCoverProvider(cover, widget.item.coverHeaders);
+      final stream = provider.resolve(ImageConfiguration.empty);
+      _imageStream = stream;
+      _imageStreamListener = ImageStreamListener((info, _) {
+        final w = info.image.width;
+        final h = info.image.height;
+        if (w > 0 && h > 0 && mounted) {
+          final ratio = w / h;
+          if (_aspectRatio != ratio) {
+            setState(() => _aspectRatio = ratio);
+          }
+        }
+      });
+      stream.addListener(_imageStreamListener!);
+    } catch (_) {}
+  }
 
   String get _playText => widget.playLabel ?? (_watched ? 'Watch Again' : 'Play');
 
@@ -164,10 +202,27 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    // Keep the focus artwork intentionally smaller than a detail hero. The
-    // long-press surface is an action palette, not a full-screen poster page.
-    final posterHeight = (size.height * 0.32).clamp(230.0, 440.0);
-    final posterWidth = posterHeight * 2 / 3;
+    // Keep the focus artwork intentionally smaller than a detail hero.
+    // If the image is wider (landscape e.g. 16:9), adapt width and height so
+    // it comes wider on focus too, rather than being forced into a tall 2:3 box.
+    final ratio = _aspectRatio;
+    final isWider = ratio != null && ratio > 1.15;
+
+    final double posterWidth;
+    final double posterHeight;
+    final double maxBoxWidth;
+
+    if (isWider) {
+      posterWidth = (size.width * 0.84).clamp(280.0, 420.0);
+      posterHeight = posterWidth / ratio;
+      maxBoxWidth = posterWidth;
+    } else {
+      posterHeight = (size.height * 0.32).clamp(230.0, 440.0);
+      posterWidth = ratio != null
+          ? (posterHeight * ratio).clamp(150.0, size.width * 0.8)
+          : (posterHeight * 2 / 3);
+      maxBoxWidth = 310.0;
+    }
 
     return Material(
       color: Colors.transparent,
@@ -191,7 +246,7 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 30),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 310),
+                  constraints: BoxConstraints(maxWidth: maxBoxWidth),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [

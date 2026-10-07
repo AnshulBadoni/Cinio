@@ -132,12 +132,6 @@ class PlaybackPrefs {
   Future<void> setTpdbPrimaryProvider(String value) =>
       _box.put('tpdbPrimaryProvider', value);
 
-  /// Model photo source for TPDB performers: 'default' (ThePornDB) or 'pornpics' (pornpics.de).
-  String get tpdbModelPhotoSource =>
-      _box.get('tpdbModelPhotoSource', defaultValue: 'default') as String;
-  Future<void> setTpdbModelPhotoSource(String value) =>
-      _box.put('tpdbModelPhotoSource', value);
-
   /// User-defined priority order of provider source IDs for TMDB actors.
   List<String> get tmdbProviderOrder =>
       List<String>.from((_box.get('tmdbProviderOrder') as List?)?.cast<String>() ?? const []);
@@ -149,6 +143,18 @@ class PlaybackPrefs {
       List<String>.from((_box.get('tpdbProviderOrder') as List?)?.cast<String>() ?? const []);
   Future<void> setTpdbProviderOrder(List<String> value) =>
       _box.put('tpdbProviderOrder', value);
+
+  /// User-defined disabled provider source IDs for TMDB actors.
+  Set<String> get tmdbDisabledProviders =>
+      Set<String>.from((_box.get('tmdbDisabledProviders') as List?)?.cast<String>() ?? const []);
+  Future<void> setTmdbDisabledProviders(Iterable<String> value) =>
+      _box.put('tmdbDisabledProviders', value.toList());
+
+  /// User-defined disabled provider source IDs for TPDB performers.
+  Set<String> get tpdbDisabledProviders =>
+      Set<String>.from((_box.get('tpdbDisabledProviders') as List?)?.cast<String>() ?? const []);
+  Future<void> setTpdbDisabledProviders(Iterable<String> value) =>
+      _box.put('tpdbDisabledProviders', value.toList());
 
   /// Default playback speed multiplier.
   double get defaultSpeed =>

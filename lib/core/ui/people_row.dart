@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../cache/app_image_cache.dart';
 import '../di/injector.dart';
-import '../metadata/pornpics_service.dart';
 import '../models/media_item.dart';
 import '../playback/playback_prefs.dart';
 import '../theme/app_colors.dart';
@@ -72,59 +71,14 @@ class _PersonCard extends StatefulWidget {
 
 class _PersonCardState extends State<_PersonCard> {
   bool _pressed = false;
-  String? _overridePhoto;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkPhoto();
-  }
-
-  @override
-  void didUpdateWidget(covariant _PersonCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.title != widget.item.title || oldWidget.item.cover != widget.item.cover) {
-      _checkPhoto();
-    }
-  }
-
-  void _checkPhoto() {
-    if (widget.item.sourceId == 'tpdb:performer' &&
-        sl<PlaybackPrefs>().tpdbModelPhotoSource == 'pornpics') {
-      final cached = sl<PornPicsService>().cachedPhoto(widget.item.title);
-      if (cached != null && cached.isNotEmpty) {
-        _overridePhoto = cached;
-      } else {
-        sl<PornPicsService>().fetchModelPhoto(widget.item.title).then((photo) {
-          if (mounted && photo != null && photo.isNotEmpty && photo != _overridePhoto) {
-            setState(() => _overridePhoto = photo);
-          }
-        });
-      }
-    }
-  }
-
-  void _handleTap() {
-    final item = (_overridePhoto != null && _overridePhoto != widget.item.cover)
-        ? widget.item.copyWith(cover: _overridePhoto)
-        : widget.item;
-    widget.onTap(item);
-  }
-
-  void _handleLongPress() {
-    final item = (_overridePhoto != null && _overridePhoto != widget.item.cover)
-        ? widget.item.copyWith(cover: _overridePhoto)
-        : widget.item;
-    widget.onLongPress(item);
-  }
 
   @override
   Widget build(BuildContext context) {
-    final effectiveCover = _overridePhoto ?? widget.item.cover;
+    final effectiveCover = widget.item.cover;
     return RepaintBoundary(
       child: GestureDetector(
-        onTap: _handleTap,
-        onLongPress: _handleLongPress,
+        onTap: () => widget.onTap(widget.item),
+        onLongPress: () => widget.onLongPress(widget.item),
         onTapDown: (_) => setState(() => _pressed = true),
         onTapUp: (_) => setState(() => _pressed = false),
         onTapCancel: () => setState(() => _pressed = false),

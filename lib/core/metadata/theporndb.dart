@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import '../di/injector.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
@@ -7,8 +6,6 @@ import '../models/media_extras.dart';
 import '../models/media_item.dart';
 import '../models/person.dart';
 import '../models/provider_info.dart';
-import '../playback/playback_prefs.dart';
-import 'pornpics_service.dart';
 
 /// ThePornDB-backed catalog. It is catalog/metadata only; playback is still
 /// resolved by the normal streaming-provider pipeline.
@@ -198,21 +195,7 @@ class ThePornDb {
         if (row is Map && _qualifiesAsActor(row, requireRating: !isSearch)) _performer(row),
     ];
     list.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-    final taken = list.take(24).toList();
-    if (isSearch && sl<PlaybackPrefs>().tpdbModelPhotoSource == 'pornpics' && taken.isNotEmpty) {
-      try {
-        final photos = await Future.wait(
-          taken.map((item) => sl<PornPicsService>().fetchModelPhoto(item.title)),
-        );
-        for (var i = 0; i < taken.length; i++) {
-          final pp = photos[i];
-          if (pp != null && pp.isNotEmpty) {
-            taken[i] = taken[i].copyWith(cover: pp);
-          }
-        }
-      } catch (_) {}
-    }
-    return taken;
+    return list.take(24).toList();
   }
 
   double? _extractPerformerRating(Map row) {
@@ -403,7 +386,7 @@ class ThePornDb {
         final name = (parent?['name'] ?? parent?['full_name'] ?? p['name'] ?? p['full_name'])?.toString();
         if (name == null || name.isEmpty) continue;
         final rawPid = (parent?['id'] ?? parent?['uuid'] ?? parent?['_id'] ?? parent?['slug'] ?? p['id'] ?? p['uuid'] ?? p['_id'] ?? p['slug'])?.toString();
-        final photo = _extractUrl(parent?['image']) ?? _extractUrl(parent?['thumbnail']) ?? _extractUrl(parent?['face']) ?? _extractUrl(p['image']) ?? _extractUrl(p['thumbnail']) ?? _extractUrl(p['face']) ?? _firstImage(p);
+        final photo = _extractPerformerPoster(parent ?? p) ?? _extractUrl(parent?['image']) ?? _extractUrl(parent?['thumbnail']) ?? _extractUrl(parent?['face']) ?? _extractUrl(p['image']) ?? _extractUrl(p['thumbnail']) ?? _extractUrl(p['face']) ?? _firstImage(p);
         cast.add(name);
         if (rawPid != null && rawPid.isNotEmpty) {
           members.add(CastMember(
@@ -420,25 +403,6 @@ class ThePornDb {
         } else {
           members.add(CastMember(name: name, photo: photo));
         }
-      }
-      if (sl<PlaybackPrefs>().tpdbModelPhotoSource == 'pornpics' && members.isNotEmpty) {
-        try {
-          final photos = await Future.wait(
-            members.map((m) => sl<PornPicsService>().fetchModelPhoto(m.name)),
-          );
-          for (var i = 0; i < members.length; i++) {
-            final pp = photos[i];
-            if (pp != null && pp.isNotEmpty) {
-              final old = members[i];
-              members[i] = CastMember(
-                name: old.name,
-                role: old.role,
-                photo: pp,
-                person: old.person?.copyWith(photo: pp),
-              );
-            }
-          }
-        } catch (_) {}
       }
     }
     final cover = _firstImage(row) ?? _firstHeroImage(row) ?? item.cover;
@@ -495,12 +459,39 @@ class ThePornDb {
     return MediaItem(
       id: 'tpdb:performer:$id',
       title: (row['name'] ?? row['full_name'] ?? 'Performer').toString(),
-      cover: _firstImage(row) ?? _extractUrl(row['image']) ?? _extractUrl(row['thumbnail']) ?? _extractUrl(row['face']),
+      cover: _extractPerformerPoster(row) ?? _firstImage(row) ?? _extractUrl(row['image']) ?? _extractUrl(row['thumbnail']) ?? _extractUrl(row['face']),
       url: 'https://theporndb.net/performers/$id',
       type: ProviderType.movie,
       sourceId: 'tpdb:performer',
       rating: rating,
     );
+  }
+
+  String? _extractPerformerPoster(Map? row) {
+    if (row == null) return null;
+    final posters = row['posters'];
+    if (posters is List && posters.isNotEmpty) {
+      for (final p in posters) {
+        if (p is Map) {
+          final u = p['url'] ?? p['image'];
+          if (u != null && u.toString().startsWith('http')) return u.toString();
+        } else if (p is String && p.startsWith('http')) {
+          return p;
+        }
+      }
+    }
+    final img = row['image']?.toString();
+    if (img != null && img.startsWith('http')) return img;
+    final sps = row['site_performers'];
+    if (sps is List && sps.isNotEmpty) {
+      for (final sp in sps) {
+        if (sp is Map) {
+          final u = sp['image'];
+          if (u != null && u.toString().startsWith('http')) return u.toString();
+        }
+      }
+    }
+    return null;
   }
 
   MediaItem _studio(Map row) {

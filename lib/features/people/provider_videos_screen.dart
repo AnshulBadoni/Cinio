@@ -59,6 +59,8 @@ class _ProviderVideosScreenState extends State<ProviderVideosScreen> {
   @override
   void initState() {
     super.initState();
+    final prefs = sl<PlaybackPrefs>();
+    _hiddenSources.addAll(widget.isTpdb ? prefs.tpdbDisabledProviders : prefs.tmdbDisabledProviders);
     // Track which sources provided the initial items
     for (final it in widget.initialItems) {
       if (it.sourceId.isNotEmpty) {
@@ -214,8 +216,13 @@ class _ProviderVideosScreenState extends State<ProviderVideosScreen> {
                             ),
                             if (!isReorderMode && _hiddenSources.isNotEmpty)
                               TextButton(
-                                onPressed: () {
+                                onPressed: () async {
                                   setSheetState(() => _hiddenSources.clear());
+                                  if (widget.isTpdb) {
+                                    await prefs.setTpdbDisabledProviders(_hiddenSources);
+                                  } else {
+                                    await prefs.setTmdbDisabledProviders(_hiddenSources);
+                                  }
                                   setState(() {});
                                 },
                                 child: Text('Show All', style: TextStyle(color: AppColors.accent)),
@@ -330,7 +337,7 @@ class _ProviderVideosScreenState extends State<ProviderVideosScreen> {
                                     style: TextButton.styleFrom(
                                       foregroundColor: isHidden ? Colors.white38 : AppColors.accent,
                                     ),
-                                    onPressed: () {
+                                    onPressed: () async {
                                       setSheetState(() {
                                         if (isHidden) {
                                           _hiddenSources.remove(src.id);
@@ -338,6 +345,11 @@ class _ProviderVideosScreenState extends State<ProviderVideosScreen> {
                                           _hiddenSources.add(src.id);
                                         }
                                       });
+                                      if (widget.isTpdb) {
+                                        await prefs.setTpdbDisabledProviders(_hiddenSources);
+                                      } else {
+                                        await prefs.setTmdbDisabledProviders(_hiddenSources);
+                                      }
                                       setState(() {});
                                     },
                                     icon: Icon(

@@ -1,9 +1,6 @@
 import 'package:dio/dio.dart';
 
-import '../di/injector.dart';
 import '../models/person.dart';
-import '../playback/playback_prefs.dart';
-import 'pornpics_service.dart';
 
 /// Loads person pages — anime characters + voice actors/staff from AniList,
 /// movie/TV people from TMDB. Read-only, best-effort: any miss/failure returns
@@ -60,7 +57,12 @@ class PeopleService {
     }
   }
 
-  Future<List<PersonWork>> _tpdbPerformerWorks(String performerId, {required int page}) async {
+  Future<List<PersonWork>> _tpdbPerformerWorks(
+    String performerId, {
+    required int page,
+    Map<String, PersonRef>? relatedMap,
+    String? currentPerformerName,
+  }) async {
     try {
       final movies = await _dio.get<dynamic>(
         '$_tpdbBase/performers/$performerId/movies',
@@ -85,6 +87,33 @@ class PeopleService {
           catalogId: (m['id'] ?? m['_id'] ?? m['uuid'] ?? m['slug'])?.toString(),
           releaseDate: date,
         ));
+
+        if (relatedMap != null) {
+          final perfs = m['performers'];
+          if (perfs is List) {
+            for (final p in perfs) {
+              if (p is! Map) continue;
+              final pName = (p['name'] ?? p['full_name'])?.toString();
+              final pId = (p['id'] ?? p['_id'] ?? p['slug'])?.toString();
+              if (pName != null &&
+                  pName.isNotEmpty &&
+                  (currentPerformerName == null ||
+                      pName.toLowerCase() != currentPerformerName.toLowerCase()) &&
+                  pId != null) {
+                relatedMap.putIfAbsent(
+                  pId,
+                  () => PersonRef(
+                    id: int.tryParse(pId) ?? 0,
+                    source: PersonSource.thePornDbPerformer,
+                    name: pName,
+                    photo: (p['image'] ?? p['thumbnail'] ?? p['face'])?.toString(),
+                    externalId: pId,
+                  ),
+                );
+              }
+            }
+          }
+        }
       }
       return works;
     } catch (_) {
@@ -132,17 +161,22 @@ class PeopleService {
       if (name == null || name.isEmpty) return null;
       final resolvedId = (row['id'] ?? row['uuid'] ?? row['_id'] ?? row['slug'] ?? id).toString();
 
-      final works = await _tpdbPerformerWorks(resolvedId, page: 1);
+      final relatedMap = <String, PersonRef>{};
+      final works = await _tpdbPerformerWorks(
+        resolvedId,
+        page: 1,
+        relatedMap: relatedMap,
+        currentPerformerName: name,
+      );
 
       // Fetch scenes for wide 16:9 cards and related co-performers
       final providerVideos = <PersonWork>[];
-      final relatedMap = <String, PersonRef>{};
       try {
         final scenesRes = await _dio.get<dynamic>(
           '$_tpdbBase/scenes',
           queryParameters: {
             'q': name,
-            'per_page': 15,
+            'per_page': 30,
             'orderBy': 'most_relevant',
           },
           options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
@@ -193,36 +227,94 @@ class PeopleService {
         }
       } catch (_) {}
 
-      String? bestPhoto;
-      final photoSource = sl<PlaybackPrefs>().tpdbModelPhotoSource;
-      if (photoSource == 'pornpics') {
+      // If co-performers are fewer than 12, enrich with top-rated performers from TPDB
+      if (relatedMap.length < 12) {
         try {
-          bestPhoto = await sl<PornPicsService>().fetchModelPhoto(name);
+          final perfRes = await _dio.get<dynamic>(
+            '$_tpdbBase/performers',
+            queryParameters: {
+              'per_page': 24,
+              'orderBy': 'rating',
+              'age_operation': '<',
+            },
+            options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
+          );
+          final perfRows = perfRes.data is Map ? perfRes.data['data'] : null;
+          if (perfRows is List) {
+            for (final p in perfRows) {
+              if (p is! Map) continue;
+              final pName = (p['name'] ?? p['full_name'])?.toString();
+              final pId = (p['id'] ?? p['_id'] ?? p['slug'])?.toString();
+              if (pName != null && pName.isNotEmpty && pName.toLowerCase() != name.toLowerCase() && pId != null) {
+                relatedMap.putIfAbsent(
+                  pId,
+                  () => PersonRef(
+                    id: int.tryParse(pId) ?? 0,
+                    source: PersonSource.thePornDbPerformer,
+                    name: pName,
+                    photo: (p['image'] ?? p['thumbnail'] ?? p['face'])?.toString(),
+                    externalId: pId,
+                  ),
+                );
+                if (relatedMap.length >= 16) break;
+              }
+            }
+          }
         } catch (_) {}
       }
 
-      if (bestPhoto == null || bestPhoto.isEmpty) {
-        final posters = row['posters'] ?? row['images'] ?? row['backgrounds'];
-        if (posters is Map) {
-          for (final k in ['original', 'full', 'large', 'medium']) {
-            final v = posters[k]?.toString();
-            if (v != null && v.isNotEmpty) {
-              bestPhoto = v;
-              break;
-            }
+      final photoList = <String>[];
+      final seenUrls = <String>{};
+
+      void addPhoto(dynamic url) {
+        if (url == null) return;
+        final s = url.toString().trim();
+        if (s.isNotEmpty && s.startsWith('http') && seenUrls.add(s)) {
+          photoList.add(s);
+        }
+      }
+
+      // 1. Primary official image
+      addPhoto(row['image']);
+
+      // 2. High-res posters array
+      final posters = row['posters'];
+      if (posters is List) {
+        for (final p in posters) {
+          if (p is Map) {
+            addPhoto(p['url'] ?? p['image']);
+          } else if (p is String) {
+            addPhoto(p);
           }
         }
-        bestPhoto ??= (row['image'] ?? row['thumbnail'] ?? row['face'])?.toString();
       }
+
+      // 3. Site/studio posters
+      final sitePerfs = row['site_performers'];
+      if (sitePerfs is List) {
+        for (final sp in sitePerfs) {
+          if (sp is Map) {
+            addPhoto(sp['image']);
+          }
+        }
+      }
+
+      // 4. Fallback thumbnail/face
+      if (photoList.isEmpty) {
+        addPhoto(row['thumbnail'] ?? row['face']);
+      }
+
+      final bestPhoto = photoList.isNotEmpty ? photoList.first : null;
 
       return PersonProfile(
         name: name,
         photo: bestPhoto,
+        photos: photoList,
         description: (row['description'] ?? row['bio'])?.toString(),
         subtitle: 'Performer',
         works: works,
         providerVideos: providerVideos,
-        related: relatedMap.values.take(12).toList(),
+        related: relatedMap.values.take(16).toList(),
       );
     } catch (_) {
       return null;

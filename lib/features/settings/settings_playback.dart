@@ -429,25 +429,13 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _pickTpdbModelPhotoSource() async {
-    final options = <(String, String)>[
-      ('default', 'Default (ThePornDB)'),
-      ('pornpics', 'PornPics (pornpics.de)'),
-    ];
-    final picked = await _pick<String>(
-      title: 'TPDB performer photo source',
-      options: options,
-      current: _prefs.tpdbModelPhotoSource,
-    );
-    if (picked == null) return;
-    await _prefs.setTpdbModelPhotoSource(picked);
-    if (mounted) setState(() {});
-  }
-
   Future<void> _pickProviderOrder({required bool isTpdb}) async {
     final repo = sl<SourceRepository>();
     final allSources = isTpdb ? repo.adultSources : repo.loadedSources;
     final currentOrder = isTpdb ? _prefs.tpdbProviderOrder : _prefs.tmdbProviderOrder;
+    final disabledSet = isTpdb
+        ? Set<String>.from(_prefs.tpdbDisabledProviders)
+        : Set<String>.from(_prefs.tmdbDisabledProviders);
 
     final items = List<({String id, String name})>.from(allSources);
     items.sort((a, b) {
@@ -492,7 +480,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Drag to set which streaming sources appear first in the "From Provider" row.',
+                      'Drag to prioritize sources. Tap the eye icon to enable or disable sources in the provider row.',
                       style: TextStyle(
                         fontSize: 12.5,
                         color: Colors.white.withValues(alpha: 0.6),
@@ -529,6 +517,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                               },
                               itemBuilder: (context, idx) {
                                 final s = items[idx];
+                                final isHidden = disabledSet.contains(s.id);
                                 return ListTile(
                                   key: ValueKey(s.id),
                                   contentPadding: EdgeInsets.zero,
@@ -542,15 +531,48 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                                     alignment: Alignment.center,
                                     child: Text(
                                       '${idx + 1}',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
+                                      style: TextStyle(
+                                        color: isHidden ? Colors.white38 : Colors.white70,
                                         fontSize: 12,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
                                   ),
-                                  title: Text(s.name, style: const TextStyle(color: Colors.white)),
-                                  trailing: const Icon(Icons.drag_handle_rounded, color: Colors.white38),
+                                  title: Text(
+                                    s.name,
+                                    style: TextStyle(
+                                      color: isHidden ? Colors.white38 : Colors.white,
+                                      decoration: isHidden ? TextDecoration.lineThrough : null,
+                                    ),
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: Icon(
+                                          isHidden ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                          color: isHidden ? Colors.white38 : AppColors.accent,
+                                          size: 20,
+                                        ),
+                                        onPressed: () async {
+                                          setSheetState(() {
+                                            if (isHidden) {
+                                              disabledSet.remove(s.id);
+                                            } else {
+                                              disabledSet.add(s.id);
+                                            }
+                                          });
+                                          if (isTpdb) {
+                                            await _prefs.setTpdbDisabledProviders(disabledSet);
+                                          } else {
+                                            await _prefs.setTmdbDisabledProviders(disabledSet);
+                                          }
+                                          if (mounted) setState(() {});
+                                        },
+                                      ),
+                                      const Icon(Icons.drag_handle_rounded, color: Colors.white38),
+                                    ],
+                                  ),
                                 );
                               },
                             ),
@@ -871,14 +893,6 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 title: 'Primary TPDB source',
                 subtitle: _sourceNameFor(_prefs.tpdbPrimaryProvider),
                 onTap: _pickTpdbPrimarySource,
-              ),
-              SettingsTile(
-                icon: Icons.photo_camera_back_outlined,
-                title: 'TPDB performer photo source',
-                subtitle: _prefs.tpdbModelPhotoSource == 'pornpics'
-                    ? 'PornPics (pornpics.de)'
-                    : 'Default (ThePornDB)',
-                onTap: _pickTpdbModelPhotoSource,
               ),
               SettingsTile(
                 icon: Icons.sort_rounded,
