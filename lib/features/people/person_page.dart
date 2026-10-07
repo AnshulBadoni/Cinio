@@ -62,9 +62,9 @@ class PersonPage extends StatefulWidget {
 
 class _PersonPageState extends State<PersonPage> {
   final ScrollController _scrollController = ScrollController();
-  final ValueNotifier<double> _scrollOffset = ValueNotifier<double>(0.0);
-  late final PageController _pageController;
-  int _currentPhotoIndex = 0;
+  final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0.0);
+  bool _showAppBarTitle = false;
+  String? _selectedPhotoUrl;
   PersonProfile? _profile;
   bool _loading = true;
   final List<PersonWork> _works = [];
@@ -79,7 +79,6 @@ class _PersonPageState extends State<PersonPage> {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
     _isFav = sl<FavoritePeopleStore>().isFavorite(widget.person);
     _scrollController.addListener(_onScroll);
     _loadProfile();
@@ -88,10 +87,9 @@ class _PersonPageState extends State<PersonPage> {
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _heroStretch.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _scrollOffset.dispose();
     super.dispose();
   }
 
@@ -195,7 +193,10 @@ class _PersonPageState extends State<PersonPage> {
 
   void _onScroll() {
     if (_scrollController.hasClients) {
-      _scrollOffset.value = _scrollController.offset;
+      final shouldShow = _scrollController.offset > 420;
+      if (shouldShow != _showAppBarTitle) {
+        setState(() => _showAppBarTitle = shouldShow);
+      }
       final maxScroll = _scrollController.position.maxScrollExtent;
       final currentScroll = _scrollController.position.pixels;
       if (currentScroll >= maxScroll - 300) {
@@ -515,6 +516,7 @@ class _PersonPageState extends State<PersonPage> {
         photoList.add(fallback);
       }
     }
+    final activePhotoUrl = _selectedPhotoUrl ?? (photoList.isNotEmpty ? photoList.first : null);
 
     final totalCount = _works.length;
     final metaText = _loading
@@ -525,324 +527,294 @@ class _PersonPageState extends State<PersonPage> {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: Stack(
-        children: [
-          // ── 1. Unified Scroll View with Stretchable Header ─────────────────
-          CustomScrollView(
-            controller: _scrollController,
-            physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
-            slivers: [
-              // Full-bleed stretchable hero carousel header:
-              _buildSliverHeader(photoList, effectiveHeroTag, metaText),
-
-              // Body: loading skeleton or loaded filmography
-              if (_loading) ...[
-                SliverToBoxAdapter(child: _buildSkeletonLoader()),
-              ] else if (p == null && _works.isEmpty) ...[
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: EmptyState(
-                    icon: Icons.person_off_outlined,
-                    message: 'Couldn’t load this profile',
-                  ),
-                ),
-              ] else ...[
-                ..._buildContentSlivers(
-                  p ?? PersonProfile(name: widget.person.name, works: _works),
-                  isTpdb,
-                ),
-              ],
-
-              // Bottom padding
-              const SliverToBoxAdapter(child: SizedBox(height: 48)),
-            ],
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification.metrics.axis == Axis.vertical) {
+            if (notification.metrics.pixels < 0) {
+              _heroStretch.value = (-notification.metrics.pixels).clamp(0.0, 320.0);
+            } else if (_heroStretch.value > 0) {
+              _heroStretch.value = 0.0;
+            }
+          }
+          return false;
+        },
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
           ),
+          slivers: [
+            // Pinned SliverAppBar matching detail_screen.dart
+            _buildSliverHeader(activePhotoUrl, effectiveHeroTag, metaText),
 
-          // ── 2. Sticky Floating Back Button & Animated Title ───────────────
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.black.withValues(alpha: 0.55),
-                    ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 21),
-                      onPressed: () => Navigator.of(context).maybePop(),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: ValueListenableBuilder<double>(
-                      valueListenable: _scrollOffset,
-                      builder: (context, offset, _) {
-                        final titleOpacity = ((offset - 300) / 80).clamp(0.0, 1.0);
-                        return IgnorePointer(
-                          child: Opacity(
-                            opacity: titleOpacity,
-                            child: Text(
-                              widget.person.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontFamily: 'Circular',
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+            // Body: loading skeleton or loaded filmography
+            if (_loading) ...[
+              SliverToBoxAdapter(child: _buildSkeletonLoader()),
+            ] else if (p == null && _works.isEmpty) ...[
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: EmptyState(
+                  icon: Icons.person_off_outlined,
+                  message: 'Couldn’t load this profile',
+                ),
               ),
-            ),
-          ),
-        ],
+            ] else ...[
+              ..._buildContentSlivers(
+                p ?? PersonProfile(name: widget.person.name, works: _works),
+                isTpdb,
+                photoList,
+                activePhotoUrl,
+              ),
+            ],
+
+            // Bottom padding
+            const SliverToBoxAdapter(child: SizedBox(height: 48)),
+          ],
+        ),
       ),
     );
   }
 
-  // ── Hero Stretch Header (PageView Carousel + Gradient + Buttons) ───────────
+  // ── Hero Stretch Header (Pinned App Bar + Backdrop + Clean Buttons) ────────
 
   Widget _buildSliverHeader(
-    List<String> photos,
+    String? photoUrl,
     String effectiveHeroTag,
     String metaText,
   ) {
     return SliverAppBar(
-      pinned: false,
+      pinned: true,
       floating: false,
       snap: false,
       stretch: true,
       expandedHeight: 490,
-      toolbarHeight: 0,
-      backgroundColor: AppColors.bg,
-      automaticallyImplyLeading: false,
+      backgroundColor: _showAppBarTitle ? AppColors.bg : Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.black54,
+      elevation: _showAppBarTitle ? 3 : 0,
+      stretchTriggerOffset: 80,
+      clipBehavior: Clip.none,
+      leadingWidth: 68,
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
+        child: Center(
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _showAppBarTitle
+                  ? Colors.transparent
+                  : Colors.black.withValues(alpha: 0.55),
+            ),
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 21),
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+          ),
+        ),
+      ),
+      title: AnimatedOpacity(
+        opacity: _showAppBarTitle ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 220),
+        child: Text(
+          widget.person.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontFamily: 'Circular',
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ),
+      centerTitle: true,
       flexibleSpace: FlexibleSpaceBar(
-        stretchModes: const [
-          StretchMode.zoomBackground,
-        ],
         collapseMode: CollapseMode.none,
-        background: ValueListenableBuilder<double>(
-          valueListenable: _scrollOffset,
-          builder: (context, offset, _) {
-            final fadeOpacity = offset > 0
-                ? (1.0 - (offset / 340.0)).clamp(0.0, 1.0)
-                : 1.0;
-
-            return Opacity(
-              opacity: fadeOpacity,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // 1. Photos Carousel / Single Photo / Fallback
-                  if (photos.isEmpty)
-                    Container(
-                      color: AppColors.surface2,
-                      child: const Center(
-                        child: Icon(Icons.person, size: 80, color: Colors.white24),
-                      ),
-                    )
-                  else if (photos.length == 1)
-                    Hero(
-                      tag: effectiveHeroTag,
-                      flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
-                        return Material(
-                          color: Colors.transparent,
-                          child: toHeroContext.widget,
-                        );
-                      },
-                      child: CachedNetworkImage(
-                        imageUrl: photos.first,
-                        fit: BoxFit.cover,
-                        alignment: const Alignment(0, -0.2),
-                        memCacheWidth: 1080,
-                        placeholder: (_, _) => Container(color: AppColors.surface2),
-                        errorWidget: (_, _, _) => Container(color: AppColors.surface2),
-                      ),
-                    )
-                  else
-                    PageView.builder(
-                      controller: _pageController,
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: photos.length,
-                      onPageChanged: (i) {
-                        if (mounted) setState(() => _currentPhotoIndex = i);
-                      },
-                      itemBuilder: (context, i) {
-                        final img = CachedNetworkImage(
-                          imageUrl: photos[i],
-                          fit: BoxFit.cover,
-                          alignment: const Alignment(0, -0.2),
-                          memCacheWidth: 1080,
-                          placeholder: (_, _) => Container(color: AppColors.surface2),
-                          errorWidget: (_, _, _) => Container(color: AppColors.surface2),
-                        );
-                        if (i == 0) {
-                          return Hero(
-                            tag: effectiveHeroTag,
-                            flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
-                              return Material(
-                                color: Colors.transparent,
-                                child: toHeroContext.widget,
-                              );
-                            },
-                            child: img,
-                          );
-                        }
-                        return img;
-                      },
+        background: Stack(
+          fit: StackFit.expand,
+          clipBehavior: Clip.none,
+          children: [
+            // 1. Scaled backdrop on overscroll stretch
+            Positioned.fill(
+              child: ValueListenableBuilder<double>(
+                valueListenable: _heroStretch,
+                builder: (context, overscroll, child) {
+                  final scale = 1.0 + (overscroll / 450.0).clamp(0.0, 0.50);
+                  return ClipRect(
+                    child: Transform.scale(
+                      alignment: Alignment.topCenter,
+                      scale: scale,
+                      child: child,
                     ),
+                  );
+                },
+                child: _buildCoverBackdrop(effectiveHeroTag, photoUrl),
+              ),
+            ),
 
-                  // 2. Cinematic Multi-stop Dark Gradient Overlay ending in solid AppColors.bg
-                  const IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Color(0x73000000), // Colors.black.withValues(alpha: 0.45)
-                            Colors.transparent,
-                            Colors.transparent,
-                            Color(0x590E0F12), // AppColors.bg.withValues(alpha: 0.35)
-                            Color(0xD90E0F12), // AppColors.bg.withValues(alpha: 0.85)
-                            Color(0xFF0E0F12), // AppColors.bg
-                          ],
-                          stops: [0.0, 0.16, 0.40, 0.65, 0.85, 1.0],
-                        ),
+            // 2. Bottom Content (Title, Meta, 3 Action Buttons)
+            Positioned(
+              left: 20,
+              right: 20,
+              bottom: 14,
+              child: AnimatedOpacity(
+                opacity: _showAppBarTitle ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 180),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      widget.person.name,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Circular',
+                        fontSize: 34,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: -0.6,
+                        height: 1.1,
                       ),
                     ),
-                  ),
-
-                  // 3. Counter Badge (e.g. "1 / 48") at Top-Right
-                  if (photos.length > 1)
-                    Positioned(
-                      top: MediaQuery.of(context).padding.top + 14,
-                      right: 16,
-                      child: IgnorePointer(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.6),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.15),
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Text(
-                            '${_currentPhotoIndex + 1} / ${photos.length}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                        ),
+                    const SizedBox(height: 6),
+                    Text(
+                      metaText,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.75),
+                        letterSpacing: 0.2,
                       ),
                     ),
+                    const SizedBox(height: 18),
 
-                  // 4. Header Content (Actor Name, Subtitle & 3 Action Buttons)
-                  Positioned(
-                    left: 20,
-                    right: 20,
-                    bottom: 14,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                    // The 3 Action Buttons Trio (Shuffle / Play / Favorite)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          widget.person.name,
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: 'Circular',
-                            fontSize: 34,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: -0.6,
-                            height: 1.1,
-                            shadows: [
-                              Shadow(color: Colors.black, blurRadius: 18),
-                              Shadow(color: Colors.black87, blurRadius: 6),
-                            ],
-                          ),
+                        // 1. Play Random Button
+                        _buildActionButton(
+                          icon: Icons.shuffle_rounded,
+                          size: 50,
+                          iconSize: 22,
+                          background: Colors.white.withValues(alpha: 0.14),
+                          iconColor: Colors.white,
+                          onTap: _playRandom,
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          metaText,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withValues(alpha: 0.75),
-                            letterSpacing: 0.2,
-                          ),
+                        const SizedBox(width: 22),
+
+                        // 2. Play Trailer (Clean Center Circle)
+                        _buildActionButton(
+                          icon: Icons.play_arrow_rounded,
+                          size: 66,
+                          iconSize: 40,
+                          background: Colors.white,
+                          iconColor: Colors.black,
+                          onTap: _playTrailer,
                         ),
-                        const SizedBox(height: 18),
+                        const SizedBox(width: 22),
 
-                        // The 3 Action Buttons Trio (Shuffle / Play / Favorite)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // 1. Play Random Button
-                            _buildActionButton(
-                              icon: Icons.shuffle_rounded,
-                              size: 50,
-                              iconSize: 22,
-                              background: Colors.white.withValues(alpha: 0.14),
-                              iconColor: Colors.white,
-                              onTap: _playRandom,
-                            ),
-                            const SizedBox(width: 22),
-
-                            // 2. Play Trailer (Clean Center Circle - No glow)
-                            _buildActionButton(
-                              icon: Icons.play_arrow_rounded,
-                              size: 66,
-                              iconSize: 40,
-                              background: Colors.white,
-                              iconColor: Colors.black,
-                              onTap: _playTrailer,
-                            ),
-                            const SizedBox(width: 22),
-
-                            // 3. Add to Favorite Actors Button
-                            _buildActionButton(
-                              icon: _isFav
-                                  ? Icons.favorite_rounded
-                                  : Icons.favorite_border_rounded,
-                              size: 50,
-                              iconSize: 22,
-                              background: Colors.white.withValues(alpha: 0.14),
-                              iconColor: _isFav ? const Color(0xFFFF2D55) : Colors.white,
-                              onTap: _toggleFavorite,
-                            ),
-                          ],
+                        // 3. Add to Favorite Actors Button
+                        _buildActionButton(
+                          icon: _isFav
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          size: 50,
+                          iconSize: 22,
+                          background: Colors.white.withValues(alpha: 0.14),
+                          iconColor: _isFav ? const Color(0xFFFF2D55) : Colors.white,
+                          onTap: _toggleFavorite,
                         ),
                       ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildCoverBackdrop(String heroTag, String? photoUrl) {
+    Widget image;
+    if (photoUrl == null || photoUrl.isEmpty) {
+      image = Container(
+        color: AppColors.surface2,
+        child: const Center(
+          child: Icon(Icons.person, size: 80, color: Colors.white24),
+        ),
+      );
+    } else {
+      image = CachedNetworkImage(
+        imageUrl: photoUrl,
+        fit: BoxFit.cover,
+        alignment: const Alignment(0, -0.2),
+        memCacheWidth: 1080,
+        placeholder: (_, _) => Container(color: AppColors.surface2),
+        errorWidget: (_, _, _) => Container(color: AppColors.surface2),
+      );
+    }
+
+    final imageWidget = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      layoutBuilder: (currentChild, previousChildren) => Stack(
+        fit: StackFit.expand,
+        children: [
+          ...previousChildren,
+          ?currentChild,
+        ],
+      ),
+      child: KeyedSubtree(
+        key: ValueKey(photoUrl ?? 'none'),
+        child: SizedBox.expand(child: image),
+      ),
+    );
+
+    final backdrop = Stack(
+      fit: StackFit.expand,
+      children: [
+        imageWidget,
+        IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.transparent,
+                  AppColors.bg.withValues(alpha: 0.25),
+                  AppColors.bg.withValues(alpha: 0.70),
+                  AppColors.bg,
+                  AppColors.bg,
+                ],
+                stops: const [0.0, 0.42, 0.64, 0.80, 0.92, 1.0],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    return Hero(
+      tag: heroTag,
+      flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+        return Material(
+          color: Colors.transparent,
+          child: toHeroContext.widget,
+        );
+      },
+      child: backdrop,
     );
   }
 
@@ -883,7 +855,12 @@ class _PersonPageState extends State<PersonPage> {
 
   // ── Content Slivers ────────────────────────────────────────────────────────
 
-  List<Widget> _buildContentSlivers(PersonProfile p, bool isTpdb) {
+  List<Widget> _buildContentSlivers(
+    PersonProfile p,
+    bool isTpdb,
+    List<String> photos,
+    String? activePhotoUrl,
+  ) {
     // Categorized filmography rows
     final popularWorks = List<PersonWork>.from(_works)
       ..sort((a, b) =>
@@ -941,7 +918,19 @@ class _PersonPageState extends State<PersonPage> {
         ),
       ],
 
-      // 4. "Movies" Row
+      // 4. "Photos" Carousel (when actor has multiple photos)
+      if (photos.length > 1) ...[
+        SliverToBoxAdapter(
+          child: _buildSectionHeader(
+            'Photos (${photos.length})',
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: _buildHorizontalPhotos(photos, activePhotoUrl),
+        ),
+      ],
+
+      // 5. "Movies" Row
       if (movieWorks.isNotEmpty && movieWorks.length != popularWorks.length) ...[
         SliverToBoxAdapter(
           child: _buildSectionHeader(
@@ -952,7 +941,7 @@ class _PersonPageState extends State<PersonPage> {
         SliverToBoxAdapter(child: _buildHorizontalPosters(movieWorks)),
       ],
 
-      // 5. "Series" Row (if actor has TV credits)
+      // 6. "Series" Row (if actor has TV credits)
       if (seriesWorks.isNotEmpty) ...[
         SliverToBoxAdapter(
           child: _buildSectionHeader(
@@ -963,7 +952,7 @@ class _PersonPageState extends State<PersonPage> {
         SliverToBoxAdapter(child: _buildHorizontalPosters(seriesWorks)),
       ],
 
-      // 6. "Related Actors" (Circular Avatars - Large)
+      // 7. "Related Actors" (Circular Avatars - Large)
       if (p.related.isNotEmpty) ...[
         SliverToBoxAdapter(
           child: _buildSectionHeader(
@@ -1015,6 +1004,84 @@ class _PersonPageState extends State<PersonPage> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  // ── Photos Horizontal Carousel ─────────────────────────────────────────────
+
+  Widget _buildHorizontalPhotos(List<String> photos, String? activePhoto) {
+    return SizedBox(
+      height: 165,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: photos.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (context, idx) {
+          final photo = photos[idx];
+          final isSelected = photo == activePhoto;
+          return GestureDetector(
+            onTap: () {
+              if (_selectedPhotoUrl != photo) {
+                setState(() => _selectedPhotoUrl = photo);
+              }
+            },
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 110,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected
+                      ? AppColors.accent
+                      : Colors.white.withValues(alpha: 0.12),
+                  width: isSelected ? 2.5 : 1.0,
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: AppColors.accent.withValues(alpha: 0.4),
+                          blurRadius: 10,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(isSelected ? 9.5 : 11),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CachedNetworkImage(
+                      imageUrl: photo,
+                      fit: BoxFit.cover,
+                      alignment: const Alignment(0, -0.2),
+                      memCacheWidth: 360,
+                      placeholder: (_, _) => Container(color: AppColors.surface2),
+                      errorWidget: (_, _, _) => Container(color: AppColors.surface2),
+                    ),
+                    if (isSelected)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.check, size: 12, color: Colors.white),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
