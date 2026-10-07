@@ -5,6 +5,7 @@ import '../../core/models/media_item.dart';
 import '../../core/models/watch_status.dart';
 import '../../core/playback/list_status_store.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -64,6 +65,20 @@ class _ProviderVideosScreenState extends State<ProviderVideosScreen> {
         _searchedSources.add(it.sourceId);
       }
     }
+    _sortItems();
+  }
+
+  void _sortItems() {
+    final prefs = sl<PlaybackPrefs>();
+    final priority = widget.isTpdb ? prefs.tpdbProviderOrder : prefs.tmdbProviderOrder;
+    if (priority.isEmpty) return;
+    _allItems.sort((a, b) {
+      final aIdx = priority.indexOf(a.sourceId);
+      final bIdx = priority.indexOf(b.sourceId);
+      final aRank = aIdx != -1 ? aIdx : 9999;
+      final bRank = bIdx != -1 ? bIdx : 9999;
+      return aRank.compareTo(bRank);
+    });
   }
 
   List<({String id, String name})> get _candidateSources {
@@ -115,6 +130,7 @@ class _ProviderVideosScreenState extends State<ProviderVideosScreen> {
             _allItems.add(r);
           }
         }
+        _sortItems();
         _searchingMore = false;
       });
       if (results.isEmpty) {
@@ -138,7 +154,18 @@ class _ProviderVideosScreenState extends State<ProviderVideosScreen> {
   }
 
   Future<void> _showManageProvidersSheet() async {
-    final candidateList = _candidateSources;
+    final candidateList = List<({String id, String name})>.from(_candidateSources);
+    final prefs = sl<PlaybackPrefs>();
+    final currentPriority = widget.isTpdb ? prefs.tpdbProviderOrder : prefs.tmdbProviderOrder;
+    candidateList.sort((a, b) {
+      final aIdx = currentPriority.indexOf(a.id);
+      final bIdx = currentPriority.indexOf(b.id);
+      final aRank = aIdx != -1 ? aIdx : 9999;
+      final bRank = bIdx != -1 ? bIdx : 9999;
+      return aRank.compareTo(bRank);
+    });
+
+    bool isReorderMode = false;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -173,21 +200,34 @@ class _ProviderVideosScreenState extends State<ProviderVideosScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Manage Providers',
+                          isReorderMode ? 'Reorder Provider Priority' : 'Manage Providers',
                           style: AppText.headline.copyWith(fontSize: 18),
                         ),
-                        if (_hiddenSources.isNotEmpty)
-                          TextButton(
-                            onPressed: () {
-                              setSheetState(() => _hiddenSources.clear());
-                              setState(() {});
-                            },
-                            child: Text('Show All', style: TextStyle(color: AppColors.accent)),
-                          ),
+                        Row(
+                          children: [
+                            TextButton(
+                              onPressed: () => setSheetState(() => isReorderMode = !isReorderMode),
+                              child: Text(
+                                isReorderMode ? 'Done' : 'Reorder',
+                                style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            if (!isReorderMode && _hiddenSources.isNotEmpty)
+                              TextButton(
+                                onPressed: () {
+                                  setSheetState(() => _hiddenSources.clear());
+                                  setState(() {});
+                                },
+                                child: Text('Show All', style: TextStyle(color: AppColors.accent)),
+                              ),
+                          ],
+                        ),
                       ],
                     ),
                     Text(
-                      'Toggle sources to show/hide, or search more providers for "${widget.personName}"',
+                      isReorderMode
+                          ? 'Drag providers to change which sources appear first in the row.'
+                          : 'Toggle sources to show/hide, or search more providers for "${widget.personName}"',
                       style: TextStyle(
                         fontSize: 12.5,
                         color: Colors.white.withValues(alpha: 0.6),
@@ -198,11 +238,56 @@ class _ProviderVideosScreenState extends State<ProviderVideosScreen> {
                       constraints: BoxConstraints(
                         maxHeight: MediaQuery.sizeOf(context).height * 0.55,
                       ),
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: candidateList.length,
-                        separatorBuilder: (_, _) => const Divider(color: Colors.white10, height: 1),
-                        itemBuilder: (context, idx) {
+                      child: isReorderMode
+                          ? ReorderableListView.builder(
+                              shrinkWrap: true,
+                              itemCount: candidateList.length,
+                              onReorder: (oldIdx, newIdx) async {
+                                setSheetState(() {
+                                  if (newIdx > oldIdx) newIdx--;
+                                  final item = candidateList.removeAt(oldIdx);
+                                  candidateList.insert(newIdx, item);
+                                });
+                                final newOrder = candidateList.map((e) => e.id).toList();
+                                if (widget.isTpdb) {
+                                  await prefs.setTpdbProviderOrder(newOrder);
+                                } else {
+                                  await prefs.setTmdbProviderOrder(newOrder);
+                                }
+                                setState(() => _sortItems());
+                              },
+                              itemBuilder: (context, idx) {
+                                final s = candidateList[idx];
+                                return ListTile(
+                                  key: ValueKey(s.id),
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.08),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '${idx + 1}',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  title: Text(s.name, style: const TextStyle(color: Colors.white)),
+                                  trailing: const Icon(Icons.drag_handle_rounded, color: Colors.white38),
+                                );
+                              },
+                            )
+                          : ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: candidateList.length,
+                              separatorBuilder: (_, _) => const Divider(color: Colors.white10, height: 1),
+                              itemBuilder: (context, idx) {
                           final src = candidateList[idx];
                           final hasSearched = _searchedSources.contains(src.id);
                           final isHidden = _hiddenSources.contains(src.id);

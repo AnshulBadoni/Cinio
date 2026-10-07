@@ -132,6 +132,24 @@ class PlaybackPrefs {
   Future<void> setTpdbPrimaryProvider(String value) =>
       _box.put('tpdbPrimaryProvider', value);
 
+  /// Model photo source for TPDB performers: 'default' (ThePornDB) or 'pornpics' (pornpics.de).
+  String get tpdbModelPhotoSource =>
+      _box.get('tpdbModelPhotoSource', defaultValue: 'default') as String;
+  Future<void> setTpdbModelPhotoSource(String value) =>
+      _box.put('tpdbModelPhotoSource', value);
+
+  /// User-defined priority order of provider source IDs for TMDB actors.
+  List<String> get tmdbProviderOrder =>
+      List<String>.from((_box.get('tmdbProviderOrder') as List?)?.cast<String>() ?? const []);
+  Future<void> setTmdbProviderOrder(List<String> value) =>
+      _box.put('tmdbProviderOrder', value);
+
+  /// User-defined priority order of provider source IDs for TPDB performers.
+  List<String> get tpdbProviderOrder =>
+      List<String>.from((_box.get('tpdbProviderOrder') as List?)?.cast<String>() ?? const []);
+  Future<void> setTpdbProviderOrder(List<String> value) =>
+      _box.put('tpdbProviderOrder', value);
+
   /// Default playback speed multiplier.
   double get defaultSpeed =>
       (_box.get('defaultSpeed', defaultValue: 1.0) as num).toDouble();

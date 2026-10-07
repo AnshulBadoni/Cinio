@@ -53,6 +53,7 @@ import '../theme/theme_controller.dart';
 import '../metadata/episode_metadata_service.dart';
 import '../metadata/metadata_enrichment.dart';
 import '../metadata/people_service.dart';
+import '../metadata/pornpics_service.dart';
 import '../metadata/tmdb.dart';
 import '../metadata/theporndb.dart';
 import '../metadata/title_logo_service.dart';
@@ -406,6 +407,7 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ImdbRatingService>(ImdbRatingService(dio));
   sl.registerSingleton<TmdbDiscoverService>(TmdbDiscoverService(dio));
   sl.registerSingleton<ThePornDb>(ThePornDb(dio));
+  sl.registerLazySingleton<PornPicsService>(() => PornPicsService());
 
   // Accurate OP/ED skip times for anime (AniList → MAL id → AniSkip).
   sl.registerSingleton<SkipService>(SkipService(dio));

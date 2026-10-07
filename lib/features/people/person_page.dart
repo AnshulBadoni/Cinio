@@ -12,6 +12,7 @@ import '../../core/models/provider_info.dart';
 import '../../core/models/watch_status.dart';
 import '../../core/playback/list_status_store.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/trailer/trailer_service.dart';
@@ -23,9 +24,9 @@ import '../home/see_all_screen.dart';
 import '../trailer/trailer_screen.dart';
 import 'provider_videos_screen.dart';
 
-/// Redesigned Actor Profile Page with cinematic hero header,
-/// quick action trio (Shuffle / Trailer / Favorite), and organized
-/// carousels (Popular, Latest, Movies, Series, Provider Videos, Related, Bio).
+/// Redesigned Actor Profile Page with natural-scrolling cinematic hero header,
+/// sticky floating back button, smooth parallax fade out, quick action trio,
+/// and organized carousels (Popular, Latest, Movies, Series, Provider Videos, Related, Bio).
 class PersonPage extends StatefulWidget {
   const PersonPage({
     super.key,
@@ -61,6 +62,7 @@ class PersonPage extends StatefulWidget {
 
 class _PersonPageState extends State<PersonPage> {
   final ScrollController _scrollController = ScrollController();
+  final ValueNotifier<double> _scrollOffset = ValueNotifier<double>(0.0);
   PersonProfile? _profile;
   bool _loading = true;
   final List<PersonWork> _works = [];
@@ -85,6 +87,7 @@ class _PersonPageState extends State<PersonPage> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _scrollOffset.dispose();
     super.dispose();
   }
 
@@ -101,7 +104,42 @@ class _PersonPageState extends State<PersonPage> {
                 widget.person.source == PersonSource.thePornDbStudio ||
                 widget.person.source == PersonSource.tmdb);
       }
+      if (_providerResults.isNotEmpty) {
+        final isTpdb = widget.person.source == PersonSource.thePornDbPerformer ||
+            widget.person.source == PersonSource.thePornDbStudio;
+        final reSorted = _sortProviderResults(_providerResults, isTpdb);
+        _providerResults
+          ..clear()
+          ..addAll(reSorted);
+      }
     });
+  }
+
+  List<MediaItem> _sortProviderResults(List<MediaItem> items, bool isTpdb) {
+    final prefs = sl<PlaybackPrefs>();
+    final priorityList = isTpdb ? prefs.tpdbProviderOrder : prefs.tmdbProviderOrder;
+    final knownTitles = {for (final w in _works) normalizeTitle(w.title)};
+
+    final sorted = List<MediaItem>.from(items);
+    sorted.sort((a, b) {
+      // 1. Filmography match bonus (real movie/scene matches come first!)
+      final aMatches = knownTitles.contains(normalizeTitle(a.title));
+      final bMatches = knownTitles.contains(normalizeTitle(b.title));
+      if (aMatches && !bMatches) return -1;
+      if (!aMatches && bMatches) return 1;
+
+      // 2. User-configured provider priority order
+      if (priorityList.isNotEmpty) {
+        final aIdx = priorityList.indexOf(a.sourceId);
+        final bIdx = priorityList.indexOf(b.sourceId);
+        final aRank = aIdx != -1 ? aIdx : 9999;
+        final bRank = bIdx != -1 ? bIdx : 9999;
+        if (aRank != bRank) return aRank.compareTo(bRank);
+      }
+
+      return 0;
+    });
+    return sorted;
   }
 
   Future<void> _loadProviderVideos() async {
@@ -136,10 +174,11 @@ class _PersonPageState extends State<PersonPage> {
         }
       }
       if (!mounted) return;
+      final sorted = _sortProviderResults(results, isTpdb);
       setState(() {
         _providerResults
           ..clear()
-          ..addAll(results);
+          ..addAll(sorted);
         _loadingProviders = false;
       });
     } catch (_) {
@@ -148,11 +187,13 @@ class _PersonPageState extends State<PersonPage> {
   }
 
   void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.position.pixels;
-    if (currentScroll >= maxScroll - 300) {
-      _loadMore();
+    if (_scrollController.hasClients) {
+      _scrollOffset.value = _scrollController.offset;
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final currentScroll = _scrollController.position.pixels;
+      if (currentScroll >= maxScroll - 300) {
+        _loadMore();
+      }
     }
   }
 
@@ -453,43 +494,97 @@ class _PersonPageState extends State<PersonPage> {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: CustomScrollView(
-        controller: _scrollController,
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
-        slivers: [
-          // 1. Pinned & Stretching SliverAppBar mounted from Frame 1
-          _buildSliverAppBar(p, isTpdb),
+      body: Stack(
+        children: [
+          // ── 1. Unified Scroll View with Natural Scroll ───────────────────
+          CustomScrollView(
+            controller: _scrollController,
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            slivers: [
+              // Natural hero header that scrolls off-screen with content:
+              SliverToBoxAdapter(
+                child: _buildNaturalHeroHeader(p, isTpdb),
+              ),
 
-          // 2. Body: loading skeleton or loaded filmography
-          if (_loading) ...[
-            SliverToBoxAdapter(child: _buildSkeletonLoader()),
-          ] else if (p == null && _works.isEmpty) ...[
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: EmptyState(
-                icon: Icons.person_off_outlined,
-                message: 'Couldn’t load this profile',
+              // Body: loading skeleton or loaded filmography
+              if (_loading) ...[
+                SliverToBoxAdapter(child: _buildSkeletonLoader()),
+              ] else if (p == null && _works.isEmpty) ...[
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: EmptyState(
+                    icon: Icons.person_off_outlined,
+                    message: 'Couldn’t load this profile',
+                  ),
+                ),
+              ] else ...[
+                ..._buildContentSlivers(
+                  p ?? PersonProfile(name: widget.person.name, works: _works),
+                  isTpdb,
+                ),
+              ],
+
+              // Bottom padding
+              const SliverToBoxAdapter(child: SizedBox(height: 48)),
+            ],
+          ),
+
+          // ── 2. Sticky Floating Back Button & Animated Title ─────────────
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black.withValues(alpha: 0.55),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 21),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _scrollOffset,
+                      builder: (context, offset, _) {
+                        final titleOpacity = ((offset - 300) / 80).clamp(0.0, 1.0);
+                        return Opacity(
+                          opacity: titleOpacity,
+                          child: Text(
+                            widget.person.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: 'Circular',
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
-          ] else ...[
-            ..._buildContentSlivers(
-              p ?? PersonProfile(name: widget.person.name, works: _works),
-              isTpdb,
-            ),
-          ],
-
-          // Bottom padding
-          const SliverToBoxAdapter(child: SizedBox(height: 48)),
+          ),
         ],
       ),
     );
   }
 
-  // ── Pinned & Stretching SliverAppBar ───────────────────────────────────────
+  // ── Natural Hero Header (Parallax Fade + Stretch Zoom) ──────────────────────
 
-  Widget _buildSliverAppBar(PersonProfile? p, bool isTpdb) {
+  Widget _buildNaturalHeroHeader(PersonProfile? p, bool isTpdb) {
     final photo = p?.photo ?? widget.person.photo;
     final totalCount = _works.length;
     final metaText = _loading
@@ -498,169 +593,174 @@ class _PersonPageState extends State<PersonPage> {
     final effectiveHeroTag = widget.heroTag ??
         'person-avatar:${widget.person.source.name}:${widget.person.externalId ?? widget.person.id}';
 
-    return SliverAppBar(
-      expandedHeight: 490,
-      pinned: true,
-      stretch: true,
-      backgroundColor: AppColors.bg,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      clipBehavior: Clip.none,
-      leadingWidth: 68,
-      leading: Padding(
-        padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
-        child: Center(
-          child: Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.black.withValues(alpha: 0.55),
-            ),
-            child: IconButton(
-              padding: EdgeInsets.zero,
-              icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white, size: 21),
-              onPressed: () => Navigator.of(context).maybePop(),
-            ),
-          ),
-        ),
-      ),
-      actions: const [],
-      flexibleSpace: FlexibleSpaceBar(
-        stretchModes: const [StretchMode.zoomBackground],
-        background: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Background portrait with downward dark gradient blend
-            Hero(
-              tag: effectiveHeroTag,
-              createRectTween: (begin, end) =>
-                  MaterialRectArcTween(begin: begin, end: end),
-              flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
-                return Material(
-                  color: Colors.transparent,
-                  child: toHeroContext.widget,
-                );
-              },
-              child: (photo != null && photo.isNotEmpty)
-                  ? CachedNetworkImage(
-                      imageUrl: photo,
-                      fit: BoxFit.cover,
-                      alignment: const Alignment(0, -0.2),
-                      placeholder: (_, _) => Container(color: AppColors.surface2),
-                      errorWidget: (_, _, _) => Container(color: AppColors.surface2),
-                    )
-                  : Container(
-                      color: AppColors.surface2,
-                      child: const Center(
-                        child: Icon(Icons.person, size: 80, color: Colors.white24),
+    return SizedBox(
+      height: 490,
+      width: double.infinity,
+      child: ValueListenableBuilder<double>(
+        valueListenable: _scrollOffset,
+        builder: (context, offset, _) {
+          // Downward pull / overscroll (offset < 0): zoom and stretch without black gaps
+          final overscroll = offset < 0 ? -offset : 0.0;
+          final scale = 1.0 + (overscroll / 320.0).clamp(0.0, 0.65);
+
+          // Upward scroll (offset > 0): smooth parallax translation and gentle fade into dark bg
+          final parallaxY = offset > 0 ? (offset * 0.45).clamp(0.0, 180.0) : 0.0;
+          final fadeOpacity = offset > 0
+              ? (1.0 - (offset / 340.0)).clamp(0.0, 1.0)
+              : 1.0;
+
+          return Stack(
+            fit: StackFit.expand,
+            clipBehavior: Clip.none,
+            children: [
+              // 1. Background portrait image with parallax & zoom stretch
+              Positioned.fill(
+                child: Opacity(
+                  opacity: fadeOpacity,
+                  child: Transform.translate(
+                    offset: Offset(0, parallaxY),
+                    child: Transform.scale(
+                      alignment: Alignment.topCenter,
+                      scale: scale,
+                      child: Hero(
+                        tag: effectiveHeroTag,
+                        createRectTween: (begin, end) =>
+                            MaterialRectArcTween(begin: begin, end: end),
+                        flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+                          return Material(
+                            color: Colors.transparent,
+                            child: toHeroContext.widget,
+                          );
+                        },
+                        child: (photo != null && photo.isNotEmpty)
+                            ? CachedNetworkImage(
+                                imageUrl: photo,
+                                fit: BoxFit.cover,
+                                alignment: const Alignment(0, -0.2),
+                                placeholder: (_, _) => Container(color: AppColors.surface2),
+                                errorWidget: (_, _, _) => Container(color: AppColors.surface2),
+                              )
+                            : Container(
+                                color: AppColors.surface2,
+                                child: const Center(
+                                  child: Icon(Icons.person, size: 80, color: Colors.white24),
+                                ),
+                              ),
                       ),
                     ),
-            ),
-
-            // Multi-stop cinematic dark gradient overlay
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.50),
-                    Colors.transparent,
-                    Colors.transparent,
-                    AppColors.bg.withValues(alpha: 0.35),
-                    AppColors.bg.withValues(alpha: 0.85),
-                    AppColors.bg,
-                  ],
-                  stops: const [0.0, 0.18, 0.45, 0.70, 0.90, 1.0],
+                  ),
                 ),
               ),
-            ),
 
-            // Actor Name, Subtitle, and 3 Action Buttons positioned at bottom
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 14,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    widget.person.name,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'Circular',
-                      fontSize: 34,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      letterSpacing: -0.6,
-                      height: 1.1,
-                      shadows: [
-                        Shadow(color: Colors.black, blurRadius: 18),
-                        Shadow(color: Colors.black87, blurRadius: 6),
+              // 2. Cinematic Multi-stop Dark Gradient Overlay
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.45),
+                        Colors.transparent,
+                        Colors.transparent,
+                        AppColors.bg.withValues(alpha: 0.35),
+                        AppColors.bg.withValues(alpha: 0.85),
+                        AppColors.bg,
                       ],
+                      stops: const [0.0, 0.18, 0.42, 0.68, 0.88, 1.0],
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    metaText,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.75),
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
+                ),
+              ),
 
-                  // The 3 Action Buttons Trio (Shuffle / Play Trailer / Favorite)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+              // 3. Actor Name, Subtitle, and 3 Action Buttons positioned at bottom
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 14,
+                child: Opacity(
+                  opacity: fadeOpacity,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // 1. Play Random Button
-                      _buildActionButton(
-                        icon: Icons.shuffle_rounded,
-                        size: 50,
-                        iconSize: 22,
-                        background: Colors.white.withValues(alpha: 0.14),
-                        iconColor: Colors.white,
-                        onTap: _playRandom,
+                      Text(
+                        widget.person.name,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'Circular',
+                          fontSize: 34,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          letterSpacing: -0.6,
+                          height: 1.1,
+                          shadows: [
+                            Shadow(color: Colors.black, blurRadius: 18),
+                            Shadow(color: Colors.black87, blurRadius: 6),
+                          ],
+                        ),
                       ),
-                      const SizedBox(width: 22),
-
-                      // 2. Play Trailer (Clean Center Circle - No glow)
-                      _buildActionButton(
-                        icon: Icons.play_arrow_rounded,
-                        size: 66,
-                        iconSize: 40,
-                        background: Colors.white,
-                        iconColor: Colors.black,
-                        onTap: _playTrailer,
+                      const SizedBox(height: 6),
+                      Text(
+                        metaText,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.75),
+                          letterSpacing: 0.2,
+                        ),
                       ),
-                      const SizedBox(width: 22),
+                      const SizedBox(height: 18),
 
-                      // 3. Add to Favorite Actors Button
-                      _buildActionButton(
-                        icon: _isFav
-                            ? Icons.favorite_rounded
-                            : Icons.favorite_border_rounded,
-                        size: 50,
-                        iconSize: 22,
-                        background: Colors.white.withValues(alpha: 0.14),
-                        iconColor: _isFav ? const Color(0xFFFF2D55) : Colors.white,
-                        onTap: _toggleFavorite,
+                      // The 3 Action Buttons Trio (Shuffle / Play Trailer / Favorite)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // 1. Play Random Button
+                          _buildActionButton(
+                            icon: Icons.shuffle_rounded,
+                            size: 50,
+                            iconSize: 22,
+                            background: Colors.white.withValues(alpha: 0.14),
+                            iconColor: Colors.white,
+                            onTap: _playRandom,
+                          ),
+                          const SizedBox(width: 22),
+
+                          // 2. Play Trailer (Clean Center Circle - No glow)
+                          _buildActionButton(
+                            icon: Icons.play_arrow_rounded,
+                            size: 66,
+                            iconSize: 40,
+                            background: Colors.white,
+                            iconColor: Colors.black,
+                            onTap: _playTrailer,
+                          ),
+                          const SizedBox(width: 22),
+
+                          // 3. Add to Favorite Actors Button
+                          _buildActionButton(
+                            icon: _isFav
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            size: 50,
+                            iconSize: 22,
+                            background: Colors.white.withValues(alpha: 0.14),
+                            iconColor: _isFav ? const Color(0xFFFF2D55) : Colors.white,
+                            onTap: _toggleFavorite,
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          );
+        },
       ),
     );
   }

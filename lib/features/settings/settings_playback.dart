@@ -429,6 +429,142 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _pickTpdbModelPhotoSource() async {
+    final options = <(String, String)>[
+      ('default', 'Default (ThePornDB)'),
+      ('pornpics', 'PornPics (pornpics.de)'),
+    ];
+    final picked = await _pick<String>(
+      title: 'TPDB performer photo source',
+      options: options,
+      current: _prefs.tpdbModelPhotoSource,
+    );
+    if (picked == null) return;
+    await _prefs.setTpdbModelPhotoSource(picked);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickProviderOrder({required bool isTpdb}) async {
+    final repo = sl<SourceRepository>();
+    final allSources = isTpdb ? repo.adultSources : repo.loadedSources;
+    final currentOrder = isTpdb ? _prefs.tpdbProviderOrder : _prefs.tmdbProviderOrder;
+
+    final items = List<({String id, String name})>.from(allSources);
+    items.sort((a, b) {
+      final aIdx = currentOrder.indexOf(a.id);
+      final bIdx = currentOrder.indexOf(b.id);
+      final aRank = aIdx != -1 ? aIdx : 9999;
+      final bRank = bIdx != -1 ? bIdx : 9999;
+      return aRank.compareTo(bRank);
+    });
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      isTpdb ? 'TPDB Provider Order' : 'TMDB Provider Order',
+                      style: AppText.headline.copyWith(fontSize: 18),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Drag to set which streaming sources appear first in the "From Provider" row.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.sizeOf(context).height * 0.55,
+                      ),
+                      child: items.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child: Center(
+                                child: Text('No sources available', style: TextStyle(color: Colors.white54)),
+                              ),
+                            )
+                          : ReorderableListView.builder(
+                              shrinkWrap: true,
+                              itemCount: items.length,
+                              onReorder: (oldIndex, newIndex) async {
+                                setSheetState(() {
+                                  if (newIndex > oldIndex) newIndex--;
+                                  final item = items.removeAt(oldIndex);
+                                  items.insert(newIndex, item);
+                                });
+                                final newOrder = items.map((e) => e.id).toList();
+                                if (isTpdb) {
+                                  await _prefs.setTpdbProviderOrder(newOrder);
+                                } else {
+                                  await _prefs.setTmdbProviderOrder(newOrder);
+                                }
+                                if (mounted) setState(() {});
+                              },
+                              itemBuilder: (context, idx) {
+                                final s = items[idx];
+                                return ListTile(
+                                  key: ValueKey(s.id),
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.08),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '${idx + 1}',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  title: Text(s.name, style: const TextStyle(color: Colors.white)),
+                                  trailing: const Icon(Icons.drag_handle_rounded, color: Colors.white38),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _pickQuality() async {
     final picked = await _pick<String>(
       title: 'Default quality',
@@ -735,6 +871,26 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 title: 'Primary TPDB source',
                 subtitle: _sourceNameFor(_prefs.tpdbPrimaryProvider),
                 onTap: _pickTpdbPrimarySource,
+              ),
+              SettingsTile(
+                icon: Icons.photo_camera_back_outlined,
+                title: 'TPDB performer photo source',
+                subtitle: _prefs.tpdbModelPhotoSource == 'pornpics'
+                    ? 'PornPics (pornpics.de)'
+                    : 'Default (ThePornDB)',
+                onTap: _pickTpdbModelPhotoSource,
+              ),
+              SettingsTile(
+                icon: Icons.sort_rounded,
+                title: 'TMDB provider order',
+                subtitle: 'Manage provider priority for mainstream actors',
+                onTap: () => _pickProviderOrder(isTpdb: false),
+              ),
+              SettingsTile(
+                icon: Icons.sort_rounded,
+                title: 'TPDB provider order',
+                subtitle: 'Manage provider priority for adult performers',
+                onTap: () => _pickProviderOrder(isTpdb: true),
               ),
             ],
           ),

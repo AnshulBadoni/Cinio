@@ -1,6 +1,9 @@
 import 'package:dio/dio.dart';
 
+import '../di/injector.dart';
 import '../models/person.dart';
+import '../playback/playback_prefs.dart';
+import 'pornpics_service.dart';
 
 /// Loads person pages — anime characters + voice actors/staff from AniList,
 /// movie/TV people from TMDB. Read-only, best-effort: any miss/failure returns
@@ -191,17 +194,26 @@ class PeopleService {
       } catch (_) {}
 
       String? bestPhoto;
-      final posters = row['posters'] ?? row['images'] ?? row['backgrounds'];
-      if (posters is Map) {
-        for (final k in ['original', 'full', 'large', 'medium']) {
-          final v = posters[k]?.toString();
-          if (v != null && v.isNotEmpty) {
-            bestPhoto = v;
-            break;
+      final photoSource = sl<PlaybackPrefs>().tpdbModelPhotoSource;
+      if (photoSource == 'pornpics') {
+        try {
+          bestPhoto = await sl<PornPicsService>().fetchModelPhoto(name);
+        } catch (_) {}
+      }
+
+      if (bestPhoto == null || bestPhoto.isEmpty) {
+        final posters = row['posters'] ?? row['images'] ?? row['backgrounds'];
+        if (posters is Map) {
+          for (final k in ['original', 'full', 'large', 'medium']) {
+            final v = posters[k]?.toString();
+            if (v != null && v.isNotEmpty) {
+              bestPhoto = v;
+              break;
+            }
           }
         }
+        bestPhoto ??= (row['image'] ?? row['thumbnail'] ?? row['face'])?.toString();
       }
-      bestPhoto ??= (row['image'] ?? row['thumbnail'] ?? row['face'])?.toString();
 
       return PersonProfile(
         name: name,
