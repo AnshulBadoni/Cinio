@@ -33,6 +33,7 @@ import '../../core/ui/tracker_entry_sheet.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
+import '../people/favorite_actors_screen.dart';
 import '../settings/tracker_settings_screen.dart';
 import 'cubit/my_list_cubit.dart';
 import 'cubit/tracker_list_cubit.dart';
@@ -59,6 +60,24 @@ class MyListScreen extends StatelessWidget {
   }
 }
 
+class _LibraryTabDef {
+  final String key;
+  final String label;
+  final WatchStatus? status;
+  final String? categoryId;
+  final String? customList;
+  final VoidCallback? onLongPress;
+
+  const _LibraryTabDef({
+    required this.key,
+    required this.label,
+    this.status,
+    this.categoryId,
+    this.customList,
+    this.onLongPress,
+  });
+}
+
 class _MyListView extends StatefulWidget {
   const _MyListView();
 
@@ -67,35 +86,44 @@ class _MyListView extends StatefulWidget {
 }
 
 class _MyListViewState extends State<_MyListView> {
-  WatchStatus? _statusFilter; // null = All
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+  late final PageController _pageController;
+  final ScrollController _tabScrollController = ScrollController();
+  int _activeTabIndex = 0;
+  String? _desiredTabKey;
 
-  /// Selected AniList custom list, or null. Separate from [_categoryFilter]:
-  /// that one is ours and local, this one is AniList's own and lives on their
-  /// servers. They can never both be active — categories only exist on My
-  /// List, custom lists only on the AniList tab.
-  String? _customListFilter;
-
-  /// Selected user category, or null when a status tab is picked. The two are
-  /// mutually exclusive: the tab row holds both, and only one tab is active.
-  String? _categoryFilter;
-
-  /// Null when the store isn't registered. Widget tests build this screen with
-  /// a minimal DI set, and a library view is not worth an exception over an
-  /// optional feature — no store simply means no categories.
   CategoryStore? get _cats =>
       sl.isRegistered<CategoryStore>() ? sl<CategoryStore>() : null;
   ProviderType? _typeFilter; // null = All
 
-  /// Null until the user picks one — the default then depends on which list is
-  /// showing (your own keeps insertion order, a tracker leads with score), and
-  /// that can change under us when the source switcher moves.
   ListSort? _sort = ListSortPrefs.sortBy;
   bool _sortDesc = ListSortPrefs.descending;
 
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _activeTabIndex);
+    _searchCtrl.addListener(() {
+      final text = _searchCtrl.text;
+      if (text != _searchQuery) {
+        setState(() {
+          _searchQuery = text;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _pageController.dispose();
+    _tabScrollController.dispose();
+    super.dispose();
+  }
+
   ListSort _sortFor({required bool isMyList}) {
     final chosen = _sort;
-    // A saved sort that this list can't do (score on your own list, which has
-    // none) falls back rather than showing an empty-looking order.
     if (chosen != null && optionsFor(isMyList: isMyList).contains(chosen)) {
       return chosen;
     }
@@ -113,18 +141,20 @@ class _MyListViewState extends State<_MyListView> {
     if (sl<AppMode>().isTv) return const MyListScreenTv();
     return Scaffold(
       backgroundColor: AppColors.bg,
-      // bottom: false — the shell's floating dock overlays the content
-      // (extendBody); a full SafeArea would clip the grid at the dock's top
-      // edge, leaving a dead band on both sides of the capsule.
       body: SafeArea(
         bottom: false,
         child: BlocBuilder<TrackerListCubit, TrackerListState>(
           builder: (context, tlState) {
+            final hub = sl<TrackerHub>();
+            final connected =
+                hub.connectedForMode(sl<ContentModeCubit>().state).toList();
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _header(context),
-                _sourceSegmented(context, tlState),
+                _searchBar(context),
+                if (connected.isNotEmpty)
+                  _trackerChips(context, tlState, connected),
                 Expanded(
                   child: tlState.isMyList
                       ? _myListBody(context)
@@ -219,6 +249,12 @@ class _MyListViewState extends State<_MyListView> {
                             ),
                           ],
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      _pillIcon(
+                        Icons.favorite_rounded,
+                        'Actors',
+                        () => Navigator.of(context).push(FavoriteActorsScreen.route()),
                       ),
                       const SizedBox(width: 8),
                       _pillIcon(
@@ -378,7 +414,7 @@ class _MyListViewState extends State<_MyListView> {
       );
       return;
     }
-    setState(() => _categoryFilter = made.id); // land on the new tab
+    setState(() => _desiredTabKey = 'cat:${made.id}'); // land on the new tab
   }
 
   /// Rename or delete a category (long-press its tab). Deleting keeps every
@@ -426,8 +462,7 @@ class _MyListViewState extends State<_MyListView> {
       await sl<CategoryStore>().delete(c.id);
       if (!mounted) return;
       setState(() {
-        // Don't leave the tab row pointing at a category that's gone.
-        if (_categoryFilter == c.id) _categoryFilter = null;
+        _desiredTabKey = 'all';
       });
       return;
     }
@@ -663,115 +698,144 @@ class _MyListViewState extends State<_MyListView> {
     );
   }
 
-  // ── Source segmented control (sliding accent thumb) ────────────────────────
+  // ── Library search bar & optional tracker chips ────────────────────────────
 
-  Widget _sourceSegmented(BuildContext context, TrackerListState tlState) {
-    final cubit = context.read<TrackerListCubit>();
-    final hub = sl<TrackerHub>();
-    return AnimatedBuilder(
-      animation: Listenable.merge(hub.trackers),
-      builder: (context, _) {
-        final connected =
-            hub.connectedForMode(sl<ContentModeCubit>().state).toList();
-        final segments = <({
-          String label,
-          IconData? icon,
-          String? avatarUrl,
-          bool active,
-          VoidCallback onTap,
-        })>[
-          (
-            label: 'My List',
-            icon: Icons.bookmark_rounded,
-            avatarUrl: null,
-            active: tlState.isMyList,
-            onTap: cubit.selectMyList,
+  Widget _searchBar(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Container(
+        height: 44,
+        decoration: BoxDecoration(
+          color: AppColors.surface2,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.06),
+            width: 0.5,
           ),
-          for (final t in connected)
-            (
-              label: t.displayName == 'MyAnimeList' ? 'MAL' : t.displayName,
-              icon: null,
-              avatarUrl: t.viewerAvatar,
-              active: tlState.tracker == t,
-              onTap: () => cubit.selectTracker(t),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            Icon(
+              Icons.search_rounded,
+              size: 20,
+              color: _searchQuery.isNotEmpty
+                  ? AppColors.accent
+                  : AppColors.textTertiary,
             ),
-        ];
-        final n = segments.length;
-        final activeIndex = segments.indexWhere((s) => s.active).clamp(0, n - 1);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
-          child: LayoutBuilder(
-            builder: (context, c) {
-              final segW = (c.maxWidth - 8) / n; // container padding = 4 each side
-              return Container(
-                height: 46,
-                padding: const EdgeInsets.all(4),
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: AppColors.surface2,
-                  borderRadius: BorderRadius.circular(20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _searchCtrl,
+                style: AppText.body.copyWith(fontSize: 14),
+                cursorColor: AppColors.accent,
+                decoration: InputDecoration(
+                  hintText: 'Search library...',
+                  hintStyle: AppText.caption.copyWith(
+                    color: AppColors.textTertiary,
+                    fontSize: 14,
+                  ),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 260),
-                      curve: Curves.easeOutQuint,
-                      left: activeIndex * segW,
-                      top: 0,
-                      bottom: 0,
-                      width: segW,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.accent,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        for (final s in segments)
-                          Expanded(
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: s.onTap,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _segAvatar(
-                                    icon: s.icon,
-                                    avatarUrl: s.avatarUrl,
-                                    label: s.label,
-                                    active: s.active,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(
-                                      s.label,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: AppText.body.copyWith(
-                                        color: s.active
-                                            ? Colors.white
-                                            : AppColors.textSecondary,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13.5,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
+              ),
+            ),
+            if (_searchQuery.isNotEmpty)
+              GestureDetector(
+                onTap: () {
+                  _searchCtrl.clear();
+                  setState(() => _searchQuery = '');
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 14,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-              );
-            },
-          ),
-        );
-      },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _trackerChips(
+    BuildContext context,
+    TrackerListState tlState,
+    List<Tracker> connected,
+  ) {
+    final cubit = context.read<TrackerListCubit>();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _sourceChip(
+              label: 'My List',
+              icon: Icons.bookmark_rounded,
+              active: tlState.isMyList,
+              onTap: cubit.selectMyList,
+            ),
+            for (final t in connected) ...[
+              const SizedBox(width: 8),
+              _sourceChip(
+                label: t.displayName == 'MyAnimeList' ? 'MAL' : t.displayName,
+                avatarUrl: t.viewerAvatar,
+                active: tlState.tracker == t,
+                onTap: () => cubit.selectTracker(t),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sourceChip({
+    required String label,
+    IconData? icon,
+    String? avatarUrl,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: active ? AppColors.accent : AppColors.surface2,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _segAvatar(
+              icon: icon,
+              avatarUrl: avatarUrl,
+              label: label,
+              active: active,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: AppText.caption.copyWith(
+                color: active ? Colors.white : AppColors.textSecondary,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -969,7 +1033,104 @@ class _MyListViewState extends State<_MyListView> {
     );
   }
 
-  // ── Shared grid: status tabs (with counts) + poster grid ──────────────────
+  // ── Shared grid: status tabs (with counts) + horizontal swipe PageView ──────
+
+  List<_LibraryTabDef> _buildTabs({
+    required List<MyListEntry> modeEntries,
+    required bool isMyList,
+    required List<String> customLists,
+  }) {
+    final tabs = <_LibraryTabDef>[];
+    tabs.add(const _LibraryTabDef(key: 'all', label: 'All'));
+
+    final isReading = sl<ContentModeCubit>().state.isReading;
+    const coreStatuses = [
+      WatchStatus.watching,
+      WatchStatus.planning,
+      WatchStatus.completed,
+    ];
+    for (final s in coreStatuses) {
+      tabs.add(_LibraryTabDef(
+        key: 'status:${s.name}',
+        label: shortLabelFor(s, reading: isReading),
+        status: s,
+      ));
+    }
+    for (final s in [WatchStatus.paused, WatchStatus.dropped]) {
+      if (modeEntries.any((e) => e.status == s)) {
+        tabs.add(_LibraryTabDef(
+          key: 'status:${s.name}',
+          label: shortLabelFor(s, reading: isReading),
+          status: s,
+        ));
+      }
+    }
+
+    if (isMyList && _cats != null) {
+      for (final c in _cats!.all()) {
+        tabs.add(_LibraryTabDef(
+          key: 'cat:${c.id}',
+          label: c.name,
+          categoryId: c.id,
+          onLongPress: () => _manageCategory(context, c),
+        ));
+      }
+    }
+
+    for (final name in customLists) {
+      tabs.add(_LibraryTabDef(
+        key: 'custom:$name',
+        label: name,
+        customList: name,
+      ));
+    }
+
+    return tabs;
+  }
+
+  int _countForTab(_LibraryTabDef tab, List<MyListEntry> modeEntries) {
+    return modeEntries.where((e) {
+      if (tab.status != null && e.status != tab.status) return false;
+      if (tab.categoryId != null) {
+        final cats = _cats;
+        if (cats == null || !cats.isIn(e.item, tab.categoryId!)) return false;
+      }
+      if (tab.customList != null && !e.customLists.contains(tab.customList)) {
+        return false;
+      }
+      if (_typeFilter != null && e.item.type != _typeFilter) return false;
+      if (_searchQuery.trim().isNotEmpty) {
+        final q = _searchQuery.trim().toLowerCase();
+        if (!e.item.title.toLowerCase().contains(q)) return false;
+      }
+      return true;
+    }).length;
+  }
+
+  void _selectTab(int i) {
+    if (i < 0) return;
+    setState(() => _activeTabIndex = i);
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        i,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    _scrollToTab(i);
+  }
+
+  void _scrollToTab(int i) {
+    if (!_tabScrollController.hasClients) return;
+    final target = (i * 90.0) - 30.0;
+    final clamped =
+        target.clamp(0.0, _tabScrollController.position.maxScrollExtent);
+    _tabScrollController.animateTo(
+      clamped,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
 
   Widget _grid(
     BuildContext context,
@@ -978,38 +1139,13 @@ class _MyListViewState extends State<_MyListView> {
     void Function(MyListEntry)? onMore,
   }) {
     final cellW = _cellW(context);
-    // Fixed tab order (All is prepended in _statusTabs): Watching first, then
-    // Plan to Watch, Completed, Paused, Dropped — regardless of enum order.
-    const tabOrder = [
-      WatchStatus.watching,
-      WatchStatus.planning,
-      WatchStatus.completed,
-      WatchStatus.paused,
-      WatchStatus.dropped,
-    ];
-    // Reading modes (manga/novel) see only their own items; anime mode's
-    // matchesProvider covers BOTH anime + movie types, so this is a no-op
-    // there — today's anime My List is unaffected.
-    //
-    // Narrow by mode FIRST: the status tabs' counts and which tabs even appear
-    // are both derived from this, so counting raw `entries` showed anime totals
-    // (and anime-only status tabs) while in manga/novel mode.
     final mode = sl<ContentModeCubit>().state;
     final modeEntries =
         entries.where((e) => mode.matchesProvider(e.item.type)).toList();
 
-    final presentStatuses = tabOrder
-        .where((s) => modeEntries.any((e) => e.status == s))
-        .toList();
-
-    // Which list is on screen. Gates the category tabs and their filter, and
-    // picks the sort defaults below — the tracker lists share this widget.
     final trackerState = context.read<TrackerListCubit>().state;
     final isMyList = trackerState.isMyList;
 
-    // The account's own list names first — a list created but not yet filled
-    // still deserves a tab. Anything an entry claims to be in is unioned on
-    // top, so a stale name-fetch can't hide a tab that clearly has titles.
     final customLists = <String>[...trackerState.customListNames];
     for (final e in modeEntries) {
       for (final name in e.customLists) {
@@ -1018,86 +1154,131 @@ class _MyListViewState extends State<_MyListView> {
     }
     customLists.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
-    final filtered = modeEntries.where((e) {
-      if (_customListFilter != null &&
-          !e.customLists.contains(_customListFilter)) {
-        return false;
-      }
-      final cats = _cats;
-      if (isMyList &&
-          _categoryFilter != null &&
-          (cats == null || !cats.isIn(e.item, _categoryFilter!))) {
-        return false;
-      }
-      if (_statusFilter != null && e.status != _statusFilter) return false;
-      if (_typeFilter != null && e.item.type != _typeFilter) return false;
-      return true;
-    }).toList();
-
-    // Display order only. `filtered` is already a throwaway copy and
-    // sortLibrary returns another — the saved list in Hive is never touched,
-    // so no sort can reorder or lose what's stored.
-    final shown = sortLibrary(
-      filtered,
-      _sortFor(isMyList: isMyList),
-      _sortDesc,
+    final tabs = _buildTabs(
+      modeEntries: modeEntries,
+      isMyList: isMyList,
+      customLists: customLists,
     );
+
+    if (_desiredTabKey != null) {
+      final idx = tabs.indexWhere((t) => t.key == _desiredTabKey);
+      if (idx != -1) {
+        _activeTabIndex = idx;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_pageController.hasClients) {
+            _pageController.jumpToPage(idx);
+          }
+          _scrollToTab(idx);
+        });
+      }
+      _desiredTabKey = null;
+    }
+
+    if (_activeTabIndex >= tabs.length) {
+      _activeTabIndex = (tabs.length - 1).clamp(0, 999);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _statusTabs(modeEntries, presentStatuses,
-            isMyList: isMyList,
-            customLists: customLists,
-            anilist: trackerState.tracker is AniListService
-                ? trackerState.tracker as AniListService
-                : null),
+        _statusTabs(
+          tabs,
+          modeEntries,
+          isMyList: isMyList,
+          anilist: trackerState.tracker is AniListService
+              ? trackerState.tracker as AniListService
+              : null,
+        ),
         const SizedBox(height: 8),
         Expanded(
-          child: shown.isEmpty
-              ? EmptyState(
-                  icon: Icons.filter_list_off_rounded,
-                  message: myListFilteredEmptyMessage(mode),
-                )
-              : GridView.builder(
-                  key: ValueKey(
-                    '${_statusFilter?.name}|$_categoryFilter|'
-                    '$_customListFilter|${_sort?.name}|$_sortDesc',
-                  ),
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 64),
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  cacheExtent: 800,
-                  gridDelegate:
-                      SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: _gridColumns(context),
-                    childAspectRatio: 0.62,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 16,
-                  ),
-                  itemCount: shown.length,
-                    itemBuilder: (context, i) {
-                    final entry = shown[i];
-                    final heroTag =
-                        'my-list-poster:${entry.item.sourceId}:${entry.item.id}';
-                    return RevealItem(
-                      index: i,
-                      child: PosterCard(
-                        title: entry.item.title,
-                        imageUrl: entry.item.cover,
-                        headers: entry.item.coverHeaders,
-                        cellWidth: cellW,
-                        heroTag: heroTag,
-                        completed: entry.status == WatchStatus.completed,
-                        onTap: () => onTap(entry.item, heroTag),
-                        // Long-press opens quick actions with shatter on removal,
-                        // or the tracker editor when browsing a tracker tab.
-                        onLongPress: isMyList
-                            ? () => _showMyListQuickActions(context, entry, heroTag)
-                            : (onMore == null ? null : () => onMore(entry)),
-                      ),
-                    );
-                  },
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: tabs.length,
+            onPageChanged: (i) {
+              setState(() => _activeTabIndex = i);
+              _scrollToTab(i);
+            },
+            itemBuilder: (context, pageIdx) {
+              final tabDef = tabs[pageIdx];
+              final tabEntries = modeEntries.where((e) {
+                if (tabDef.status != null && e.status != tabDef.status) {
+                  return false;
+                }
+                if (tabDef.categoryId != null) {
+                  final cats = _cats;
+                  if (cats == null || !cats.isIn(e.item, tabDef.categoryId!)) {
+                    return false;
+                  }
+                }
+                if (tabDef.customList != null &&
+                    !e.customLists.contains(tabDef.customList)) {
+                  return false;
+                }
+                if (_typeFilter != null && e.item.type != _typeFilter) {
+                  return false;
+                }
+                if (_searchQuery.trim().isNotEmpty) {
+                  final q = _searchQuery.trim().toLowerCase();
+                  if (!e.item.title.toLowerCase().contains(q)) return false;
+                }
+                return true;
+              }).toList();
+
+              final shown = sortLibrary(
+                tabEntries,
+                _sortFor(isMyList: isMyList),
+                _sortDesc,
+              );
+
+              if (shown.isEmpty) {
+                return _searchQuery.trim().isNotEmpty
+                    ? Center(
+                        child: EmptyState(
+                          icon: Icons.search_off_rounded,
+                          message: 'No titles matching "$_searchQuery"',
+                        ),
+                      )
+                    : EmptyState(
+                        icon: Icons.filter_list_off_rounded,
+                        message: myListFilteredEmptyMessage(mode),
+                      );
+              }
+
+              return GridView.builder(
+                key: ValueKey('${tabDef.key}|${_sort?.name}|$_sortDesc'),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 64),
+                physics: const AlwaysScrollableScrollPhysics(),
+                cacheExtent: 800,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: _gridColumns(context),
+                  childAspectRatio: 0.62,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 16,
                 ),
+                itemCount: shown.length,
+                itemBuilder: (context, i) {
+                  final entry = shown[i];
+                  final heroTag =
+                      'my-list-poster:${entry.item.sourceId}:${entry.item.id}:${tabDef.key}';
+                  return RevealItem(
+                    index: i,
+                    child: PosterCard(
+                      title: entry.item.title,
+                      imageUrl: entry.item.cover,
+                      headers: entry.item.coverHeaders,
+                      cellWidth: cellW,
+                      heroTag: heroTag,
+                      completed: entry.status == WatchStatus.completed,
+                      onTap: () => onTap(entry.item, heroTag),
+                      onLongPress: isMyList
+                          ? () => _showMyListQuickActions(context, entry, heroTag)
+                          : (onMore == null ? null : () => onMore(entry)),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
       ],
     );
@@ -1188,22 +1369,23 @@ class _MyListViewState extends State<_MyListView> {
 
   // ── Status tabs (counts baked into the labels) ─────────────────────────────
 
-  /// [isMyList] gates the category tabs and the + button. The row is shared
-  /// with the tracker lists, and categories are ours alone — AniList and MAL
-  /// have no idea they exist, so offering them there is meaningless.
   Widget _statusTabs(
-    List<MyListEntry> entries,
-    List<WatchStatus> present, {
+    List<_LibraryTabDef> tabs,
+    List<MyListEntry> modeEntries, {
     required bool isMyList,
-    List<String> customLists = const [],
     AniListService? anilist,
   }) {
-    int countOf(WatchStatus? s) =>
-        s == null ? entries.length : entries.where((e) => e.status == s).length;
-
-    Widget tab(String label, bool active, int count, VoidCallback onTap) {
+    Widget tab(
+      String label,
+      bool active,
+      int count,
+      VoidCallback onTap, {
+      VoidCallback? onLongPress,
+    }) {
       return GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Container(
           margin: const EdgeInsets.only(right: 22),
           padding: const EdgeInsets.only(top: 8, bottom: 10),
@@ -1247,83 +1429,42 @@ class _MyListViewState extends State<_MyListView> {
       child: SizedBox(
         height: 42,
         child: ListView(
+          controller: _tabScrollController,
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.only(left: 16),
           children: [
-            tab(
-                'All',
-                _statusFilter == null &&
-                    _categoryFilter == null &&
-                    _customListFilter == null,
-                countOf(null),
-                () => setState(() {
-                      _statusFilter = null;
-                      _categoryFilter = null;
-                      _customListFilter = null;
-                    })),
-            for (final s in present)
+            for (int i = 0; i < tabs.length; i++)
               tab(
-                  shortLabelFor(s,
-                      reading: sl<ContentModeCubit>().state.isReading),
-                  _statusFilter == s && _categoryFilter == null,
-                  countOf(s),
-                  () => setState(() {
-                        _statusFilter = s;
-                        _categoryFilter = null;
-                        _customListFilter = null;
-                      })),
-            // User-made categories come after the statuses, in their own
-            // order. Long-press one to rename, delete or reorder it.
-            for (final c
-                in isMyList ? (_cats?.all() ?? const <ListCategory>[]) : const <ListCategory>[])
-              GestureDetector(
-                onLongPress: () => _manageCategory(context, c),
-                child: tab(
-                  c.name,
-                  _categoryFilter == c.id,
-                  _cats?.countIn(c.id) ?? 0,
-                  () => setState(() {
-                    _categoryFilter = c.id;
-                    // A category is its own view; a status tab would fight it.
-                    _statusFilter = null;
-                    _customListFilter = null;
-                  }),
-                ),
+                tabs[i].label,
+                _activeTabIndex == i,
+                _countForTab(tabs[i], modeEntries),
+                () => _selectTab(i),
+                onLongPress: tabs[i].onLongPress,
               ),
-            // AniList's own custom lists. Only ever non-empty on that tab —
-            // MAL and Simkl have no such concept, and My List uses categories
-            // instead.
-            for (final name in customLists)
-              tab(
-                name,
-                _customListFilter == name,
-                entries.where((e) => e.customLists.contains(name)).length,
-                () => setState(() {
-                  _customListFilter = name;
-                  _statusFilter = null;
-                }),
-              ),
-            // The AniList tab gets its own +, creating a list on the account
-            // rather than a local category. Same gesture, different home.
             if (!isMyList && anilist != null)
               GestureDetector(
                 onTap: () => _createAniListList(context, anilist),
                 child: Container(
                   margin: const EdgeInsets.only(right: 22),
                   padding: const EdgeInsets.only(top: 8, bottom: 10),
-                  child: Icon(Icons.add_rounded,
-                      size: 20, color: AppColors.textSecondary),
+                  child: const Icon(
+                    Icons.add_rounded,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
-            // Last, so adding one never shifts the tabs already there.
             if (isMyList && _cats != null)
               GestureDetector(
                 onTap: () => _createCategory(context),
-              child: Container(
-                margin: const EdgeInsets.only(right: 22),
-                padding: const EdgeInsets.only(top: 8, bottom: 10),
-                  child: Icon(Icons.add_rounded,
-                      size: 20, color: AppColors.textSecondary),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 22),
+                  padding: const EdgeInsets.only(top: 8, bottom: 10),
+                  child: const Icon(
+                    Icons.add_rounded,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
           ],

@@ -63,6 +63,7 @@ class PersonPage extends StatefulWidget {
 class _PersonPageState extends State<PersonPage> {
   final ScrollController _scrollController = ScrollController();
   final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0.0);
+  final ValueNotifier<double> _scrollOffset = ValueNotifier<double>(0.0);
   late final PageController _pageController;
   int _currentPhotoIndex = 0;
   bool _showAppBarTitle = false;
@@ -92,6 +93,7 @@ class _PersonPageState extends State<PersonPage> {
   void dispose() {
     _pageController.dispose();
     _heroStretch.dispose();
+    _scrollOffset.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
@@ -197,7 +199,8 @@ class _PersonPageState extends State<PersonPage> {
 
   void _onScroll() {
     if (_scrollController.hasClients) {
-      final shouldShow = _scrollController.offset > 420;
+      _scrollOffset.value = _scrollController.offset;
+      final shouldShow = _scrollController.offset > 360;
       if (shouldShow != _showAppBarTitle) {
         setState(() => _showAppBarTitle = shouldShow);
       }
@@ -627,7 +630,7 @@ class _PersonPageState extends State<PersonPage> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            fontFamily: 'Circular',
+            fontFamily: 'Avoin',
             fontSize: 18,
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -694,50 +697,54 @@ class _PersonPageState extends State<PersonPage> {
             ),
           ),
 
-        // 3. Bottom Content (Title, Meta, 3 Action Buttons) translated on stretch
+        // 3. Bottom Content (Title, Meta, 3 Action Buttons) with smooth parallax fade
         Positioned(
           left: 20,
           right: 20,
           bottom: 14,
           child: ValueListenableBuilder<double>(
-            valueListenable: _heroStretch,
-            builder: (context, overscroll, child) => Transform.translate(
-              offset: Offset(0, overscroll),
-              child: child,
-            ),
-            child: AnimatedOpacity(
-              opacity: _showAppBarTitle ? 0.0 : 1.0,
-              duration: const Duration(milliseconds: 180),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    widget.person.name,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'Circular',
-                      fontSize: 34,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      letterSpacing: -0.6,
-                      height: 1.1,
-                    ),
+            valueListenable: _scrollOffset,
+            builder: (context, offset, child) {
+              final opacity = (1.0 - (offset / 160.0)).clamp(0.0, 1.0);
+              final slideY = offset > 0 ? -offset * 0.35 : 0.0;
+              return Opacity(
+                opacity: opacity,
+                child: Transform.translate(
+                  offset: Offset(0, slideY),
+                  child: child,
+                ),
+              );
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  widget.person.name,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: 'Avoin',
+                    fontSize: 34,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: -0.6,
+                    height: 1.1,
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    metaText,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.75),
-                      letterSpacing: 0.2,
-                    ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  metaText,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withValues(alpha: 0.75),
+                    letterSpacing: 0.2,
                   ),
-                  const SizedBox(height: 18),
+                ),
+                const SizedBox(height: 18),
 
                   // The 3 Action Buttons Trio (Shuffle / Play / Favorite)
                   Row(
@@ -782,7 +789,6 @@ class _PersonPageState extends State<PersonPage> {
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -918,7 +924,7 @@ class _PersonPageState extends State<PersonPage> {
         ),
 
         // 2. Cinematic gradient overlay layered on top
-        const IgnorePointer(
+        IgnorePointer(
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -927,12 +933,13 @@ class _PersonPageState extends State<PersonPage> {
                 colors: [
                   Colors.transparent,
                   Colors.transparent,
-                  Color(0x400E0F12), // AppColors.bg.withValues(alpha: 0.25)
-                  Color(0xB30E0F12), // AppColors.bg.withValues(alpha: 0.70)
-                  Color(0xFF0E0F12), // AppColors.bg
-                  Color(0xFF0E0F12), // AppColors.bg
+                  AppColors.bg.withValues(alpha: 0.12),
+                  AppColors.bg.withValues(alpha: 0.35),
+                  AppColors.bg.withValues(alpha: 0.65),
+                  AppColors.bg.withValues(alpha: 0.88),
+                  AppColors.bg,
                 ],
-                stops: [0.0, 0.42, 0.64, 0.80, 0.92, 1.0],
+                stops: const [0.0, 0.32, 0.50, 0.68, 0.82, 0.94, 1.0],
               ),
             ),
           ),

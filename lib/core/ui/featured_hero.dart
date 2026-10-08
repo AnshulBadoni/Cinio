@@ -376,8 +376,8 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       seed: seed,
       accent: accent,
       genres: widget.item.genres,
-      fontSize: 28.5,
-      maxLines: 2,
+      fontSize: 40.0,
+      maxLines: 3,
     );
   }
 

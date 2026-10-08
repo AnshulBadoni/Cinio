@@ -516,37 +516,53 @@ class CinioTitleStyle {
   return (main: trimmed, sub: null);
 }
 
+List<String> _chunkWordsForPlayfulTitle(String text) {
+  final words = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  if (words.length <= 2) return [text];
+  if (words.length == 3) return [words[0], words[1], words[2]];
+  if (words.length == 4) return ['${words[0]} ${words[1]}', '${words[2]} ${words[3]}'];
+  if (words.length == 5) return ['${words[0]} ${words[1]}', words[2], '${words[3]} ${words[4]}'];
+  final chunkCount = words.length > 7 ? 4 : 3;
+  final perChunk = (words.length / chunkCount).ceil();
+  final chunks = <String>[];
+  for (var i = 0; i < words.length; i += perChunk) {
+    chunks.add(words.skip(i).take(perChunk).join(' '));
+  }
+  return chunks;
+}
+
 Widget cinioFallbackTitle({
   required String title,
   required Object seed,
   required Color accent,
   List<String> genres = const [],
-  double fontSize = 26.6,
-  int maxLines = 2,
+  double fontSize = 38.0,
+  int maxLines = 3,
   TextAlign textAlign = TextAlign.center,
   double? maxWidth,
 }) {
   final split = _splitCompoundTitle(title);
   final hasSub = split.sub != null && split.sub!.isNotEmpty;
 
-  // Adaptive font size scaling: gracefully scales down longer titles
-  // so they fit within the header bounds without truncating.
+  final mainLen = split.main.length;
+  final words = split.main.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  final isPlayfulLong = mainLen > 15 || words.length >= 3;
+
   final double lengthScale;
   final int maxDisplayLines;
-  final mainLen = split.main.length;
 
   if (mainLen <= 14) {
     lengthScale = 1.0;
     maxDisplayLines = maxLines;
   } else if (mainLen <= 26) {
-    lengthScale = 0.84;
-    maxDisplayLines = maxLines.clamp(2, 3);
+    lengthScale = 0.92;
+    maxDisplayLines = maxLines.clamp(2, 4);
   } else if (mainLen <= 40) {
-    lengthScale = 0.72;
-    maxDisplayLines = 3;
+    lengthScale = 0.84;
+    maxDisplayLines = 4;
   } else {
-    lengthScale = 0.62;
-    maxDisplayLines = 3;
+    lengthScale = 0.74;
+    maxDisplayLines = 4;
   }
 
   final effectiveFontSize = fontSize * lengthScale;
@@ -560,55 +576,107 @@ Widget cinioFallbackTitle({
   );
 
   final displayMain = cfg.uppercase ? split.main.toUpperCase() : split.main;
-  final mainFontSize = cfg.baseStyle.fontSize ?? effectiveFontSize;
-  final stackAlign = (textAlign == TextAlign.left)
+  final mainFontSize = (cfg.baseStyle.fontSize ?? effectiveFontSize).clamp(24.0, 56.0);
+  final fittedAlign = (textAlign == TextAlign.left)
       ? Alignment.centerLeft
       : (textAlign == TextAlign.right ? Alignment.centerRight : Alignment.center);
   final crossAlign = (textAlign == TextAlign.left)
       ? CrossAxisAlignment.start
       : (textAlign == TextAlign.right ? CrossAxisAlignment.end : CrossAxisAlignment.center);
-  final fittedAlign = (textAlign == TextAlign.left)
-      ? Alignment.centerLeft
-      : (textAlign == TextAlign.right ? Alignment.centerRight : Alignment.center);
 
-  Widget buildMainText(double fs, int lines, double maxW) => FittedBox(
+  // Playful stacked layout inspired by "The End Of Oak Street"
+  Widget buildPlayfulStacked(double fs, double maxW) {
+    final lines = _chunkWordsForPlayfulTitle(displayMain);
+    final playfulTransforms = const [
+      (angle: -0.035, dx: -6.0),
+      (angle: 0.040, dx: 7.0),
+      (angle: -0.024, dx: -4.0),
+      (angle: 0.030, dx: 5.0),
+      (angle: -0.018, dx: -3.0),
+    ];
+
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: fittedAlign,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxW),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: crossAlign,
+          children: [
+            for (var i = 0; i < lines.length; i++)
+              Transform.translate(
+                offset: Offset(
+                  playfulTransforms[i % playfulTransforms.length].dx,
+                  i == 0 ? 0.0 : -fs * 0.20,
+                ),
+                child: Transform.rotate(
+                  angle: playfulTransforms[i % playfulTransforms.length].angle,
+                  child: Text(
+                    lines[i],
+                    textAlign: textAlign,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: cfg.baseStyle.copyWith(
+                      fontSize: fs,
+                      height: 0.84,
+                      color: Colors.white,
+                      shadows: [
+                        const Shadow(
+                          color: Colors.black,
+                          offset: Offset(0, 3.5),
+                          blurRadius: 7,
+                        ),
+                        Shadow(
+                          color: Colors.black.withValues(alpha: 0.90),
+                          offset: const Offset(2.0, 4.0),
+                          blurRadius: 9,
+                        ),
+                        ...cfg.shadows,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Standard non-gradient solid title
+  Widget buildStandardText(double fs, int lines, double maxW) => FittedBox(
     fit: BoxFit.scaleDown,
     alignment: fittedAlign,
     child: ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxW),
-      child: Stack(
-        alignment: stackAlign,
-        children: [
-          Text(
-            displayMain,
-            textAlign: textAlign,
-            maxLines: lines,
-            softWrap: true,
-            style: cfg.baseStyle.copyWith(
-              fontSize: fs,
-              color: Colors.transparent,
-              shadows: cfg.shadows,
+      child: Text(
+        displayMain,
+        textAlign: textAlign,
+        maxLines: lines,
+        softWrap: true,
+        style: cfg.baseStyle.copyWith(
+          fontSize: fs,
+          color: Colors.white,
+          shadows: [
+            const Shadow(
+              color: Colors.black,
+              offset: Offset(0, 3.0),
+              blurRadius: 6,
             ),
-          ),
-          ShaderMask(
-            blendMode: BlendMode.srcIn,
-            shaderCallback: (bounds) => cfg.gradient.createShader(bounds),
-            child: Text(
-              displayMain,
-              textAlign: textAlign,
-              maxLines: lines,
-              softWrap: true,
-              style: cfg.baseStyle.copyWith(
-                fontSize: fs,
-                color: Colors.white,
-                shadows: const [],
-              ),
-            ),
-          ),
-        ],
+            ...cfg.shadows,
+          ],
+        ),
       ),
     ),
   );
+
+  Widget buildMainContent(double fs, double maxW) {
+    if (isPlayfulLong && !hasSub) {
+      return buildPlayfulStacked(fs, maxW);
+    }
+    return buildStandardText(fs, maxDisplayLines, maxW);
+  }
 
   return LayoutBuilder(
     builder: (context, constraints) {
@@ -622,15 +690,14 @@ Widget cinioFallbackTitle({
         final subText = cfg.uppercase ? split.sub!.toUpperCase() : split.sub!;
         final subLen = subText.length;
         final double subScale = (subLen <= 20) ? 1.0 : (subLen <= 35 ? 0.85 : 0.75);
-        final subFontSize = (mainFontSize * 0.44 * subScale).clamp(9.0, 12.5);
+        final subFontSize = (mainFontSize * 0.46 * subScale).clamp(11.0, 16.0);
 
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: crossAlign,
           children: [
-            buildMainText(mainFontSize, 2, effectiveMaxW),
-            const SizedBox(height: 3),
-            // Subtitle (Secondary Refined Tier)
+            buildStandardText(mainFontSize, 2, effectiveMaxW),
+            const SizedBox(height: 5),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: fittedAlign,
@@ -650,8 +717,8 @@ Widget cinioFallbackTitle({
                     shadows: const [
                       Shadow(
                         color: Color(0xFF000000),
-                        offset: Offset(0, 1.5),
-                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                        blurRadius: 5,
                       ),
                     ],
                   ),
@@ -662,7 +729,7 @@ Widget cinioFallbackTitle({
         );
       }
 
-      return buildMainText(mainFontSize, maxDisplayLines, effectiveMaxW);
+      return buildMainContent(mainFontSize, effectiveMaxW);
     },
   );
 }

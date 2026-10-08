@@ -87,6 +87,14 @@ bool get _showBadges {
   }
 }
 
+bool get _hideTitles {
+  try {
+    return sl<PlaybackPrefs>().hideTitles;
+  } catch (_) {
+    return false;
+  }
+}
+
 
 /// Flight shuttle builder that smoothly morphs a portrait rounded poster card
 /// into a full-width header backdrop (and vice-versa on pop) with curved corner
@@ -336,31 +344,41 @@ class _PosterCardState extends State<PosterCard> {
                   ),
                 ),
               ),
-              if (widget.showTitle) ...[
-                const SizedBox(height: 8),
-                Text(
-                  widget.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.caption.copyWith(
-                    color: AppColors.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-                if (widget.subtitle != null && widget.subtitle!.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.subtitle!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.caption.copyWith(
-                      color: AppColors.textSecondary,
-                      fontSize: 12.5,
-                    ),
-                  ),
-                ],
-              ],
+              ValueListenableBuilder<int>(
+                valueListenable: PlaybackPrefs.hideTitlesRevision,
+                builder: (_, _, _) {
+                  if (!widget.showTitle || _hideTitles) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.caption.copyWith(
+                          color: AppColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                      if (widget.subtitle != null && widget.subtitle!.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.textSecondary,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
+              ),
             ],
           ),
         ),

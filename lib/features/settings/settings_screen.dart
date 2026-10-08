@@ -871,6 +871,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       _SettingsEntry(
         section: 'Interface',
+        icon: Icons.subtitles_off_outlined,
+        title: 'Hide titles',
+        subtitle: 'Show only posters across home, discover, library, and downloads',
+        keywords: 'hide titles poster only home discover library downloads interface',
+        trailing: Switch.adaptive(
+          value: sl<PlaybackPrefs>().hideTitles,
+          activeThumbColor: AppColors.accent,
+          onChanged: (v) async {
+            await sl<PlaybackPrefs>().setHideTitles(v);
+            if (mounted) setState(() {});
+          },
+        ),
+        onTap: () async {
+          final v = !sl<PlaybackPrefs>().hideTitles;
+          await sl<PlaybackPrefs>().setHideTitles(v);
+          if (mounted) setState(() {});
+        },
+      ),
+      _SettingsEntry(
+        section: 'Interface',
         icon: Icons.dashboard_customize_outlined,
         title: 'Navigation bar',
         subtitle: 'Which tabs show, and their order',

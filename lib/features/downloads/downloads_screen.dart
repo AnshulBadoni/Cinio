@@ -780,15 +780,23 @@ class _DownloadShowCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 7),
-          Text(
-            head.showTitle,
-            style: AppText.body.copyWith(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w600,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          ValueListenableBuilder<int>(
+            valueListenable: PlaybackPrefs.hideTitlesRevision,
+            builder: (_, _, _) {
+              if (sl<PlaybackPrefs>().hideTitles) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 7),
+                child: Text(
+                  head.showTitle,
+                  style: AppText.body.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              );
+            },
           ),
         ],
       ),

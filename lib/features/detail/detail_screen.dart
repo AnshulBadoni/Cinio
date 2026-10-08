@@ -2147,7 +2147,7 @@ class _DetailViewState extends State<_DetailView>
 
   Widget _styledFallbackTitle(
     MediaDetail detail, {
-    double fontSize = 24.7,
+    double fontSize = 36.0,
     int maxLines = 3,
   }) {
     final seed = detail.tmdbId ?? widget.item.tmdbId ?? detail.title;

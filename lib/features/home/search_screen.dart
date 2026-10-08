@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
@@ -567,6 +568,15 @@ class _SearchViewState extends State<_SearchView>
       return 4;
     }
     return 3;
+  }
+
+  int get _searchMasonryColumns {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1600) return 6;
+    if (width >= 1200) return 5;
+    if (width >= 900) return 4;
+    if (width >= 600) return 3;
+    return 2;
   }
 
   double _searchGridCellWidth() {
@@ -1411,6 +1421,9 @@ class _SearchViewState extends State<_SearchView>
     // row is cramped — regardless of the All-view layout setting. 3 columns
     // (grouped-by-source sections below are the denser 4-up grid).
     if (singleSource) {
+      if (layout == SearchLayout.masonry) {
+        return _resultsMasonry(state.visibleResults, loadingMore: state.searchLoadingMore);
+      }
       return _resultsGrid(state.visibleResults, loadingMore: state.searchLoadingMore);
     }
 
@@ -1418,6 +1431,8 @@ class _SearchViewState extends State<_SearchView>
       for (final g in groups)
         if (layout == SearchLayout.horizontal)
           _sourceRow(g, cellW)
+        else if (layout == SearchLayout.masonry)
+          _sourceMasonry(g, cellW)
         else
           _sourceGrid(g, cellW),
       // Sources whose results haven't arrived yet.
@@ -1915,6 +1930,94 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
+  // ── Masonry results grid (single-source) ──────────────────────────────────
+  Widget _resultsMasonry(List<MediaItem> items, {bool loadingMore = false}) {
+    final cols = _searchMasonryColumns;
+    return MasonryGridView.count(
+      controller: _discoverScrollController,
+      padding: EdgeInsets.fromLTRB(
+        16,
+        6,
+        16,
+        24 + MediaQuery.paddingOf(context).bottom,
+      ),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      crossAxisCount: cols,
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      itemCount: items.length + (loadingMore ? cols : 0),
+      itemBuilder: (context, i) {
+        if (i >= items.length) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        }
+        final item = items[i];
+        return RevealItem(
+          index: i,
+          child: _MasonrySearchCard(
+            item: item,
+            index: i,
+            onTap: () => _openDetail(item),
+            onLongPress: () => _showInfo(item),
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Masonry grid for a single source section (grouped results) ────────────
+  Widget _sourceMasonry(SourceResultGroup g, double cellW) {
+    final overflows = g.items.length > _kSourcePreviewCap;
+    final preview = overflows
+        ? g.items.take(_kSourcePreviewCap).toList(growable: false)
+        : g.items;
+    final filter = _sourceFilterFor(
+      g.sourceId,
+      context.read<SearchBloc>().state,
+    );
+    final cols = _searchMasonryColumns;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _sectionHeader(
+          g.sourceName,
+          g.items.length,
+          onSeeAll: overflows ? () => _openSourceSeeAll(g) : null,
+          onFilter: filter.onFilter,
+          filterActive: filter.active,
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: MasonryGridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: cols,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            itemCount: preview.length,
+            itemBuilder: (context, i) {
+              final item = preview[i];
+              return RevealItem(
+                index: i,
+                child: _MasonrySearchCard(
+                  item: item,
+                  index: i,
+                  onTap: () => _openDetail(item),
+                  onLongPress: () => _showInfo(item),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   // ── Idle view: endless Discover feed ───────────────────────────────────────
   Widget _idleView(SearchState state) {
     final items = state.discoverItems;
@@ -1931,6 +2034,44 @@ class _SearchViewState extends State<_SearchView>
             Text('Nothing to discover with these filters', style: AppText.body),
           ],
         ),
+      );
+    }
+    if (_searchPrefs.layout == SearchLayout.masonry) {
+      final cols = _searchMasonryColumns;
+      return MasonryGridView.count(
+        controller: _discoverScrollController,
+        padding: EdgeInsets.fromLTRB(
+          16,
+          8,
+          16,
+          24 + MediaQuery.paddingOf(context).bottom,
+        ),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        crossAxisCount: cols,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        itemCount: items.length +
+            (state.discoverLoadingMore ? cols : 0),
+        itemBuilder: (context, i) {
+          if (i >= items.length) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          }
+          final item = items[i];
+          return RevealItem(
+            index: i,
+            child: _MasonrySearchCard(
+              item: item,
+              index: i,
+              onTap: () => _openDetail(item),
+              onLongPress: () => _showQuickActions(item),
+            ),
+          );
+        },
       );
     }
     final cellW = _searchGridCellWidth();
@@ -2892,6 +3033,214 @@ class _SearchFilterSheet extends StatelessWidget {
               onChanged: (v) => prefs.setIncluded(r.id, v),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MasonrySearchCard extends StatefulWidget {
+  const _MasonrySearchCard({
+    required this.item,
+    required this.index,
+    required this.onTap,
+    this.onLongPress,
+  });
+
+  final MediaItem item;
+  final int index;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  State<_MasonrySearchCard> createState() => _MasonrySearchCardState();
+}
+
+class _MasonrySearchCardState extends State<_MasonrySearchCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final isTpdb = item.sourceId.startsWith('tpdb:') || item.sourceId.contains('tpdb');
+    final hasHero = item.heroImage != null &&
+        item.heroImage!.isNotEmpty &&
+        item.heroImage != item.cover;
+
+    // TPDB: strictly tall (2:3) posters.
+    // TMDB (movies/series): mixed rhythm of wide (16:9) backdrops and tall (2:3) posters.
+    // Providers: if wider thumbnail/heroImage available, show wider (16:9), else tall (2:3).
+    final bool isWide;
+    if (isTpdb) {
+      isWide = false;
+    } else if (item.sourceId.startsWith('tmdb:') || item.tmdbId != null) {
+      isWide = hasHero && ((widget.index % 5 == 0) || (widget.index % 5 == 2));
+    } else {
+      isWide = hasHero;
+    }
+
+    final double aspectRatio = isWide ? (16 / 9) : (2 / 3);
+    final String imageUrl = (isWide && hasHero ? item.heroImage : item.cover) ?? item.cover ?? '';
+    final isCompleted = sl<ListStatusStore>().statusOf(item) == WatchStatus.completed;
+
+    return GestureDetector(
+      onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: (_) => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: AspectRatio(
+            aspectRatio: aspectRatio,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Artwork
+                if (imageUrl.isNotEmpty)
+                  CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    cacheManager: AppImageCache.manager,
+                    httpHeaders: item.coverHeaders,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                    memCacheWidth: isWide ? 640 : 420,
+                    placeholder: (_, _) => Container(color: AppColors.surface2),
+                    errorWidget: (_, _, _) => Container(
+                      color: AppColors.surface2,
+                      child: const Center(
+                        child: Icon(Icons.movie_rounded, color: AppColors.textTertiary, size: 28),
+                      ),
+                    ),
+                  )
+                else
+                  Container(color: AppColors.surface2),
+
+                // Bottom Scrim
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          stops: const [0.40, 0.70, 1.0],
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.35),
+                            Colors.black.withValues(alpha: 0.88),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Top right completion or quality badge
+                if (isCompleted)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: AppColors.accent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.check_rounded, color: Colors.white, size: 15),
+                    ),
+                  )
+                else if (item.quality != null)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: ValueListenableBuilder<int>(
+                      valueListenable: PlaybackPrefs.badgeRevision,
+                      builder: (_, _, _) => sl<PlaybackPrefs>().qualityBadges
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.65),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                item.quality!,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ),
+
+                // Top left dub badge
+                if (item.dubBadge != null)
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: ValueListenableBuilder<int>(
+                      valueListenable: PlaybackPrefs.badgeRevision,
+                      builder: (_, _, _) => sl<PlaybackPrefs>().qualityBadges
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.65),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                item.dubBadge!,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ),
+
+                // Bottom title overlay (hidden when hideTitles is true)
+                Positioned(
+                  left: 8,
+                  right: 8,
+                  bottom: 8,
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: PlaybackPrefs.hideTitlesRevision,
+                    builder: (_, _, _) {
+                      if (sl<PlaybackPrefs>().hideTitles) return const SizedBox.shrink();
+                      return Text(
+                        item.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.1,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black87,
+                              blurRadius: 6,
+                              offset: Offset(0, 1.5),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

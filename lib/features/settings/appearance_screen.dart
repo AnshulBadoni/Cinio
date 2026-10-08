@@ -298,6 +298,16 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                 },
               ),
               _switchTile(
+                icon: Icons.subtitles_off_outlined,
+                title: 'Hide titles',
+                subtitle: 'Show only posters across home, discover, library, and downloads',
+                value: sl<PlaybackPrefs>().hideTitles,
+                onChanged: (v) async {
+                  await sl<PlaybackPrefs>().setHideTitles(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _switchTile(
                 icon: Icons.auto_awesome_motion_outlined,
                 title: 'Animate lists',
                 subtitle: 'Cards fade in as you scroll',

@@ -620,6 +620,17 @@ class PlaybackPrefs {
     badgeRevision.value++;
   }
 
+  /// Whether to hide titles below posters across Home, Discover, Library and Downloads.
+  bool get hideTitles =>
+      _box.get('hideTitles', defaultValue: false) as bool;
+
+  static final ValueNotifier<int> hideTitlesRevision = ValueNotifier<int>(0);
+
+  Future<void> setHideTitles(bool value) async {
+    await _box.put('hideTitles', value);
+    hideTitlesRevision.value++;
+  }
+
   /// Whether to show the accurate AniSkip "Skip opening/ending" button (anime,
   /// when real OP/ED timings are detected).
   bool get skipIntro => _box.get('skipIntro', defaultValue: true) as bool;

@@ -304,3 +304,6 @@ flutter:
           weight: 700
         - asset: assets/fonts/CircularStd-Black.ttf
           weight: 900
+    - family: Avoin
+      fonts:
+        - asset: assets/fonts/AvoinDemoBold.otf

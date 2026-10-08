@@ -8,7 +8,8 @@ import 'package:hive/hive.dart';
 /// - [horizontal]: each source's results in a CloudStream-style scrolling row.
 enum SearchLayout {
   vertical('Vertical (grid)'),
-  horizontal('Horizontal (rows)');
+  horizontal('Horizontal (rows)'),
+  masonry('Masonry');
 
   const SearchLayout(this.label);
   final String label;
