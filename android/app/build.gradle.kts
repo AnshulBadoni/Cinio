@@ -27,10 +27,35 @@ if (hasCustomReleaseKeystore) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+fun findInstalledNdkVersion(): String? {
+    val sdkDirPath = runCatching {
+        val lp = rootProject.file("local.properties")
+        if (lp.exists()) {
+            val props = Properties()
+            FileInputStream(lp).use { props.load(it) }
+            props.getProperty("sdk.dir")
+        } else null
+    }.getOrNull() ?: System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+
+    if (sdkDirPath != null) {
+        val ndkDir = File(sdkDirPath, "ndk")
+        if (ndkDir.isDirectory) {
+            val versions = ndkDir.listFiles()
+                ?.filter { it.isDirectory && !it.name.startsWith(".") }
+                ?.map { it.name }
+                ?.sortedDescending()
+            if (!versions.isNullOrEmpty()) {
+                return versions.first()
+            }
+        }
+    }
+    return null
+}
+
 android {
     namespace = "com.spyou.watch_app"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = findInstalledNdkVersion() ?: flutter.ndkVersion
 
     compileOptions {
         // Required by flutter_local_notifications (uses java.time APIs).
