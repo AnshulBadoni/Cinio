@@ -63,6 +63,8 @@ class PersonPage extends StatefulWidget {
 class _PersonPageState extends State<PersonPage> {
   final ScrollController _scrollController = ScrollController();
   final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0.0);
+  late final PageController _pageController;
+  int _currentPhotoIndex = 0;
   bool _showAppBarTitle = false;
   String? _selectedPhotoUrl;
   PersonProfile? _profile;
@@ -79,6 +81,7 @@ class _PersonPageState extends State<PersonPage> {
   @override
   void initState() {
     super.initState();
+    _pageController = PageController();
     _isFav = sl<FavoritePeopleStore>().isFavorite(widget.person);
     _scrollController.addListener(_onScroll);
     _loadProfile();
@@ -87,6 +90,7 @@ class _PersonPageState extends State<PersonPage> {
 
   @override
   void dispose() {
+    _pageController.dispose();
     _heroStretch.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -545,7 +549,7 @@ class _PersonPageState extends State<PersonPage> {
           ),
           slivers: [
             // Pinned SliverAppBar matching detail_screen.dart
-            _buildSliverHeader(activePhotoUrl, effectiveHeroTag, metaText),
+            _buildSliverHeader(photoList, effectiveHeroTag, metaText),
 
             // Body: loading skeleton or loaded filmography
             if (_loading) ...[
@@ -578,7 +582,7 @@ class _PersonPageState extends State<PersonPage> {
   // ── Hero Stretch Header (Pinned App Bar + Backdrop + Clean Buttons) ────────
 
   Widget _buildSliverHeader(
-    String? photoUrl,
+    List<String> photos,
     String effectiveHeroTag,
     String metaText,
   ) {
@@ -631,160 +635,290 @@ class _PersonPageState extends State<PersonPage> {
         ),
       ),
       centerTitle: true,
-      flexibleSpace: FlexibleSpaceBar(
-        collapseMode: CollapseMode.none,
-        background: Stack(
-          fit: StackFit.expand,
-          clipBehavior: Clip.none,
-          children: [
-            // 1. Scaled backdrop on overscroll stretch
-            Positioned.fill(
-              child: ValueListenableBuilder<double>(
-                valueListenable: _heroStretch,
-                builder: (context, overscroll, child) {
-                  final scale = 1.0 + (overscroll / 450.0).clamp(0.0, 0.50);
-                  return ClipRect(
-                    child: Transform.scale(
-                      alignment: Alignment.topCenter,
-                      scale: scale,
-                      child: child,
-                    ),
-                  );
-                },
-                child: _buildCoverBackdrop(effectiveHeroTag, photoUrl),
-              ),
-            ),
-
-            // 2. Bottom Content (Title, Meta, 3 Action Buttons)
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 14,
-              child: AnimatedOpacity(
-                opacity: _showAppBarTitle ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 180),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      widget.person.name,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: 'Circular',
-                        fontSize: 34,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        letterSpacing: -0.6,
-                        height: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      metaText,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withValues(alpha: 0.75),
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-
-                    // The 3 Action Buttons Trio (Shuffle / Play / Favorite)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // 1. Play Random Button
-                        _buildActionButton(
-                          icon: Icons.shuffle_rounded,
-                          size: 50,
-                          iconSize: 22,
-                          background: Colors.white.withValues(alpha: 0.14),
-                          iconColor: Colors.white,
-                          onTap: _playRandom,
-                        ),
-                        const SizedBox(width: 22),
-
-                        // 2. Play Trailer (Clean Center Circle)
-                        _buildActionButton(
-                          icon: Icons.play_arrow_rounded,
-                          size: 66,
-                          iconSize: 40,
-                          background: Colors.white,
-                          iconColor: Colors.black,
-                          onTap: _playTrailer,
-                        ),
-                        const SizedBox(width: 22),
-
-                        // 3. Add to Favorite Actors Button
-                        _buildActionButton(
-                          icon: _isFav
-                              ? Icons.favorite_rounded
-                              : Icons.favorite_border_rounded,
-                          size: 50,
-                          iconSize: 22,
-                          background: Colors.white.withValues(alpha: 0.14),
-                          iconColor: _isFav ? const Color(0xFFFF2D55) : Colors.white,
-                          onTap: _toggleFavorite,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      flexibleSpace: _buildHeroFlexibleSpace(photos, effectiveHeroTag, metaText),
     );
   }
 
-  Widget _buildCoverBackdrop(String heroTag, String? photoUrl) {
-    Widget image;
-    if (photoUrl == null || photoUrl.isEmpty) {
-      image = Container(
+  Widget _buildHeroFlexibleSpace(
+    List<String> photos,
+    String effectiveHeroTag,
+    String metaText,
+  ) {
+    return Stack(
+      fit: StackFit.expand,
+      clipBehavior: Clip.none,
+      children: [
+        // 1. Backdrop (single photo or stacking card carousel) + stretch + gradient
+        Positioned.fill(
+          child: ValueListenableBuilder<double>(
+            valueListenable: _heroStretch,
+            builder: (context, overscroll, _) =>
+                _buildHeroBackdrop(photos, effectiveHeroTag, overscroll),
+          ),
+        ),
+
+        // 2. Top-right Current Number Badge (e.g. "1") - no "/100"
+        if (photos.length > 1)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 14,
+            right: 18,
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    width: 0.5,
+                  ),
+                ),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: ScaleTransition(scale: anim, child: child),
+                  ),
+                  child: Text(
+                    '${_currentPhotoIndex + 1}',
+                    key: ValueKey<int>(_currentPhotoIndex + 1),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+        // 3. Bottom Content (Title, Meta, 3 Action Buttons) translated on stretch
+        Positioned(
+          left: 20,
+          right: 20,
+          bottom: 14,
+          child: ValueListenableBuilder<double>(
+            valueListenable: _heroStretch,
+            builder: (context, overscroll, child) => Transform.translate(
+              offset: Offset(0, overscroll),
+              child: child,
+            ),
+            child: AnimatedOpacity(
+              opacity: _showAppBarTitle ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 180),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    widget.person.name,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Circular',
+                      fontSize: 34,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: -0.6,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    metaText,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withValues(alpha: 0.75),
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // The 3 Action Buttons Trio (Shuffle / Play / Favorite)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // 1. Play Random Button
+                      _buildActionButton(
+                        icon: Icons.shuffle_rounded,
+                        size: 50,
+                        iconSize: 22,
+                        background: Colors.white.withValues(alpha: 0.14),
+                        iconColor: Colors.white,
+                        onTap: _playRandom,
+                      ),
+                      const SizedBox(width: 22),
+
+                      // 2. Play Trailer (Clean Center Circle)
+                      _buildActionButton(
+                        icon: Icons.play_arrow_rounded,
+                        size: 66,
+                        iconSize: 40,
+                        background: Colors.white,
+                        iconColor: Colors.black,
+                        onTap: _playTrailer,
+                      ),
+                      const SizedBox(width: 22),
+
+                      // 3. Add to Favorite Actors Button
+                      _buildActionButton(
+                        icon: _isFav
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
+                        size: 50,
+                        iconSize: 22,
+                        background: Colors.white.withValues(alpha: 0.14),
+                        iconColor: _isFav ? const Color(0xFFFF2D55) : Colors.white,
+                        onTap: _toggleFavorite,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeroBackdrop(
+    List<String> photos,
+    String effectiveHeroTag,
+    double overscroll,
+  ) {
+    final scale = 1.0 + (overscroll / 450.0).clamp(0.0, 0.50);
+
+    Widget content;
+    if (photos.isEmpty) {
+      content = Container(
         color: AppColors.surface2,
         child: const Center(
           child: Icon(Icons.person, size: 80, color: Colors.white24),
         ),
       );
+    } else if (photos.length == 1) {
+      content = Hero(
+        tag: effectiveHeroTag,
+        flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+          return Material(
+            color: Colors.transparent,
+            child: toHeroContext.widget,
+          );
+        },
+        child: CachedNetworkImage(
+          imageUrl: photos.first,
+          fit: BoxFit.cover,
+          alignment: const Alignment(0, -0.20),
+          memCacheWidth: 1080,
+          placeholder: (_, _) => Container(color: AppColors.surface2),
+          errorWidget: (_, _, _) => Container(color: AppColors.surface2),
+        ),
+      );
     } else {
-      image = CachedNetworkImage(
-        imageUrl: photoUrl,
-        fit: BoxFit.cover,
-        alignment: const Alignment(0, -0.2),
-        memCacheWidth: 1080,
-        placeholder: (_, _) => Container(color: AppColors.surface2),
-        errorWidget: (_, _, _) => Container(color: AppColors.surface2),
+      content = PageView.builder(
+        controller: _pageController,
+        physics: const BouncingScrollPhysics(),
+        itemCount: photos.length,
+        onPageChanged: (i) {
+          if (mounted) {
+            setState(() {
+              _currentPhotoIndex = i;
+              _selectedPhotoUrl = photos[i];
+            });
+          }
+        },
+        itemBuilder: (context, index) {
+          final img = CachedNetworkImage(
+            imageUrl: photos[index],
+            fit: BoxFit.cover,
+            alignment: const Alignment(0, -0.20),
+            memCacheWidth: 1080,
+            placeholder: (_, _) => Container(color: AppColors.surface2),
+            errorWidget: (_, _, _) => Container(color: AppColors.surface2),
+          );
+
+          final card = index == 0
+              ? Hero(
+                  tag: effectiveHeroTag,
+                  flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+                    return Material(
+                      color: Colors.transparent,
+                      child: toHeroContext.widget,
+                    );
+                  },
+                  child: img,
+                )
+              : img;
+
+          return AnimatedBuilder(
+            animation: _pageController,
+            builder: (context, child) {
+              double page = _currentPhotoIndex.toDouble();
+              if (_pageController.hasClients &&
+                  _pageController.position.haveDimensions &&
+                  _pageController.page != null) {
+                page = _pageController.page!;
+              }
+              final diff = index - page;
+
+              // Physical card stacking animation:
+              double cardScale = 1.0;
+              double translationX = 0.0;
+              double opacity = 1.0;
+
+              if (diff < 0) {
+                // Front card swiping off to the left:
+                cardScale = (1.0 + diff * 0.10).clamp(0.85, 1.0);
+                opacity = (1.0 + diff * 0.40).clamp(0.0, 1.0);
+              } else if (diff >= 0 && diff <= 1) {
+                // Incoming card stacked behind, smoothly emerging and scaling up:
+                final cardWidth = MediaQuery.of(context).size.width;
+                translationX = -diff * cardWidth * 0.50;
+                cardScale = (1.0 - diff * 0.10).clamp(0.85, 1.0);
+                opacity = (1.0 - diff * 0.30).clamp(0.0, 1.0);
+              } else {
+                cardScale = 0.85;
+                opacity = 0.0;
+              }
+
+              return Transform.translate(
+                offset: Offset(translationX, 0),
+                child: Transform.scale(
+                  scale: cardScale,
+                  alignment: Alignment.center,
+                  child: Opacity(
+                    opacity: opacity,
+                    child: child,
+                  ),
+                ),
+              );
+            },
+            child: SizedBox.expand(child: card),
+          );
+        },
       );
     }
 
-    final imageWidget = AnimatedSwitcher(
-      duration: const Duration(milliseconds: 280),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      layoutBuilder: (currentChild, previousChildren) => Stack(
-        fit: StackFit.expand,
-        children: [
-          ...previousChildren,
-          ?currentChild,
-        ],
-      ),
-      child: KeyedSubtree(
-        key: ValueKey(photoUrl ?? 'none'),
-        child: SizedBox.expand(child: image),
-      ),
-    );
-
-    final backdrop = Stack(
+    return Stack(
       fit: StackFit.expand,
       children: [
-        imageWidget,
-        IgnorePointer(
+        // 1. Stretched image or carousel
+        ClipRect(
+          child: Transform.scale(
+            alignment: Alignment.topCenter,
+            scale: scale,
+            child: content,
+          ),
+        ),
+
+        // 2. Cinematic gradient overlay layered on top
+        const IgnorePointer(
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -793,28 +927,17 @@ class _PersonPageState extends State<PersonPage> {
                 colors: [
                   Colors.transparent,
                   Colors.transparent,
-                  AppColors.bg.withValues(alpha: 0.25),
-                  AppColors.bg.withValues(alpha: 0.70),
-                  AppColors.bg,
-                  AppColors.bg,
+                  Color(0x400E0F12), // AppColors.bg.withValues(alpha: 0.25)
+                  Color(0xB30E0F12), // AppColors.bg.withValues(alpha: 0.70)
+                  Color(0xFF0E0F12), // AppColors.bg
+                  Color(0xFF0E0F12), // AppColors.bg
                 ],
-                stops: const [0.0, 0.42, 0.64, 0.80, 0.92, 1.0],
+                stops: [0.0, 0.42, 0.64, 0.80, 0.92, 1.0],
               ),
             ),
           ),
         ),
       ],
-    );
-
-    return Hero(
-      tag: heroTag,
-      flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
-        return Material(
-          color: Colors.transparent,
-          child: toHeroContext.widget,
-        );
-      },
-      child: backdrop,
     );
   }
 
@@ -1021,11 +1144,22 @@ class _PersonPageState extends State<PersonPage> {
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (context, idx) {
           final photo = photos[idx];
-          final isSelected = photo == activePhoto;
+          final isSelected = idx == _currentPhotoIndex;
           return GestureDetector(
             onTap: () {
-              if (_selectedPhotoUrl != photo) {
-                setState(() => _selectedPhotoUrl = photo);
+              if (_currentPhotoIndex != idx) {
+                if (_pageController.hasClients) {
+                  _pageController.animateToPage(
+                    idx,
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutCubic,
+                  );
+                } else {
+                  setState(() {
+                    _currentPhotoIndex = idx;
+                    _selectedPhotoUrl = photo;
+                  });
+                }
               }
             },
             behavior: HitTestBehavior.opaque,
