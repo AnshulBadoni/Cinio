@@ -12,6 +12,7 @@ import '../../core/download/download_record.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/torrent/torrent_download_service.dart';
 import '../../core/playback/watch_history.dart';

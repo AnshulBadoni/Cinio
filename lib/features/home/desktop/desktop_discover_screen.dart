@@ -9,6 +9,7 @@ import '../../../core/metadata/theporndb.dart';
 import '../../../core/metadata/tmdb_discover_service.dart';
 import '../../../core/models/media_item.dart';
 import '../../../core/playback/my_list.dart';
+import '../../../core/playback/playback_prefs.dart';
 import '../../../core/repository/source_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../detail/detail_screen.dart';
