@@ -631,6 +631,26 @@ class PlaybackPrefs {
     hideTitlesRevision.value++;
   }
 
+  /// Extra vertical space between rows when titles are hidden.
+  double get hiddenTitleSpacing =>
+      (_box.get('hiddenTitleSpacing', defaultValue: 0.0) as num).toDouble();
+
+  Future<void> setHiddenTitleSpacing(double value) async {
+    await _box.put('hiddenTitleSpacing', value);
+    hideTitlesRevision.value++;
+  }
+
+  /// Whether to hide the anime/manga/novel switcher cards on the home screen.
+  bool get hideModeCards =>
+      _box.get('hideModeCards', defaultValue: false) as bool;
+
+  static final ValueNotifier<int> hideModeCardsRevision = ValueNotifier<int>(0);
+
+  Future<void> setHideModeCards(bool value) async {
+    await _box.put('hideModeCards', value);
+    hideModeCardsRevision.value++;
+  }
+
   /// Whether to show the accurate AniSkip "Skip opening/ending" button (anime,
   /// when real OP/ED timings are detected).
   bool get skipIntro => _box.get('skipIntro', defaultValue: true) as bool;

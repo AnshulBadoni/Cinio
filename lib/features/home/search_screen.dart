@@ -1621,7 +1621,7 @@ class _SearchViewState extends State<_SearchView>
                         tags: _tagsFor(item),
                         qualityBadge: item.quality,
                         dubBadge: item.dubBadge,
-                        completed: sl<ListStatusStore>().statusOf(item) == WatchStatus.completed,
+                        completed: sl<ListStatusStore>().statusOf(item) != null || sl<MyListStore>().contains(item),
                         cellWidth: itemW,
                         onTap: () => _openDetail(item),
                         onLongPress: () => _showInfo(item),
@@ -1681,7 +1681,7 @@ class _SearchViewState extends State<_SearchView>
                 tags: _tagsFor(item),
                 qualityBadge: item.quality,
                 dubBadge: item.dubBadge,
-                completed: sl<ListStatusStore>().statusOf(item) == WatchStatus.completed,
+                completed: sl<ListStatusStore>().statusOf(item) != null || sl<MyListStore>().contains(item),
                 cellWidth: cellW,
                 onTap: () => _openDetail(item),
                 onLongPress: () => _showInfo(item),
@@ -1922,7 +1922,7 @@ class _SearchViewState extends State<_SearchView>
           tags: _tagsFor(item),
           qualityBadge: item.quality,
           dubBadge: item.dubBadge,
-          completed: sl<ListStatusStore>().statusOf(item) == WatchStatus.completed,
+          completed: sl<ListStatusStore>().statusOf(item) != null || sl<MyListStore>().contains(item),
           cellWidth: cellW,
           heroTag: heroTag,
           onTap: () => _openDetail(item, heroTag: heroTag),
@@ -2107,7 +2107,7 @@ class _SearchViewState extends State<_SearchView>
           tags: _tagsFor(item),
           qualityBadge: item.quality,
           dubBadge: item.dubBadge,
-          completed: sl<ListStatusStore>().statusOf(item) == WatchStatus.completed,
+          completed: sl<ListStatusStore>().statusOf(item) != null || sl<MyListStore>().contains(item),
           cellWidth: cellW,
           heroTag: heroTag,
           onTap: () => _openDetail(item, heroTag: heroTag),
@@ -3083,7 +3083,7 @@ class _MasonrySearchCardState extends State<_MasonrySearchCard> {
 
     final double aspectRatio = isWide ? (16 / 9) : (2 / 3);
     final String imageUrl = (isWide && hasHero ? item.heroImage : item.cover) ?? item.cover ?? '';
-    final isCompleted = sl<ListStatusStore>().statusOf(item) == WatchStatus.completed;
+    final isCompleted = sl<ListStatusStore>().statusOf(item) != null || sl<MyListStore>().contains(item);
 
     return GestureDetector(
       onTap: widget.onTap,

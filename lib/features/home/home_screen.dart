@@ -850,69 +850,83 @@ class _HomeViewState extends State<_HomeView>
   }
 
   Widget _studioRow(HomeSection section) {
-    const width = 160.0;
-    const rowHeight = 188.0;
-    return ContentRow(
-      title: section.title,
-      itemWidth: width,
-      itemHeight: rowHeight,
-      itemCount: section.items.length,
-      onSeeAll: () => _openSeeAll(section),
-      itemBuilder: (c, i) {
-        final item = section.items[i];
-        final heroTag = _posterHeroTag(section, i, item);
-        return SizedBox(
-          height: rowHeight,
-          child: PosterCard(
-            title: item.title,
-            imageUrl: item.cover,
-            headers: item.coverHeaders,
-            cellWidth: width,
-            qualityBadge: item.quality,
-            dubBadge: item.dubBadge,
-            heroTag: heroTag,
-            completed: _listStatus.statusOf(item) == WatchStatus.completed,
-            onTap: () {
-              if (item.sourceId == 'tpdb:studio') {
-                _openStudio(item);
-              } else {
-                _openDetail(
-                  item,
-                  trailerContext: DetailTrailerContext.studio,
-                  heroTag: heroTag,
-                );
-              }
-            },
-            onLongPress: () => _showQuickActions(item, heroTag),
-          ),
+    return ValueListenableBuilder<int>(
+      valueListenable: PlaybackPrefs.hideTitlesRevision,
+      builder: (_, _, _) {
+        final hideTitles = sl<PlaybackPrefs>().hideTitles;
+        final spacing = sl<PlaybackPrefs>().hiddenTitleSpacing;
+        const width = 160.0;
+        final rowHeight = hideTitles ? (width / (2 / 3)) + spacing : 188.0;
+        return ContentRow(
+          title: section.title,
+          itemWidth: width,
+          itemHeight: rowHeight,
+          itemCount: section.items.length,
+          onSeeAll: () => _openSeeAll(section),
+          itemBuilder: (c, i) {
+            final item = section.items[i];
+            final heroTag = _posterHeroTag(section, i, item);
+            return SizedBox(
+              height: rowHeight,
+              child: PosterCard(
+                title: item.title,
+                imageUrl: item.cover,
+                headers: item.coverHeaders,
+                cellWidth: width,
+                qualityBadge: item.quality,
+                dubBadge: item.dubBadge,
+                heroTag: heroTag,
+                completed: _listStatus.statusOf(item) != null || sl<MyListStore>().contains(item),
+                onTap: () {
+                  if (item.sourceId == 'tpdb:studio') {
+                    _openStudio(item);
+                  } else {
+                    _openDetail(
+                      item,
+                      trailerContext: DetailTrailerContext.studio,
+                      heroTag: heroTag,
+                    );
+                  }
+                },
+                onLongPress: () => _showQuickActions(item, heroTag),
+              ),
+            );
+          },
         );
       },
     );
   }
 
   Widget _fixedContentRow(HomeSection section, {required bool landscape}) {
-    final width = landscape ? 210.0 : 140.0;
-    const height = 236.0;
-    return ContentRow(
-      title: section.title,
-      itemWidth: width,
-      itemHeight: height,
-      itemCount: section.items.length,
-      onSeeAll: () => _openSeeAll(section),
-      itemBuilder: (c, i) {
-        final item = section.items[i];
-        final heroTag = _posterHeroTag(section, i, item);
-        return PosterCard(
-          title: item.title,
-          imageUrl: item.cover,
-          headers: item.coverHeaders,
-          cellWidth: width,
-          qualityBadge: item.quality,
-          dubBadge: item.dubBadge,
-          completed: _listStatus.statusOf(item) == WatchStatus.completed,
-          heroTag: heroTag,
-          onTap: () => _openDetail(item, heroTag: heroTag),
-          onLongPress: () => _showQuickActions(item, heroTag),
+    return ValueListenableBuilder<int>(
+      valueListenable: PlaybackPrefs.hideTitlesRevision,
+      builder: (_, _, _) {
+        final hideTitles = sl<PlaybackPrefs>().hideTitles;
+        final spacing = sl<PlaybackPrefs>().hiddenTitleSpacing;
+        final width = landscape ? 210.0 : 140.0;
+        final height = hideTitles ? (landscape ? width / (16 / 9) : width / (2 / 3)) + spacing : 236.0;
+        return ContentRow(
+          title: section.title,
+          itemWidth: width,
+          itemHeight: height,
+          itemCount: section.items.length,
+          onSeeAll: () => _openSeeAll(section),
+          itemBuilder: (c, i) {
+            final item = section.items[i];
+            final heroTag = _posterHeroTag(section, i, item);
+            return PosterCard(
+              title: item.title,
+              imageUrl: item.cover,
+              headers: item.coverHeaders,
+              cellWidth: width,
+              qualityBadge: item.quality,
+              dubBadge: item.dubBadge,
+              completed: _listStatus.statusOf(item) != null || sl<MyListStore>().contains(item),
+              heroTag: heroTag,
+              onTap: () => _openDetail(item, heroTag: heroTag),
+              onLongPress: () => _showQuickActions(item, heroTag),
+            );
+          },
         );
       },
     );
@@ -1018,16 +1032,20 @@ class _HomeViewState extends State<_HomeView>
   // ── Mode cards ────────────────────────────────────────────────────────────
 
   Widget _modeCards() {
-    return BlocBuilder<ContentModeCubit, ContentMode>(
-      bloc: _modeCubit,
-      builder: (context, current) {
-        final others = ContentMode.values
-            .where((m) => m != current)
-            .toList(growable: false);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-          child: Row(
-            children: [
+    return ValueListenableBuilder<int>(
+      valueListenable: PlaybackPrefs.hideModeCardsRevision,
+      builder: (_, _, _) {
+        if (sl<PlaybackPrefs>().hideModeCards) return const SizedBox.shrink();
+        return BlocBuilder<ContentModeCubit, ContentMode>(
+          bloc: _modeCubit,
+          builder: (context, current) {
+            final others = ContentMode.values
+                .where((m) => m != current)
+                .toList(growable: false);
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+              child: Row(
+                children: [
               for (var i = 0; i < others.length; i++) ...[
                 if (i > 0) const SizedBox(width: 12),
                 Expanded(child: _modeCard(others[i])),
@@ -1035,6 +1053,8 @@ class _HomeViewState extends State<_HomeView>
             ],
           ),
         );
+      },
+    );
       },
     );
   }

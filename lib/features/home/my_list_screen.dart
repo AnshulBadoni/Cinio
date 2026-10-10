@@ -1269,7 +1269,7 @@ class _MyListViewState extends State<_MyListView> {
                       headers: entry.item.coverHeaders,
                       cellWidth: cellW,
                       heroTag: heroTag,
-                      completed: entry.status == WatchStatus.completed,
+                      completed: true,
                       onTap: () => onTap(entry.item, heroTag),
                       onLongPress: isMyList
                           ? () => _showMyListQuickActions(context, entry, heroTag)

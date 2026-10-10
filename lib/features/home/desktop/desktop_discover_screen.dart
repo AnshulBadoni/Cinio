@@ -1392,8 +1392,8 @@ class _MasonryCardState extends State<_MasonryCard> {
                           child: GestureDetector(
                             onTap: widget.onBookmarkToggle,
                             child: Container(
-                              width: 28,
-                              height: 28,
+                              width: 22,
+                              height: 22,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: widget.isBookmarked
@@ -1409,7 +1409,7 @@ class _MasonryCardState extends State<_MasonryCard> {
                                     ? Icons.check_rounded
                                     : Icons.add_rounded,
                                 color: Colors.white,
-                                size: 16,
+                                size: 14,
                               ),
                             ),
                           ),

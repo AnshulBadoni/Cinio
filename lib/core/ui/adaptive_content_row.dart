@@ -4,7 +4,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../cache/app_image_cache.dart';
+import '../di/injector.dart';
 import '../models/media_item.dart';
+import '../playback/playback_prefs.dart';
 import 'content_row.dart';
 import 'poster_card.dart';
 
@@ -106,12 +108,17 @@ class _AdaptiveContentRowState extends State<AdaptiveContentRow> {
   Widget build(BuildContext context) {
     final landscape = _landscape;
     final width = landscape ? 210.0 : 140.0;
-    const height = 236.0;
-    return ContentRow(
-      title: widget.title,
-      itemWidth: width,
-      itemHeight: height,
-      itemCount: widget.items.length,
+    return ValueListenableBuilder<int>(
+      valueListenable: PlaybackPrefs.hideTitlesRevision,
+      builder: (_, _, _) {
+        final hideTitles = sl<PlaybackPrefs>().hideTitles;
+        final spacing = sl<PlaybackPrefs>().hiddenTitleSpacing;
+        final height = hideTitles ? (landscape ? width / (16 / 9) : width / (2 / 3)) + spacing : 236.0;
+        return ContentRow(
+          title: widget.title,
+          itemWidth: width,
+          itemHeight: height,
+          itemCount: widget.items.length,
       onSeeAll: widget.onSeeAll,
       itemBuilder: (context, index) {
         final item = widget.items[index];
@@ -129,6 +136,8 @@ class _AdaptiveContentRowState extends State<AdaptiveContentRow> {
           heroTag: widget.heroTagBuilder?.call(item, index),
           onLongPress: () => widget.onLongPress(item),
         );
+      },
+    );
       },
     );
   }

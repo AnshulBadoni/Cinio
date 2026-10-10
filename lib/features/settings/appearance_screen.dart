@@ -26,6 +26,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
   /// Android 12+ only. Resolved once; the row stays hidden everywhere else
   /// rather than showing a switch that couldn't do anything.
   bool _wallpaperSupported = false;
+  double? _tempTitleSpacing;
 
   @override
   void initState() {
@@ -307,6 +308,32 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+              if (sl<PlaybackPrefs>().hideTitles)
+                _sliderTile(
+                  icon: Icons.height_rounded,
+                  title: 'Hidden title row spacing',
+                  subtitle: 'Extra vertical space between poster rows',
+                  value: _tempTitleSpacing ?? sl<PlaybackPrefs>().hiddenTitleSpacing,
+                  min: 0,
+                  max: 60,
+                  onChanged: (v) {
+                    setState(() => _tempTitleSpacing = v);
+                  },
+                  onChangeEnd: (v) async {
+                    await sl<PlaybackPrefs>().setHiddenTitleSpacing(v);
+                    if (mounted) setState(() => _tempTitleSpacing = null);
+                  },
+                ),
+              _switchTile(
+                icon: Icons.amp_stories_outlined,
+                title: 'Hide content mode cards',
+                subtitle: 'Remove the Anime/Manga/Novel switcher from the home screen',
+                value: sl<PlaybackPrefs>().hideModeCards,
+                onChanged: (v) async {
+                  await sl<PlaybackPrefs>().setHideModeCards(v);
+                  if (mounted) setState(() {});
+                },
+              ),
               _switchTile(
                 icon: Icons.auto_awesome_motion_outlined,
                 title: 'Animate lists',
@@ -385,6 +412,55 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
         value: value,
         activeThumbColor: AppColors.accent,
         onChanged: flip,
+      ),
+    );
+  }
+
+  Widget _sliderTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required double value,
+    required double min,
+    required double max,
+    required ValueChanged<double> onChanged,
+    required Future<void> Function(double) onChangeEnd,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: AppColors.textSecondary, size: 24),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: AppText.body.copyWith(color: AppColors.textPrimary)),
+                    Text(subtitle, style: AppText.caption.copyWith(color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: AppColors.accent,
+              thumbColor: AppColors.accent,
+              overlayColor: AppColors.accent.withValues(alpha: 0.2),
+            ),
+            child: Slider(
+              value: value,
+              min: min,
+              max: max,
+              onChanged: onChanged,
+              onChangeEnd: onChangeEnd,
+            ),
+          ),
+        ],
       ),
     );
   }

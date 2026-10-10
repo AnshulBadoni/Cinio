@@ -169,9 +169,9 @@ class _CompletionBadge extends StatelessWidget {
         ],
       ),
       child: const SizedBox(
-        width: 30,
-        height: 30,
-        child: Icon(Icons.check_rounded, color: Colors.white, size: 18),
+        width: 22,
+        height: 22,
+        child: Icon(Icons.check_rounded, color: Colors.white, size: 14),
       ),
     );
   }

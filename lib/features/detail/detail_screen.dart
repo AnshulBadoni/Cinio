@@ -437,6 +437,49 @@ class _DetailViewState extends State<_DetailView>
   Timer? _trailerDelayTimer;
   String? _trailerDetailKey;
   bool _trailerResolving = false;
+  bool _actionsExpanded = false;
+
+  Widget _buildSmallActionBtn({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+    bool active = false,
+    bool solid = false,
+  }) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: active
+            ? AppColors.accent.withValues(alpha: 0.22)
+            : solid
+                ? Colors.white
+                : Colors.white.withValues(alpha: 0.16),
+        border: Border.all(
+          color: active
+              ? AppColors.accent
+              : solid
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.15),
+          width: 1.2,
+        ),
+      ),
+      child: IconButton(
+        icon: Icon(
+          icon,
+          color: active
+              ? AppColors.accent
+              : solid
+                  ? Colors.black
+                  : Colors.white,
+          size: 20,
+        ),
+        tooltip: tooltip,
+        onPressed: onPressed,
+      ),
+    );
+  }
 
   void _scheduleTrailerResolution(MediaDetail detail) {
     final key = '${detail.sourceId}:${detail.id}:${detail.title}:${detail.year ?? ''}';
@@ -2376,121 +2419,197 @@ class _DetailViewState extends State<_DetailView>
                   if (_isFutureRelease(detail))
                     const _ComingSoonButton()
                   else
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(24),
-                                onTap: (eps.isNotEmpty ||
-                                        widget.item.sourceId == 'tmdb:catalog' ||
-                                        widget.item.sourceId.startsWith('tpdb:'))
-                                    ? () {
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          clipBehavior: Clip.none,
+                          physics: const BouncingScrollPhysics(),
+                          child: IntrinsicHeight(
+                            child: Row(
+                              children: [
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOutCubic,
+                                  width: _actionsExpanded ? 48 : constraints.maxWidth - 48 - 10 - 48 - 10,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(24),
+                                      onTap: (eps.isNotEmpty ||
+                                              widget.item.sourceId == 'tmdb:catalog' ||
+                                              widget.item.sourceId.startsWith('tpdb:'))
+                                          ? () {
+                                              if (downloadedRec != null) {
+                                                launchDownloadedEpisode(context, downloadedRec);
+                                              } else {
+                                                _openPlayer(eps, resumeIdx, detail, category);
+                                              }
+                                            }
+                                          : null,
+                                      onLongPress: () async {
                                         if (downloadedRec != null) {
-                                          launchDownloadedEpisode(context, downloadedRec);
-                                        } else {
                                           _openPlayer(eps, resumeIdx, detail, category);
+                                        } else if (widget.item.sourceId == 'tmdb:catalog' ||
+                                            widget.item.sourceId.startsWith('tpdb:')) {
+                                          final picked = await _showProviderPickerSheet(detail, category: category);
+                                          if (picked != null && mounted) {
+                                            _openPlayer(picked.detail.episodes, 0, picked.detail, category);
+                                          }
                                         }
-                                      }
-                                    : null,
-                                onLongPress: () async {
-                                  if (downloadedRec != null) {
-                                    _openPlayer(eps, resumeIdx, detail, category);
-                                  } else if (widget.item.sourceId == 'tmdb:catalog' ||
-                                      widget.item.sourceId.startsWith('tpdb:')) {
-                                    final picked = await _showProviderPickerSheet(detail, category: category);
-                                    if (picked != null && mounted) {
-                                      _openPlayer(picked.detail.episodes, 0, picked.detail, category);
-                                    }
-                                  }
-                                },
-                                child: Center(
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        isReading
-                                            ? CupertinoIcons.book_fill
-                                            : CupertinoIcons.play_arrow_solid,
-                                        color: Colors.black,
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        buttonLabel,
-                                        style: const TextStyle(
-                                          color: Colors.black,
-                                          fontSize: 15.5,
-                                          fontWeight: FontWeight.w700,
+                                      },
+                                      child: Center(
+                                        child: SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          physics: const NeverScrollableScrollPhysics(),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                isReading
+                                                    ? CupertinoIcons.book_fill
+                                                    : CupertinoIcons.play_arrow_solid,
+                                                color: Colors.black,
+                                                size: 20,
+                                              ),
+                                              AnimatedSize(
+                                                duration: const Duration(milliseconds: 300),
+                                                curve: Curves.easeOutCubic,
+                                                child: _actionsExpanded
+                                                    ? const SizedBox.shrink()
+                                                    : Padding(
+                                                        padding: const EdgeInsets.only(left: 8),
+                                                        child: Text(
+                                                          buttonLabel,
+                                                          style: const TextStyle(
+                                                            color: Colors.black,
+                                                            fontSize: 15.5,
+                                                            fontWeight: FontWeight.w700,
+                                                          ),
+                                                        ),
+                                                      ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
-                                    ],
+                                    ),
                                   ),
                                 ),
-                              ),
+                                const SizedBox(width: 10),
+                                AnimatedSize(
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOutCubic,
+                                  alignment: Alignment.centerLeft,
+                                  child: _actionsExpanded
+                                      ? Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (!isReading) ...[
+                                              _buildSmallActionBtn(
+                                                icon: Icons.download_rounded,
+                                                tooltip: downloadLabel,
+                                                onPressed: () => _openDownloadSheet(
+                                                  detail: detail,
+                                                  category: category,
+                                                  episodesBySeason: episodesBySeason,
+                                                  initialSeason: currentSeason,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 10),
+                                            ],
+                                            _buildSmallActionBtn(
+                                              icon: _inMyList ? CupertinoIcons.checkmark_alt : CupertinoIcons.plus,
+                                              tooltip: _inMyList ? 'In My List' : 'Add to My List',
+                                              active: _inMyList,
+                                              onPressed: () => _openListSheet(detail),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            if (Platform.isAndroid) ...[
+                                              _buildSmallActionBtn(
+                                                icon: _subscribed ? CupertinoIcons.bell_fill : CupertinoIcons.bell,
+                                                tooltip: 'Notify',
+                                                active: _subscribed,
+                                                onPressed: () => _toggleSubscribe(detail),
+                                              ),
+                                              const SizedBox(width: 10),
+                                            ],
+                                            if (_trackingAvailable(detail)) ...[
+                                              _buildSmallActionBtn(
+                                                icon: _tracked ? CupertinoIcons.arrow_2_circlepath_circle_fill : CupertinoIcons.arrow_2_circlepath,
+                                                tooltip: 'Sync',
+                                                active: _tracked,
+                                                onPressed: () => _openTrackingSheet(detail),
+                                              ),
+                                              const SizedBox(width: 10),
+                                            ],
+                                            if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) ...[
+                                              _buildSmallActionBtn(
+                                                icon: Icons.swap_horiz_rounded,
+                                                tooltip: 'Provider',
+                                                onPressed: () async {
+                                                  final picked = await _showProviderPickerSheet(detail, category: category);
+                                                  if (picked != null && mounted) {
+                                                    // Provider picked logic is handled inside _showProviderPickerSheet
+                                                  }
+                                                },
+                                              ),
+                                              const SizedBox(width: 10),
+                                            ],
+                                            _buildSmallActionBtn(
+                                              icon: CupertinoIcons.share,
+                                              tooltip: 'Share',
+                                              onPressed: () => _share(detail, sourceName),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            _buildSmallActionBtn(
+                                              icon: CupertinoIcons.globe,
+                                              tooltip: 'Webpage',
+                                              onPressed: () => _openSourceSite(),
+                                            ),
+                                            const SizedBox(width: 10),
+                                          ],
+                                        )
+                                      : Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            _buildSmallActionBtn(
+                                              icon: _inMyList ? CupertinoIcons.checkmark_alt : CupertinoIcons.plus,
+                                              tooltip: _inMyList ? 'In My List' : 'Add to My List',
+                                              active: _inMyList,
+                                              onPressed: () => _openListSheet(detail),
+                                            ),
+                                            const SizedBox(width: 10),
+                                          ],
+                                        ),
+                                ),
+                                AnimatedRotation(
+                                  turns: _actionsExpanded ? 0.25 : 0.0,
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOutCubic,
+                                  child: _buildSmallActionBtn(
+                                    icon: CupertinoIcons.ellipsis,
+                                    tooltip: 'More actions',
+                                    solid: _actionsExpanded,
+                                    onPressed: () {
+                                      setState(() {
+                                        _actionsExpanded = !_actionsExpanded;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _inMyList
-                                ? AppColors.accent.withValues(alpha: 0.22)
-                                : Colors.white.withValues(alpha: 0.16),
-                            border: Border.all(
-                              color: _inMyList
-                                  ? AppColors.accent
-                                  : Colors.white.withValues(alpha: 0.15),
-                              width: 1.2,
-                            ),
-                          ),
-                          child: IconButton(
-                            icon: Icon(
-                              _inMyList ? CupertinoIcons.checkmark_alt : CupertinoIcons.plus,
-                              color: _inMyList ? AppColors.accent : Colors.white,
-                              size: 20,
-                            ),
-                            tooltip: _inMyList ? 'In My List' : 'Add to My List',
-                            onPressed: () => _openListSheet(detail),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha: 0.16),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.15),
-                              width: 1.2,
-                            ),
-                          ),
-                          child: IconButton(
-                            icon: const Icon(CupertinoIcons.ellipsis, color: Colors.white, size: 20),
-                            tooltip: 'More actions',
-                            onPressed: () => _openMoreActionsSheet(
-                              detail,
-                              category: category,
-                              eps: eps,
-                              episodesBySeason: episodesBySeason,
-                              currentSeason: currentSeason,
-                              downloadLabel: downloadLabel,
-                            ),
-                          ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
+
                 ],
               ),
             ),
