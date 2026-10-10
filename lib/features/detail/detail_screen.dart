@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:palette_generator/palette_generator.dart';
 
@@ -446,37 +447,34 @@ class _DetailViewState extends State<_DetailView>
     bool active = false,
     bool solid = false,
   }) {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: active
-            ? AppColors.accent.withValues(alpha: 0.22)
-            : solid
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.16),
-        border: Border.all(
-          color: active
-              ? AppColors.accent
-              : solid
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.15),
-          width: 1.2,
+    return ClipOval(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: active
+                ? AppColors.accent.withValues(alpha: 0.22)
+                : solid
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.12),
+          ),
+          child: IconButton(
+            icon: Icon(
+              icon,
+              color: active
+                  ? AppColors.accent
+                  : solid
+                      ? Colors.black
+                      : Colors.white,
+              size: 20,
+            ),
+            tooltip: tooltip,
+            onPressed: onPressed,
+          ),
         ),
-      ),
-      child: IconButton(
-        icon: Icon(
-          icon,
-          color: active
-              ? AppColors.accent
-              : solid
-                  ? Colors.black
-                  : Colors.white,
-          size: 20,
-        ),
-        tooltip: tooltip,
-        onPressed: onPressed,
       ),
     );
   }
@@ -2512,7 +2510,7 @@ class _DetailViewState extends State<_DetailView>
                                           children: [
                                             if (!isReading) ...[
                                               _buildSmallActionBtn(
-                                                icon: Icons.download_rounded,
+                                                icon: CupertinoIcons.arrow_down_circle,
                                                 tooltip: downloadLabel,
                                                 onPressed: () => _openDownloadSheet(
                                                   detail: detail,
@@ -2548,31 +2546,20 @@ class _DetailViewState extends State<_DetailView>
                                               ),
                                               const SizedBox(width: 10),
                                             ],
-                                            if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:')) ...[
-                                              _buildSmallActionBtn(
-                                                icon: Icons.swap_horiz_rounded,
-                                                tooltip: 'Provider',
-                                                onPressed: () async {
-                                                  final picked = await _showProviderPickerSheet(detail, category: category);
-                                                  if (picked != null && mounted) {
-                                                    // Provider picked logic is handled inside _showProviderPickerSheet
-                                                  }
-                                                },
-                                              ),
-                                              const SizedBox(width: 10),
-                                            ],
                                             _buildSmallActionBtn(
                                               icon: CupertinoIcons.share,
                                               tooltip: 'Share',
                                               onPressed: () => _share(detail, sourceName),
                                             ),
                                             const SizedBox(width: 10),
-                                            _buildSmallActionBtn(
-                                              icon: CupertinoIcons.globe,
-                                              tooltip: 'Webpage',
-                                              onPressed: () => _openSourceSite(),
-                                            ),
-                                            const SizedBox(width: 10),
+                                            if (!(widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:'))) ...[
+                                              _buildSmallActionBtn(
+                                                icon: CupertinoIcons.globe,
+                                                tooltip: 'Webpage',
+                                                onPressed: () => _openSourceSite(),
+                                              ),
+                                              const SizedBox(width: 10),
+                                            ],
                                           ],
                                         )
                                       : Row(
