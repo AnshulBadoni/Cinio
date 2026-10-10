@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -78,6 +80,8 @@ class _PersonPageState extends State<PersonPage> {
   bool _hasMore = true;
   bool _bioExpanded = false;
   bool _isFav = false;
+  Timer? _carouselTimer;
+  int _lastPhotoCount = 0;
 
   @override
   void initState() {
@@ -89,8 +93,28 @@ class _PersonPageState extends State<PersonPage> {
     _loadProviderVideos();
   }
 
+  void _startCarouselTimer(int photoCount) {
+    _lastPhotoCount = photoCount;
+    _carouselTimer?.cancel();
+    if (photoCount <= 1) return;
+    _carouselTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (!mounted || !_pageController.hasClients) return;
+      final nextPage = (_currentPhotoIndex + 1) % photoCount;
+      _pageController.animateToPage(
+        nextPage,
+        duration: const Duration(milliseconds: 700),
+        curve: Curves.easeInOutCubic,
+      );
+    });
+  }
+
+  void _resetCarouselTimer(int photoCount) {
+    _startCarouselTimer(photoCount);
+  }
+
   @override
   void dispose() {
+    _carouselTimer?.cancel();
     _pageController.dispose();
     _heroStretch.dispose();
     _scrollOffset.dispose();
@@ -632,7 +656,8 @@ class _PersonPageState extends State<PersonPage> {
           style: const TextStyle(
             fontFamily: 'Avoin',
             fontSize: 18,
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
             color: Colors.white,
           ),
         ),
@@ -724,13 +749,20 @@ class _PersonPageState extends State<PersonPage> {
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Avoin',
-                    fontSize: 34,
-                    fontWeight: FontWeight.w900,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w700,
                     color: Colors.white,
-                    letterSpacing: -0.6,
-                    height: 1.1,
+                    letterSpacing: 0.8,
+                    height: 1.15,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -827,6 +859,11 @@ class _PersonPageState extends State<PersonPage> {
         ),
       );
     } else {
+      if (_lastPhotoCount != photos.length) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _startCarouselTimer(photos.length);
+        });
+      }
       content = PageView.builder(
         controller: _pageController,
         physics: const BouncingScrollPhysics(),
@@ -837,6 +874,7 @@ class _PersonPageState extends State<PersonPage> {
               _currentPhotoIndex = i;
               _selectedPhotoUrl = photos[i];
             });
+            _resetCarouselTimer(photos.length);
           }
         },
         itemBuilder: (context, index) {
@@ -872,31 +910,23 @@ class _PersonPageState extends State<PersonPage> {
                 page = _pageController.page!;
               }
               final diff = index - page;
+              final absDiff = diff.abs().clamp(0.0, 1.0);
 
-              // Physical card stacking animation:
-              double cardScale = 1.0;
-              double translationX = 0.0;
-              double opacity = 1.0;
+              // Cinematic depth transition:
+              // 1. Subtle zoom: active image is 1.0, adjacent images ease to 0.94
+              final scale = (1.0 - absDiff * 0.06).clamp(0.92, 1.0);
 
-              if (diff < 0) {
-                // Front card swiping off to the left:
-                cardScale = (1.0 + diff * 0.10).clamp(0.85, 1.0);
-                opacity = (1.0 + diff * 0.40).clamp(0.0, 1.0);
-              } else if (diff >= 0 && diff <= 1) {
-                // Incoming card stacked behind, smoothly emerging and scaling up:
-                final cardWidth = MediaQuery.of(context).size.width;
-                translationX = -diff * cardWidth * 0.50;
-                cardScale = (1.0 - diff * 0.10).clamp(0.85, 1.0);
-                opacity = (1.0 - diff * 0.30).clamp(0.0, 1.0);
-              } else {
-                cardScale = 0.85;
-                opacity = 0.0;
-              }
+              // 2. Gentle parallax translation giving deep cinematic perspective
+              final cardWidth = MediaQuery.of(context).size.width;
+              final parallaxX = -diff * cardWidth * 0.20;
+
+              // 3. Smooth soft crossfade
+              final opacity = (1.0 - absDiff * 0.35).clamp(0.0, 1.0);
 
               return Transform.translate(
-                offset: Offset(translationX, 0),
+                offset: Offset(parallaxX, 0),
                 child: Transform.scale(
-                  scale: cardScale,
+                  scale: scale,
                   alignment: Alignment.center,
                   child: Opacity(
                     opacity: opacity,

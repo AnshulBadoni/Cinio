@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/poster_card.dart';
@@ -137,9 +138,9 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
         controller: paginating ? _controller : null,
         padding: const EdgeInsets.all(16),
         cacheExtent: 800,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
-          childAspectRatio: 0.56,
+          childAspectRatio: sl<PlaybackPrefs>().hideTitles ? (2 / 3) : 0.56,
           crossAxisSpacing: 10,
           mainAxisSpacing: 14,
         ),

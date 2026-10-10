@@ -2438,16 +2438,47 @@ class _DetailViewState extends State<_DetailView>
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _inMyList
+                                ? AppColors.accent.withValues(alpha: 0.22)
+                                : Colors.white.withValues(alpha: 0.16),
+                            border: Border.all(
+                              color: _inMyList
+                                  ? AppColors.accent
+                                  : Colors.white.withValues(alpha: 0.15),
+                              width: 1.2,
+                            ),
+                          ),
+                          child: IconButton(
+                            icon: Icon(
+                              _inMyList ? CupertinoIcons.checkmark_alt : CupertinoIcons.plus,
+                              color: _inMyList ? AppColors.accent : Colors.white,
+                              size: 20,
+                            ),
+                            tooltip: _inMyList ? 'In My List' : 'Add to My List',
+                            onPressed: () => _openListSheet(detail),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
                         Container(
                           width: 48,
                           height: 48,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: Colors.white.withValues(alpha: 0.16),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              width: 1.2,
+                            ),
                           ),
                           child: IconButton(
-                            icon: const Icon(CupertinoIcons.ellipsis_vertical, color: Colors.white, size: 20),
+                            icon: const Icon(CupertinoIcons.ellipsis, color: Colors.white, size: 20),
+                            tooltip: 'More actions',
                             onPressed: () => _openMoreActionsSheet(
                               detail,
                               category: category,
@@ -2563,114 +2594,151 @@ class _DetailViewState extends State<_DetailView>
     final isReading = detail.type == ProviderType.manga || detail.type == ProviderType.novel;
     final sourceName = _sourceLabel(widget.item.sourceId);
 
-    showModalBottomSheet<void>(
+    showGeneralDialog<void>(
       context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 8),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            ListTile(
-              leading: Icon(
-                _inMyList ? CupertinoIcons.checkmark_alt : CupertinoIcons.plus,
-                color: _inMyList ? AppColors.accent : Colors.white,
-              ),
-              title: Text(
-                _inMyList
-                    ? 'In My List (${_status == null ? "Added" : shortLabelFor(_status!, reading: isReading)})'
-                    : 'Add to My List',
-                style: const TextStyle(color: Colors.white),
-              ),
-              onTap: () {
-                Navigator.pop(ctx);
-                _openListSheet(detail);
-              },
-            ),
-            if (!isReading)
-              ListTile(
-                leading: const Icon(Icons.download_rounded, color: Colors.white),
-                title: Text(downloadLabel, style: const TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _openDownloadSheet(
-                    detail: detail,
-                    category: category,
-                    episodesBySeason: episodesBySeason,
-                    initialSeason: currentSeason,
-                  );
-                },
-              ),
-            if (Platform.isAndroid)
-              ListTile(
-                leading: Icon(
-                  _subscribed ? CupertinoIcons.bell_fill : CupertinoIcons.bell,
-                  color: _subscribed ? AppColors.accent : Colors.white,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black.withValues(alpha: 0.65),
+      transitionDuration: const Duration(milliseconds: 280),
+      pageBuilder: (dialogCtx, anim, secondaryAnim) => const SizedBox.shrink(),
+      transitionBuilder: (dialogCtx, anim, secondaryAnim, child) {
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutBack,
+          reverseCurve: Curves.easeInCubic,
+        );
+        final fade = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOut,
+          reverseCurve: Curves.easeIn,
+        );
+
+        return FadeTransition(
+          opacity: fade,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.84, end: 1.0).animate(curved),
+            child: Center(
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: MediaQuery.of(context).size.width.clamp(280.0, 380.0),
+                  margin: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface.withValues(alpha: 0.94),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        blurRadius: 28,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 16,
+                        runSpacing: 18,
+                        children: [
+                          _CircleActionButton(
+                            icon: _inMyList ? CupertinoIcons.checkmark_alt : CupertinoIcons.plus,
+                            label: _inMyList ? 'In List' : 'My List',
+                            active: _inMyList,
+                            onTap: () {
+                              Navigator.of(dialogCtx).pop();
+                              _openListSheet(detail);
+                            },
+                          ),
+                          if (!isReading)
+                            _CircleActionButton(
+                              icon: Icons.download_rounded,
+                              label: downloadLabel.length > 12 ? 'Download' : downloadLabel,
+                              onTap: () {
+                                Navigator.of(dialogCtx).pop();
+                                _openDownloadSheet(
+                                  detail: detail,
+                                  category: category,
+                                  episodesBySeason: episodesBySeason,
+                                  initialSeason: currentSeason,
+                                );
+                              },
+                            ),
+                          if (Platform.isAndroid)
+                            _CircleActionButton(
+                              icon: _subscribed ? CupertinoIcons.bell_fill : CupertinoIcons.bell,
+                              label: _subscribed ? 'Notified' : 'Notify',
+                              active: _subscribed,
+                              onTap: () {
+                                Navigator.of(dialogCtx).pop();
+                                _toggleSubscribe(detail);
+                              },
+                            ),
+                          if (_trackingAvailable(detail))
+                            _CircleActionButton(
+                              icon: _tracked
+                                  ? CupertinoIcons.arrow_2_circlepath_circle_fill
+                                  : CupertinoIcons.arrow_2_circlepath,
+                              label: 'Sync',
+                              active: _tracked,
+                              onTap: () {
+                                Navigator.of(dialogCtx).pop();
+                                _openTrackingSheet(detail);
+                              },
+                            ),
+                          if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:'))
+                            _CircleActionButton(
+                              icon: Icons.swap_horiz_rounded,
+                              label: 'Provider',
+                              onTap: () async {
+                                Navigator.of(dialogCtx).pop();
+                                final picked = await _showProviderPickerSheet(detail, category: category);
+                                if (picked != null && mounted) {
+                                  _openPlayer(picked.detail.episodes, 0, picked.detail, category);
+                                }
+                              },
+                            ),
+                          _CircleActionButton(
+                            icon: CupertinoIcons.share,
+                            label: 'Share',
+                            onTap: () {
+                              Navigator.of(dialogCtx).pop();
+                              _share(detail, sourceName);
+                            },
+                          ),
+                          _CircleActionButton(
+                            icon: CupertinoIcons.globe,
+                            label: 'Webpage',
+                            onTap: () {
+                              Navigator.of(dialogCtx).pop();
+                              _openSourceSite();
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                title: Text(
-                  _subscribed ? 'Notifications Enabled' : 'Notify on Releases',
-                  style: const TextStyle(color: Colors.white),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _toggleSubscribe(detail);
-                },
               ),
-            if (_trackingAvailable(detail))
-              ListTile(
-                leading: Icon(
-                  _tracked ? CupertinoIcons.arrow_2_circlepath_circle_fill : CupertinoIcons.arrow_2_circlepath,
-                  color: _tracked ? AppColors.accent : Colors.white,
-                ),
-                title: const Text('Tracking & Sync', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _openTrackingSheet(detail);
-                },
-              ),
-            if (widget.item.sourceId == 'tmdb:catalog' || widget.item.sourceId.startsWith('tpdb:'))
-              ListTile(
-                leading: const Icon(Icons.source_rounded, color: Colors.white),
-                title: const Text('Change Provider', style: TextStyle(color: Colors.white)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final picked = await _showProviderPickerSheet(detail, category: category);
-                  if (picked != null && mounted) {
-                    _openPlayer(picked.detail.episodes, 0, picked.detail, category);
-                  }
-                },
-              ),
-            ListTile(
-              leading: const Icon(CupertinoIcons.share, color: Colors.white),
-              title: const Text('Share', style: TextStyle(color: Colors.white)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _share(detail, sourceName);
-              },
             ),
-            ListTile(
-              leading: const Icon(CupertinoIcons.globe, color: Colors.white),
-              title: const Text('Open Source Webpage', style: TextStyle(color: Colors.white)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _openSourceSite();
-              },
-            ),
-            const SizedBox(height: 10),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -3512,4 +3580,80 @@ bool _isFutureRelease(MediaDetail? detail) {
   }
 
   return false;
+}
+
+class _CircleActionButton extends StatelessWidget {
+  const _CircleActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 72,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: active
+                      ? AppColors.accent.withValues(alpha: 0.22)
+                      : Colors.white.withValues(alpha: 0.12),
+                  border: Border.all(
+                    color: active
+                        ? AppColors.accent
+                        : Colors.white.withValues(alpha: 0.16),
+                    width: 1.2,
+                  ),
+                  boxShadow: active
+                      ? [
+                          BoxShadow(
+                            color: AppColors.accent.withValues(alpha: 0.35),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Icon(
+                  icon,
+                  size: 22,
+                  color: active ? AppColors.accent : Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: active ? Colors.white : Colors.white.withValues(alpha: 0.82),
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

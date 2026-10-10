@@ -474,18 +474,20 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                   builder: (context, constraints) {
                     const columns = 3;
                     const gap = 12.0;
+                    final hideTitles = sl<PlaybackPrefs>().hideTitles;
+                    final ratio = hideTitles ? (2 / 3) : 0.58;
                     final cardWidth =
                         (constraints.maxWidth - gap * (columns - 1)) / columns;
-                    final cardHeight = cardWidth / 0.58;
+                    final cardHeight = cardWidth / ratio;
                     return GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: cardRecords.length,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: columns,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 16,
-                        childAspectRatio: 0.58,
+                        childAspectRatio: ratio,
                       ),
                       itemBuilder: (context, i) {
                         final showId = cardRecords[i].showId;

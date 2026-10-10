@@ -280,68 +280,84 @@ class _PosterCardState extends State<PosterCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      _posterImage(aniSrcId, mihonSrcId, memW),
-                      const DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              Color(0x700B0B0F),
-                              Color(0x000B0B0F),
-                            ],
-                            stops: [0.0, 0.35],
+                child: ValueListenableBuilder<int>(
+                  valueListenable: PlaybackPrefs.hideTitlesRevision,
+                  builder: (_, _, _) {
+                    final hide = !widget.showTitle || _hideTitles;
+                    final posterContent = ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          _posterImage(aniSrcId, mihonSrcId, memW),
+                          const DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [
+                                  Color(0x700B0B0F),
+                                  Color(0x000B0B0F),
+                                ],
+                                stops: [0.0, 0.35],
+                              ),
+                            ),
                           ),
-                        ),
+                          if (widget.completed)
+                            Positioned(
+                              top: 6,
+                              right: 6,
+                              child: _CompletionBadge(),
+                            )
+                          else if (widget.qualityBadge != null)
+                            Positioned(
+                              top: 6,
+                              right: 6,
+                              child: ValueListenableBuilder<int>(
+                                valueListenable: PlaybackPrefs.badgeRevision,
+                                builder: (_, _, _) => _showBadges
+                                    ? _PosterTag(widget.qualityBadge!)
+                                    : const SizedBox.shrink(),
+                              ),
+                            ),
+                          if (widget.dubBadge != null)
+                            Positioned(
+                              top: 6,
+                              left: 6,
+                              child: ValueListenableBuilder<int>(
+                                valueListenable: PlaybackPrefs.badgeRevision,
+                                builder: (_, _, _) => _showBadges
+                                    ? _PosterTag(widget.dubBadge!)
+                                    : const SizedBox.shrink(),
+                              ),
+                            ),
+                          if (widget.tags.isNotEmpty)
+                            Positioned(
+                              left: 6,
+                              bottom: 6,
+                              right: 6,
+                              child: Wrap(
+                                spacing: 4,
+                                runSpacing: 4,
+                                children: [
+                                  for (final t in widget.tags) _PosterTag(t),
+                                ],
+                              ),
+                            ),
+                        ],
                       ),
-                      if (widget.completed)
-                        Positioned(
-                          top: 6,
-                          right: 6,
-                          child: _CompletionBadge(),
-                        )
-                      else if (widget.qualityBadge != null)
-                        Positioned(
-                          top: 6,
-                          right: 6,
-                          child: ValueListenableBuilder<int>(
-                            valueListenable: PlaybackPrefs.badgeRevision,
-                            builder: (_, _, _) => _showBadges
-                                ? _PosterTag(widget.qualityBadge!)
-                                : const SizedBox.shrink(),
-                          ),
+                    );
+
+                    if (hide) {
+                      return Center(
+                        child: AspectRatio(
+                          aspectRatio: 2 / 3,
+                          child: posterContent,
                         ),
-                      if (widget.dubBadge != null)
-                        Positioned(
-                          top: 6,
-                          left: 6,
-                          child: ValueListenableBuilder<int>(
-                            valueListenable: PlaybackPrefs.badgeRevision,
-                            builder: (_, _, _) => _showBadges
-                                ? _PosterTag(widget.dubBadge!)
-                                : const SizedBox.shrink(),
-                          ),
-                        ),
-                      if (widget.tags.isNotEmpty)
-                        Positioned(
-                          left: 6,
-                          bottom: 6,
-                          right: 6,
-                          child: Wrap(
-                            spacing: 4,
-                            runSpacing: 4,
-                            children: [
-                              for (final t in widget.tags) _PosterTag(t),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
+                      );
+                    }
+                    return posterContent;
+                  },
                 ),
               ),
               ValueListenableBuilder<int>(

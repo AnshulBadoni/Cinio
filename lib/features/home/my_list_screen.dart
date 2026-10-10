@@ -19,6 +19,7 @@ import '../../core/ui/anilist_custom_lists_sheet.dart';
 import '../../core/prefs/list_sort.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tracker/tracker.dart';
@@ -1251,7 +1252,7 @@ class _MyListViewState extends State<_MyListView> {
                 cacheExtent: 800,
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: _gridColumns(context),
-                  childAspectRatio: 0.62,
+                  childAspectRatio: sl<PlaybackPrefs>().hideTitles ? (2 / 3) : 0.62,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 16,
                 ),

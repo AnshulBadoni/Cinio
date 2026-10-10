@@ -1663,9 +1663,9 @@ class _SearchViewState extends State<_SearchView>
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
-            childAspectRatio: 0.56,
+            childAspectRatio: sl<PlaybackPrefs>().hideTitles ? (2 / 3) : 0.56,
             crossAxisSpacing: 10,
             mainAxisSpacing: 14,
           ),
@@ -1904,7 +1904,7 @@ class _SearchViewState extends State<_SearchView>
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _searchGridColumns,
-        childAspectRatio: 0.56,
+        childAspectRatio: sl<PlaybackPrefs>().hideTitles ? (2 / 3) : 0.56,
         crossAxisSpacing: 8,
         mainAxisSpacing: 16,
       ),
@@ -2088,7 +2088,7 @@ class _SearchViewState extends State<_SearchView>
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _searchGridColumns,
-        childAspectRatio: 0.56,
+        childAspectRatio: sl<PlaybackPrefs>().hideTitles ? (2 / 3) : 0.56,
         crossAxisSpacing: 8,
         mainAxisSpacing: 16,
       ),
