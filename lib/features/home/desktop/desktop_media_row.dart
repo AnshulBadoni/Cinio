@@ -35,9 +35,9 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
   bool _canScrollLeft = false;
   bool _canScrollRight = true;
 
-  double get _cardWidth => widget.landscape ? 300 : 155;
-  double get _cardHeight => widget.landscape ? 169 : 230;
-  double get _itemExtent => _cardWidth + 16;
+  double get _cardWidth => widget.landscape ? 310 : 160;
+  double get _cardHeight => widget.landscape ? 175 : 240;
+  double get _itemExtent => _cardWidth + 22;
 
   @override
   void initState() {
@@ -88,7 +88,7 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
     final rowHeight = _cardHeight + cardBottom;
 
     return Padding(
-      padding: widget.padding ?? const EdgeInsets.only(top: 20, bottom: 8),
+      padding: widget.padding ?? const EdgeInsets.only(top: 26, bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -100,9 +100,9 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
                   widget.title,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.6,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
                   ),
                 ),
                 const Spacer(),
@@ -111,7 +111,7 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           SizedBox(
             height: rowHeight,
             child: MouseRegion(
@@ -125,7 +125,7 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
                     padding: const EdgeInsets.symmetric(horizontal: 56),
                     physics: const ClampingScrollPhysics(),
                     itemCount: widget.items.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 16),
+                    separatorBuilder: (_, _) => const SizedBox(width: 22),
                     itemBuilder: (context, index) {
                       final item = widget.items[index];
                       return DesktopMediaCard(
@@ -172,16 +172,19 @@ class _SeeAllButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextButton.icon(
-      onPressed: onTap,
-      style: TextButton.styleFrom(
-        foregroundColor: Colors.white.withValues(alpha: 0.58),
-        padding: EdgeInsets.zero,
-        minimumSize: Size.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Icon(
+            Icons.chevron_right_rounded,
+            size: 22,
+            color: Colors.white.withValues(alpha: 0.65),
+          ),
+        ),
       ),
-      icon: const Icon(Icons.chevron_right_rounded, size: 17),
-      label: const Text('See all'),
     );
   }
 }

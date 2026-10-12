@@ -151,6 +151,44 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
               }
             });
           }
+        } else {
+          final dio = sl<Dio>();
+          final cleanTitle = item.englishTitle ?? item.title;
+          final res = await dio.get<Map<String, dynamic>>(
+            'https://${Tmdb.host}/3/search/multi',
+            queryParameters: {
+              'api_key': Tmdb.apiKey,
+              'query': cleanTitle,
+            },
+          );
+          final results = res.data?['results'] as List?;
+          if (results != null && results.isNotEmpty) {
+            final first = results.firstWhere(
+              (r) => r is Map && (r['overview']?.toString().isNotEmpty ?? false),
+              orElse: () => results.first,
+            );
+            if (first is Map && mounted) {
+              final bg = first['backdrop_path']?.toString();
+              final ov = first['overview']?.toString();
+              final vote = (first['vote_average'] as num?)?.toDouble();
+              final date = first['release_date']?.toString() ??
+                  first['first_air_date']?.toString();
+              setState(() {
+                if (bg != null && bg.isNotEmpty && !_backdrops.containsKey(item.id)) {
+                  _backdrops[item.id] = '${Tmdb.img}/original$bg';
+                }
+                if (ov != null && ov.isNotEmpty) {
+                  _overviews[item.id] = ov;
+                }
+                if (vote != null && vote > 0 && !_ratings.containsKey(item.id)) {
+                  _ratings[item.id] = vote;
+                }
+                if (date != null && date.length >= 4 && !_years.containsKey(item.id)) {
+                  _years[item.id] = date.substring(0, 4);
+                }
+              });
+            }
+          }
         }
       } catch (_) {}
     }
@@ -228,7 +266,7 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
             if (widget.items.length > 1)
               Positioned(
                 right: 56,
-                top: (heroHeight * 0.18).clamp(110.0, 175.0) + 10,
+                top: (heroHeight * 0.28).clamp(180.0, 310.0) + 10,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -238,7 +276,7 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
                 ),
               ),
 
-            // ── 4. First Row ("MY LIST") Embedded Cleanly at Bottom ──
+            // ── 4. First Row Embedded Cleanly at Bottom ──
             if (widget.bottomRow != null)
               Positioned(
                 left: 0,
@@ -338,29 +376,56 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
           ),
         ),
 
-        // ── Hero Content (Title / Metadata / Action Buttons) ────────
-        // Positioned at upper-middle with ample breathing room above the bottom row
+        // ── Hero Content (Title / Metadata / Description / Action Buttons) ────────
+        // Positioned lower down the hero banner
         Positioned(
           left: 56,
-          top: (heroHeight * 0.18).clamp(110.0, 175.0),
+          top: (heroHeight * 0.28).clamp(180.0, 310.0),
           right: 140,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
+            constraints: const BoxConstraints(maxWidth: 680),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 1. Bold, clean sans-serif Title (matching reference image)
+                // 1. Refined sans-serif Title
                 _titleDisplay(item),
 
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
 
                 // 2. Sleek Metadata Row: Studio/Category tagline · IMDb Rating · Year
                 _sleekMetadataRow(item),
 
-                const SizedBox(height: 22),
+                // 3. Overview / Description
+                if (_overviews[item.id]?.isNotEmpty ?? false) ...[
+                  const SizedBox(height: 14),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: Text(
+                      _overviews[item.id]!,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.84),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        height: 1.45,
+                        letterSpacing: 0.15,
+                        shadows: const [
+                          Shadow(
+                            color: Color(0x99000000),
+                            blurRadius: 6,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
 
-                // 3. Action Buttons: Solid Purple [PLAY] pill + Circular (+) outline (no glow)
+                const SizedBox(height: 20),
+
+                // 4. Action Buttons: Solid Purple [PLAY] pill + Circular (+) outline
                 _actionButtonsRow(item, isBookmarked),
               ],
             ),
@@ -372,17 +437,17 @@ class _DesktopHeroBannerState extends State<DesktopHeroBanner> {
 
   Widget _titleDisplay(MediaItem item) {
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 620),
+      constraints: const BoxConstraints(maxWidth: 640),
       child: Text(
         item.title.toUpperCase(),
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 44,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.8,
-          height: 1.10,
+          fontSize: 42,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.5,
+          height: 1.12,
           shadows: [
             Shadow(
               color: Color(0x66000000),

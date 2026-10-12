@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/di/injector.dart';
 import '../../../core/models/home_section.dart';
 import '../../../core/models/media_item.dart';
+import '../../../core/models/provider_info.dart';
 import '../../../core/playback/my_list.dart';
+import '../../../core/playback/watch_history.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../detail/detail_screen.dart';
 import '../../shell/desktop_nav_bar.dart';
@@ -28,24 +31,31 @@ class DesktopHomeScreen extends StatefulWidget {
 class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
   final HomeCubit _homeCubit = sl<HomeCubit>();
   final MyListStore _myList = sl<MyListStore>();
+  final WatchHistory _watchHistory = sl<WatchHistory>();
   final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _myList.revision.addListener(_onMyListChanged);
+    _myList.revision.addListener(_onStateChanged);
+    if (Hive.isBoxOpen(WatchHistory.boxName)) {
+      Hive.box<Map>(WatchHistory.boxName).listenable().addListener(_onStateChanged);
+    }
     if (_homeCubit.state.sections == null) {
       _homeCubit.load();
     }
   }
 
-  void _onMyListChanged() {
+  void _onStateChanged() {
     if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _myList.revision.removeListener(_onMyListChanged);
+    _myList.revision.removeListener(_onStateChanged);
+    if (Hive.isBoxOpen(WatchHistory.boxName)) {
+      Hive.box<Map>(WatchHistory.boxName).listenable().removeListener(_onStateChanged);
+    }
     _scrollController.dispose();
     super.dispose();
   }
@@ -127,40 +137,90 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
           final carouselItems = _buildCarouselItems(sections, state.heroItems);
           final myListItems = _myList.all();
 
-          // Exclude duplicate My List from backend sections
-          final otherSections = sections.where((s) {
-            final t = s.title.trim().toLowerCase();
-            return t != 'my list' && t != 'watchlist';
+          final recentHistory = Hive.isBoxOpen(WatchHistory.boxName)
+              ? _watchHistory.recent()
+              : const <HistoryEntry>[];
+
+          final continueItems = recentHistory.map((e) {
+            int? tmdbId;
+            if (e.sourceId == 'tmdb:catalog') {
+              final match = RegExp(r'/((?:tv|movie))/([0-9]+)').firstMatch(e.showUrl);
+              if (match != null) tmdbId = int.tryParse(match.group(2)!);
+            }
+            return MediaItem(
+              id: e.showId,
+              title: e.showTitle,
+              url: e.showUrl,
+              sourceId: e.sourceId,
+              cover: e.cover,
+              heroImage: (e.thumbnail != null && e.thumbnail!.isNotEmpty)
+                  ? e.thumbnail
+                  : null,
+              coverHeaders: e.coverHeaders,
+              type: ProviderType.movie,
+              malId: e.malId,
+              tmdbIsTv: e.sourceId == 'tmdb:catalog' && e.showUrl.contains('/tv/'),
+              tmdbId: tmdbId,
+            );
           }).toList();
 
-          // First row to embed cleanly at the bottom of the fullscreen hero
+          // Exclude duplicate My List and Continue Watching from backend sections
+          final otherSections = sections.where((s) {
+            final t = s.title.trim().toLowerCase();
+            return t != 'my list' && t != 'watchlist' && !t.contains('continue watching');
+          }).toList();
+
+          // First row: Continue Watching row with wide thumbnails (or first backend section if no history)
           final Widget? heroBottomRow;
           final List<HomeSection> remainingSections;
 
-          if (myListItems.isNotEmpty) {
+          if (continueItems.isNotEmpty) {
             heroBottomRow = DesktopMediaRow(
-              title: 'MY LIST',
-              items: myListItems,
+              title: 'CONTINUE WATCHING',
+              items: continueItems,
               onTap: _openDetail,
-              landscape: false,
+              landscape: true,
               showTitles: false,
               padding: const EdgeInsets.only(bottom: 8),
             );
-            remainingSections = otherSections;
+            remainingSections = [
+              if (myListItems.isNotEmpty)
+                HomeSection(
+                  title: 'My List',
+                  items: myListItems,
+                ),
+              ...otherSections,
+            ];
           } else if (otherSections.isNotEmpty) {
             final first = otherSections.first;
+            final isLandscape = (first.title.toLowerCase().contains('continue') ||
+                    first.title.toLowerCase().contains('watch again')) &&
+                first.items.any((it) => it.heroImage != null && it.heroImage!.isNotEmpty);
             heroBottomRow = DesktopMediaRow(
               title: first.title.toUpperCase(),
               items: first.items,
               onTap: _openDetail,
-              landscape: false,
+              landscape: isLandscape,
               showTitles: false,
               padding: const EdgeInsets.only(bottom: 8),
             );
-            remainingSections = otherSections.skip(1).toList();
+            remainingSections = [
+              if (myListItems.isNotEmpty)
+                HomeSection(
+                  title: 'My List',
+                  items: myListItems,
+                ),
+              ...otherSections.skip(1),
+            ];
           } else {
             heroBottomRow = null;
-            remainingSections = const [];
+            remainingSections = [
+              if (myListItems.isNotEmpty)
+                HomeSection(
+                  title: 'My List',
+                  items: myListItems,
+                ),
+            ];
           }
 
           return CustomScrollView(
@@ -200,7 +260,7 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
                 },
               ),
 
-              const SliverToBoxAdapter(child: _Footer()),
+              const SliverToBoxAdapter(child: SizedBox(height: 56)),
             ],
           );
         },
@@ -275,80 +335,6 @@ class _EmptyState extends StatelessWidget {
             child: const Text(
               'Try again',
               style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Footer extends StatelessWidget {
-  const _Footer();
-
-  static const _links = <String>[
-    'Audio Description',
-    'Help Centre',
-    'Gift Cards',
-    'Media Centre',
-    'Investor Relations',
-    'Jobs',
-    'Terms of Use',
-    'Privacy',
-    'Legal Notices',
-    'Cookie Preferences',
-    'Corporate Information',
-    'Contact Us',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    const linkStyle = TextStyle(
-      color: AppColors.textTertiary,
-      fontSize: 13,
-      height: 1.4,
-    );
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(56, 40, 56, 56),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              for (final icon in const [
-                Icons.facebook_rounded,
-                Icons.camera_alt_outlined,
-                Icons.alternate_email_rounded,
-                Icons.play_circle_outline_rounded,
-              ])
-                Padding(
-                  padding: const EdgeInsets.only(right: 22),
-                  child: Icon(icon, size: 20, color: AppColors.textSecondary),
-                ),
-            ],
-          ),
-          const SizedBox(height: 26),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 900),
-            child: Wrap(
-              spacing: 26,
-              runSpacing: 12,
-              children: [
-                for (final link in _links)
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: Text(link, style: linkStyle),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 26),
-          Text(
-            '© ${DateTime.now().year} Cinio. All rights reserved.',
-            style: const TextStyle(
-              color: AppColors.textTertiary,
-              fontSize: 12,
             ),
           ),
         ],

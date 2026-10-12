@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/di/injector.dart';
 import '../../../core/metadata/tmdb.dart';
 import '../../../core/models/media_item.dart';
+import '../../../core/playback/resume_store.dart';
 import '../../../core/playback/watch_history.dart';
 import '../../../core/theme/app_colors.dart';
 
@@ -68,21 +69,74 @@ class _DesktopMediaCardState extends State<DesktopMediaCard> {
       return;
     }
     final tmdbId = item.tmdbId;
-    if (tmdbId == null || tmdbId <= 0) return;
+    if (tmdbId != null && tmdbId > 0) {
+      try {
+        final dio = sl<Dio>();
+        final path = item.tmdbIsTv ? 'tv/$tmdbId' : 'movie/$tmdbId';
+        final res = await dio.get<Map<String, dynamic>>(
+          'https://${Tmdb.host}/3/$path',
+          queryParameters: {'api_key': Tmdb.apiKey},
+        );
+        final bg = res.data?['backdrop_path']?.toString();
+        if (bg != null && bg.isNotEmpty) {
+          final url = '${Tmdb.img}/w780$bg';
+          _backdropCache[item.id] = url;
+          if (mounted) setState(() => _fetchedBackdrop = url);
+          return;
+        }
+      } catch (_) {}
+    }
+
+    // Fallback: search TMDB by title to find real 16:9 backdrop
     try {
       final dio = sl<Dio>();
-      final path = item.tmdbIsTv ? 'tv/$tmdbId' : 'movie/$tmdbId';
+      final cleanTitle = item.englishTitle ?? item.title;
       final res = await dio.get<Map<String, dynamic>>(
-        'https://${Tmdb.host}/3/$path',
-        queryParameters: {'api_key': Tmdb.apiKey},
+        'https://${Tmdb.host}/3/search/multi',
+        queryParameters: {
+          'api_key': Tmdb.apiKey,
+          'query': cleanTitle,
+        },
       );
-      final bg = res.data?['backdrop_path']?.toString();
-      if (bg != null && bg.isNotEmpty) {
-        final url = '${Tmdb.img}/w780$bg';
-        _backdropCache[item.id] = url;
-        if (mounted) setState(() => _fetchedBackdrop = url);
+      final results = res.data?['results'] as List?;
+      if (results != null && results.isNotEmpty) {
+        for (final r in results) {
+          if (r is Map && r['backdrop_path'] != null) {
+            final bg = r['backdrop_path'].toString();
+            if (bg.isNotEmpty) {
+              final url = '${Tmdb.img}/w780$bg';
+              _backdropCache[item.id] = url;
+              if (mounted) setState(() => _fetchedBackdrop = url);
+              return;
+            }
+          }
+        }
       }
     } catch (_) {}
+  }
+
+  bool _isWatched() {
+    if (sl.isRegistered<WatchHistory>()) {
+      try {
+        final all = sl<WatchHistory>().all();
+        final itemTitle = widget.item.title.trim().toLowerCase();
+        for (final entry in all) {
+          final matchesId = entry.showId == widget.item.id;
+          final matchesTitle = entry.showTitle.trim().toLowerCase() == itemTitle;
+          if (matchesId || matchesTitle) {
+            if (entry.finished || entry.progress >= 0.90) return true;
+          }
+        }
+      } catch (_) {}
+    }
+    if (sl.isRegistered<ResumeStore>()) {
+      try {
+        final resume = sl<ResumeStore>();
+        final mark = resume.get(widget.item.sourceId, widget.item.url, widget.item.id);
+        if (mark != null && mark.finished) return true;
+      } catch (_) {}
+    }
+    return false;
   }
 
   double? _progress() {
@@ -103,12 +157,14 @@ class _DesktopMediaCardState extends State<DesktopMediaCard> {
         ? item.heroImage
         : (_fetchedBackdrop ?? _backdropCache[item.id]);
 
+    // For landscape cards, ONLY use genuine landscape art (never stretch a tall 2:3 cover)
     final imageUrl = widget.landscape
-        ? (landscapeUrl ?? item.cover)
+        ? landscapeUrl
         : (item.cover != null && item.cover!.isNotEmpty
             ? item.cover
             : item.heroImage);
     final progress = _progress();
+    final isWatched = _isWatched();
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -147,6 +203,30 @@ class _DesktopMediaCardState extends State<DesktopMediaCard> {
                               size: 30,
                             ),
                           ),
+                        )
+                      else if (widget.landscape && item.cover != null && item.cover!.isNotEmpty)
+                        // Never stretch tall poster: show darkened blurred backdrop with centered poster
+                        Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            CachedNetworkImage(
+                              imageUrl: item.cover!,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 640,
+                              placeholder: (_, _) => Container(color: AppColors.surface),
+                              errorWidget: (_, _, _) => Container(color: AppColors.surface),
+                            ),
+                            Positioned.fill(
+                              child: Container(color: Colors.black.withValues(alpha: 0.65)),
+                            ),
+                            Center(
+                              child: CachedNetworkImage(
+                                imageUrl: item.cover!,
+                                fit: BoxFit.contain,
+                                memCacheHeight: 360,
+                              ),
+                            ),
+                          ],
                         )
                       else
                         Container(
@@ -199,7 +279,35 @@ class _DesktopMediaCardState extends State<DesktopMediaCard> {
                           ),
                         ),
 
-                      if (item.subCount != null && item.subCount! > 0)
+                      // Watched checkmark badge on top-left (matching reference)
+                      if (isWatched)
+                        Positioned(
+                          top: 8,
+                          left: 8,
+                          child: Container(
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF7C5CFC),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.50),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 1.5),
+                                ),
+                              ],
+                            ),
+                            child: const Center(
+                              child: Icon(
+                                Icons.check_rounded,
+                                color: Colors.white,
+                                size: 14,
+                              ),
+                            ),
+                          ),
+                        )
+                      else if (item.subCount != null && item.subCount! > 0)
                         Positioned(
                           top: 8,
                           left: 8,

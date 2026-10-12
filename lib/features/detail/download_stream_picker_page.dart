@@ -168,8 +168,8 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
       );
     }
 
-    // Append "All" tab at the end
-    _tabs.add(const _ProviderTab(id: 'all', name: 'All', isAll: true));
+    // Prepend "All" tab at the very beginning
+    _tabs.insert(0, const _ProviderTab(id: 'all', name: 'All', isAll: true));
 
     _selectedTabIndex = 0;
   }
@@ -508,35 +508,8 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top App Bar: Back button + Title logo / name
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              child: SizedBox(
-                height: 52,
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: (widget.titleLogoUrl != null &&
-                                widget.titleLogoUrl!.isNotEmpty)
-                            ? CachedNetworkImage(
-                                imageUrl: widget.titleLogoUrl!,
-                                height: 44,
-                                fit: BoxFit.contain,
-                                errorWidget: (_, __, ___) => _titleTextFallback(),
-                              )
-                            : _titleTextFallback(),
-                      ),
-                    ),
-                    const SizedBox(width: 48), // Balancing width for back icon
-                  ],
-                ),
-              ),
-            ),
+            // Top Header: Episode Thumbnail (if available) or App Bar Fallback
+            _buildHeader(context),
 
             // Horizontal Pill Tabs Row
             SingleChildScrollView(
@@ -593,6 +566,174 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
               child: _buildContent(streams),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    final thumb = widget.episode.thumbnail?.trim();
+    final hasThumbnail = thumb != null && thumb.isNotEmpty;
+
+    if (!hasThumbnail) {
+      // Fallback: Clean App Bar with back button and title logo / title text
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: SizedBox(
+          height: 52,
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              Expanded(
+                child: Center(
+                  child: (widget.titleLogoUrl != null &&
+                          widget.titleLogoUrl!.isNotEmpty)
+                      ? CachedNetworkImage(
+                          imageUrl: widget.titleLogoUrl!,
+                          height: 44,
+                          fit: BoxFit.contain,
+                          errorWidget: (_, __, ___) => _titleTextFallback(),
+                        )
+                      : _titleTextFallback(),
+                ),
+              ),
+              const SizedBox(width: 48), // Balancing width for back icon
+            ],
+          ),
+        ),
+      );
+    }
+
+    final ep = widget.episode;
+    final epNum = ep.number != null ? (ep.number! == ep.number!.toInt() ? ep.number!.toInt() : ep.number!) : null;
+    final seasonNum = ep.season ?? seasonOf(ep);
+    final epTag = (seasonNum != null && epNum != null)
+        ? 'S$seasonNum E$epNum'
+        : (epNum != null ? 'E$epNum' : null);
+
+    final epTitle = episodeDisplayTitle(ep) ?? (ep.title.trim().isNotEmpty ? ep.title.trim() : null);
+    final showTitle = widget.detail.title.trim().isNotEmpty
+        ? widget.detail.title.trim()
+        : widget.item.title.trim();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          height: 190,
+          width: double.infinity,
+          color: const Color(0xFF131316),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Episode Thumbnail image
+              CachedNetworkImage(
+                imageUrl: thumb,
+                fit: BoxFit.cover,
+                errorWidget: (_, __, ___) => Container(
+                  color: const Color(0xFF1B1B1F),
+                  child: const Center(
+                    child: Icon(Icons.image_not_supported_outlined, color: Colors.white30, size: 36),
+                  ),
+                ),
+              ),
+
+              // Gradient scrim for readability
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.35),
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.8),
+                        Colors.black.withValues(alpha: 0.95),
+                      ],
+                      stops: const [0.0, 0.3, 0.7, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+
+              // Back button (circular frosted pill at top-left)
+              Positioned(
+                top: 10,
+                left: 10,
+                child: InkWell(
+                  onTap: () => Navigator.of(context).pop(),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.arrow_back, color: Colors.white, size: 20),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Episode Title & Tag overlay at bottom-left
+              Positioned(
+                left: 14,
+                right: 14,
+                bottom: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (epTag != null) ...[
+                      Text(
+                        epTag,
+                        style: const TextStyle(
+                          color: Color(0xFF38BDF8),
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                    ],
+                    if (epTitle != null) ...[
+                      Text(
+                        epTitle,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    if (showTitle.isNotEmpty) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        showTitle,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

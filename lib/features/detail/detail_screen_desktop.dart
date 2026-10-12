@@ -686,7 +686,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
                     // Right Column: Stacked Cards (Series) OR Real Extras (Movie)
                     SizedBox(
-                      width: 440,
+                      width: 490,
                       child: detail.isSeries
                           ? _seriesEpisodesColumn(
                               detail,
@@ -1418,18 +1418,18 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
   static double _stackCardWidth(double diff) {
     final absD = diff.abs();
-    if (absD <= 1.0) return _lerpVal(340.0, 310.0, absD);
-    if (absD <= 2.0) return _lerpVal(310.0, 280.0, absD - 1.0);
-    if (absD <= 3.0) return _lerpVal(280.0, 250.0, absD - 2.0);
-    return 250.0;
+    if (absD <= 1.0) return _lerpVal(390.0, 355.0, absD);
+    if (absD <= 2.0) return _lerpVal(355.0, 320.0, absD - 1.0);
+    if (absD <= 3.0) return _lerpVal(320.0, 285.0, absD - 2.0);
+    return 285.0;
   }
 
   static double _stackCardHeight(double diff) {
     final absD = diff.abs();
-    if (absD <= 1.0) return _lerpVal(220.0, 206.0, absD);
-    if (absD <= 2.0) return _lerpVal(206.0, 192.0, absD - 1.0);
-    if (absD <= 3.0) return _lerpVal(192.0, 178.0, absD - 2.0);
-    return 178.0;
+    if (absD <= 1.0) return _lerpVal(230.0, 214.0, absD);
+    if (absD <= 2.0) return _lerpVal(214.0, 198.0, absD - 1.0);
+    if (absD <= 3.0) return _lerpVal(198.0, 182.0, absD - 2.0);
+    return 182.0;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1525,7 +1525,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
       },
       child: Center(
         child: SizedBox(
-          width: 440,
+          width: 490,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -1546,7 +1546,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                     ),
                     const Spacer(),
                     _roundMiniNavButton(
-                      icon: Icons.keyboard_arrow_up_rounded,
+                       icon: Icons.keyboard_arrow_up_rounded,
                       enabled: activeIndex > 0,
                       onTap: () {
                         if (_focusedEpisodeIndex > 0) {
@@ -1572,7 +1572,7 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
 
               // Stacked Deck Container
               SizedBox(
-                width: 440,
+                width: 490,
                 height: 560,
                 child: TweenAnimationBuilder<double>(
                   tween: Tween<double>(
@@ -1601,11 +1601,11 @@ class _DetailScreenDesktopState extends State<DetailScreenDesktop> {
                                 ? (mark.position.inMilliseconds /
                                         mark.duration.inMilliseconds)
                                     .clamp(0.0, 1.0)
-                                : (isActive ? 0.40 : 0.0);
+                                : 0.0;
 
                             final double cardWidth = _stackCardWidth(diff);
                             final double cardHeight = _stackCardHeight(diff);
-                            final double left = (440.0 - cardWidth) / 2.0;
+                            final double left = (490.0 - cardWidth) / 2.0;
                             final double top = _stackCardTop(diff);
 
                             return Positioned(
@@ -1782,17 +1782,11 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
     final displayTitle = ep.metaTitle ?? ep.title;
     final isActive = widget.isActive;
 
-    final String durationLabel;
-    if (widget.progress > 0 &&
-        ep.runtimeMinutes != null &&
-        ep.runtimeMinutes! > 0) {
-      final remaining =
-          ((1.0 - widget.progress) * ep.runtimeMinutes!).round();
-      durationLabel = remaining > 0 ? '${remaining}m left' : 'Finished';
-    } else if (ep.runtimeMinutes != null && ep.runtimeMinutes! > 0) {
+    final String? durationLabel;
+    if (ep.runtimeMinutes != null && ep.runtimeMinutes! > 0) {
       durationLabel = '${ep.runtimeMinutes}m';
     } else {
-      durationLabel = '45m';
+      durationLabel = null;
     }
 
     final imageUrl = (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
@@ -1936,22 +1930,24 @@ class _SeriesEpisodeCardState extends State<_SeriesEpisodeCard> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        durationLabel,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.75),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                          shadows: const [
-                            Shadow(
-                              color: Colors.black,
-                              blurRadius: 6,
-                              offset: Offset(0, 1),
-                            ),
-                          ],
+                      if (durationLabel != null) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          durationLabel,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w400,
+                            shadows: const [
+                              Shadow(
+                                color: Colors.black,
+                                blurRadius: 6,
+                                offset: Offset(0, 1),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
