@@ -50,7 +50,8 @@ class _ContentRowState extends State<ContentRow> {
   @override
   void didUpdateWidget(covariant ContentRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.isLoadingMore && !widget.isLoadingMore) {
+    if ((oldWidget.isLoadingMore && !widget.isLoadingMore) ||
+        (oldWidget.itemCount != widget.itemCount)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _onScroll();
       });
@@ -68,7 +69,7 @@ class _ContentRowState extends State<ContentRow> {
     if (widget.onLoadMore == null || widget.isLoadingMore || !_scrollController.hasClients) return;
     final max = _scrollController.position.maxScrollExtent;
     final current = _scrollController.position.pixels;
-    if (max > 0 && current >= max - 300) {
+    if (max > 0 && current >= max - 350) {
       widget.onLoadMore!();
     }
   }
@@ -84,18 +85,32 @@ class _ContentRowState extends State<ContentRow> {
         _Header(title: widget.title, overline: widget.overline, onSeeAll: widget.onSeeAll),
         SizedBox(
           height: widget.itemHeight,
-          child: ListView.builder(
-            controller: _scrollController,
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            // With a screen reader on, build every item (not just the lazy
-            // window) so TalkBack can focus each one and the row auto-scrolls to
-            // it — otherwise horizontal swipe navigation stalls at the first few.
-            // Sighted users keep the lazy 600px window unchanged.
-            cacheExtent: MediaQuery.of(context).accessibleNavigation
-                ? double.infinity
-                : 600,
-            itemCount: totalCount,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (notification.metrics.axis == Axis.horizontal) {
+                if (widget.onLoadMore != null && !widget.isLoadingMore) {
+                  final max = notification.metrics.maxScrollExtent;
+                  final current = notification.metrics.pixels;
+                  if (max > 0 && current >= max - 350) {
+                    widget.onLoadMore!();
+                  }
+                }
+              }
+              return false;
+            },
+            child: ListView.builder(
+              controller: _scrollController,
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              // With a screen reader on, build every item (not just the lazy
+              // window) so TalkBack can focus each one and the row auto-scrolls to
+              // it — otherwise horizontal swipe navigation stalls at the first few.
+              // Sighted users keep the lazy 600px window unchanged.
+              cacheExtent: MediaQuery.of(context).accessibleNavigation
+                  ? double.infinity
+                  : 600,
+              itemCount: totalCount,
             itemBuilder: (context, index) {
               if (index >= widget.itemCount) {
                 return Padding(
@@ -131,8 +146,9 @@ class _ContentRowState extends State<ContentRow> {
             },
           ),
         ),
-      ],
-    );
+      ),
+    ],
+  );
   }
 }
 

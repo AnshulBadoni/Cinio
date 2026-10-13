@@ -44,13 +44,22 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
     final key = section.title;
     if (_sectionLoading.contains(key) || _sectionEnded.contains(key)) return;
     setState(() => _sectionLoading.add(key));
-    final nextPage = (_sectionPages[key] ?? 1) + 1;
+    var pageToFetch = (_sectionPages[key] ?? 1) + 1;
     try {
-      final newItems = await sl<SourceRepository>().browseMore(section.more!, nextPage);
-      if (newItems.isNotEmpty && mounted) {
-        _sectionPages[key] = nextPage;
-        _homeCubit.appendItems(section.title, newItems);
-      } else if (newItems.isEmpty) {
+      var added = 0;
+      for (var attempt = 0; attempt < 2; attempt++) {
+        final newItems = await sl<SourceRepository>().browseMore(section.more!, pageToFetch);
+        if (!mounted) return;
+        if (newItems.isEmpty) {
+          _sectionEnded.add(key);
+          break;
+        }
+        _sectionPages[key] = pageToFetch;
+        added = _homeCubit.appendItems(section.title, newItems);
+        if (added > 0) break;
+        pageToFetch++;
+      }
+      if (added == 0 && !_sectionEnded.contains(key)) {
         _sectionEnded.add(key);
       }
     } catch (_) {

@@ -477,6 +477,7 @@ class SourceRepository {
         case 'mixed_top_rated_movies':
           return _mixedBrowse('tmdb_top_rated_movies', 'tpdb_top_rated', page);
         case 'tpdb_recent':
+        case 'tpdb_trending':
         case 'tpdb_popular':
         case 'tpdb_top_rated':
         case 'tpdb_performers':

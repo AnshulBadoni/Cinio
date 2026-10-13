@@ -80,10 +80,12 @@ class HomeCubit extends Cubit<HomeState> {
 
   /// Appends paged items to a specific section's list in a strictly immutable way.
   /// Prevents any duplicate list items and ensures safe reactive widget updates.
-  void appendItems(String sectionTitle, List<MediaItem> newItems) {
+  /// Returns the number of unique items added.
+  int appendItems(String sectionTitle, List<MediaItem> newItems) {
     final currentSections = state.sections;
-    if (currentSections == null || isClosed) return;
+    if (currentSections == null || isClosed) return 0;
 
+    var addedCount = 0;
     final updatedSections = currentSections.map((s) {
       if (s.title == sectionTitle) {
         final existingKeys = s.items.map((it) => it.id.isNotEmpty ? it.id : it.url).toSet();
@@ -92,6 +94,7 @@ class HomeCubit extends Cubit<HomeState> {
             .toList();
 
         if (uniqueNewItems.isEmpty) return s;
+        addedCount = uniqueNewItems.length;
 
         return HomeSection(
           title: s.title,
@@ -102,7 +105,10 @@ class HomeCubit extends Cubit<HomeState> {
       return s;
     }).toList(growable: false);
 
-    emit(state.copyWith(sections: List<HomeSection>.unmodifiable(updatedSections)));
+    if (addedCount > 0) {
+      emit(state.copyWith(sections: List<HomeSection>.unmodifiable(updatedSections)));
+    }
+    return addedCount;
   }
 
   /// (Re)loads the rows.

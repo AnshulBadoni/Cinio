@@ -17,6 +17,7 @@ class PeopleService {
   static const String _tpdbKey = '8ABvbgloweVLDeD3HBq6x9eHpL3lMJE8qEuBtdmb213d0c62';
 
   final Map<int, List<PersonWork>> _tmdbCreditsCache = {};
+  final Map<String, String> _tpdbResolvedIds = {};
 
   Future<PersonProfile?> load(PersonRef ref) {
     switch (ref.source) {
@@ -37,11 +38,13 @@ class PeopleService {
   Future<List<PersonWork>> loadWorks(PersonRef ref, {required int page}) async {
     switch (ref.source) {
       case PersonSource.thePornDbPerformer:
-        final id = ref.externalId ?? (ref.id != 0 ? ref.id.toString() : null);
+        final rawId = ref.externalId ?? (ref.id != 0 ? ref.id.toString() : null);
+        final id = _tpdbResolvedIds[rawId ?? ''] ?? _tpdbResolvedIds[ref.name] ?? rawId;
         if (id == null || id.isEmpty) return const [];
         return _tpdbPerformerWorks(id, page: page);
       case PersonSource.thePornDbStudio:
-        final id = ref.externalId ?? (ref.id != 0 ? ref.id.toString() : null);
+        final rawId = ref.externalId ?? (ref.id != 0 ? ref.id.toString() : null);
+        final id = _tpdbResolvedIds[rawId ?? ''] ?? _tpdbResolvedIds[ref.name] ?? rawId;
         if (id == null || id.isEmpty) return const [];
         return _tpdbStudioWorks(id, studioName: ref.name, page: page);
       case PersonSource.tmdb:
@@ -160,6 +163,9 @@ class PeopleService {
       final name = (row['name'] ?? row['full_name'] ?? fallbackName)?.toString();
       if (name == null || name.isEmpty) return null;
       final resolvedId = (row['id'] ?? row['uuid'] ?? row['_id'] ?? row['slug'] ?? id).toString();
+      _tpdbResolvedIds[id] = resolvedId;
+      _tpdbResolvedIds[name] = resolvedId;
+      if (fallbackName != null) _tpdbResolvedIds[fallbackName] = resolvedId;
 
       final relatedMap = <String, PersonRef>{};
       final works = await _tpdbPerformerWorks(
@@ -355,6 +361,9 @@ class PeopleService {
       final name = (row?['name'] ?? row?['short_name'] ?? fallbackName)?.toString();
       if (name == null || name.isEmpty) return null;
       final resolvedId = (row?['id'] ?? row?['uuid'] ?? row?['short_name'] ?? id).toString();
+      _tpdbResolvedIds[id] = resolvedId;
+      _tpdbResolvedIds[name] = resolvedId;
+      if (fallbackName != null) _tpdbResolvedIds[fallbackName] = resolvedId;
 
       final works = await _tpdbStudioWorks(resolvedId, studioName: name, page: 1);
 

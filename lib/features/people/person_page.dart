@@ -131,7 +131,7 @@ class _PersonPageState extends State<PersonPage> {
       _loading = false;
       if (p != null) {
         _works.addAll(p.works);
-        _hasMore = p.works.length >= 30 &&
+        _hasMore = p.works.isNotEmpty &&
             (widget.person.source == PersonSource.thePornDbPerformer ||
                 widget.person.source == PersonSource.thePornDbStudio ||
                 widget.person.source == PersonSource.tmdb);
@@ -250,12 +250,14 @@ class _PersonPageState extends State<PersonPage> {
       } else {
         _page = nextPage;
         final existingIds = {for (final w in _works) w.catalogId ?? w.title};
+        var added = 0;
         for (final w in more) {
           if (existingIds.add(w.catalogId ?? w.title)) {
             _works.add(w);
+            added++;
           }
         }
-        if (more.length < 30) {
+        if (more.length < 15 || added == 0) {
           _hasMore = false;
         }
       }

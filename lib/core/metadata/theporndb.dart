@@ -151,12 +151,7 @@ class ThePornDb {
       const pageSize = 20;
       final offset = (page - 1) * pageSize;
       if (offset < _kTopPerformers.length) {
-        final List<String> names;
-        if (page == 1) {
-          names = (List<String>.from(_kTopPerformers)..shuffle()).take(pageSize).toList();
-        } else {
-          names = _kTopPerformers.skip(offset).take(pageSize).toList();
-        }
+        final names = _kTopPerformers.skip(offset).take(pageSize).toList();
         final futures = names.map((name) async {
           try {
             final res = await _get('/performers', queryParameters: {
@@ -166,7 +161,7 @@ class ThePornDb {
             final list = res['data'] as List?;
             if (list != null && list.isNotEmpty) {
               final row = list.first;
-              if (row is Map && _qualifiesAsActor(row, requireRating: true)) {
+              if (row is Map && _qualifiesAsActor(row, requireRating: false)) {
                 return _performer(row);
               }
             }
@@ -179,8 +174,9 @@ class ThePornDb {
       }
     }
 
+    final apiPage = page > 2 ? page - 2 : page;
     final data = await _get('/performers', queryParameters: {
-      'page': page,
+      'page': apiPage,
       'per_page': 50,
       'orderBy': orderBy,
       'gender': 'Female',
@@ -192,7 +188,7 @@ class ThePornDb {
     if (rows is! List) return const [];
     final list = [
       for (final row in rows)
-        if (row is Map && _qualifiesAsActor(row, requireRating: !isSearch)) _performer(row),
+        if (row is Map && _qualifiesAsActor(row, requireRating: false)) _performer(row),
     ];
     list.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
     return list.take(24).toList();
@@ -313,8 +309,8 @@ class ThePornDb {
 
   Future<List<MediaItem>> browseMore(String kind, int page) => switch (kind) {
         'tpdb_recent' => movies(page: page, orderBy: 'recently_released'),
-        'tpdb_trending' => movies(page: page, orderBy: 'recently_released'),
-        'tpdb_popular' => movies(page: page, orderBy: 'most_relevant'),
+        'tpdb_trending' => movies(page: page, orderBy: 'most_relevant'),
+        'tpdb_popular' => movies(page: page + 1, orderBy: 'most_relevant'),
         'tpdb_top_rated' => _topRated(page),
         'tpdb_performers' => performers(page: page),
         'tpdb_studios' => studios(page: page),
