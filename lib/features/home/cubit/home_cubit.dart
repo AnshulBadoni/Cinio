@@ -86,8 +86,10 @@ class HomeCubit extends Cubit<HomeState> {
 
     final updatedSections = currentSections.map((s) {
       if (s.title == sectionTitle) {
-        final existingIds = s.items.map((it) => it.id).toSet();
-        final uniqueNewItems = newItems.where((it) => !existingIds.contains(it.id)).toList();
+        final existingKeys = s.items.map((it) => it.id.isNotEmpty ? it.id : it.url).toSet();
+        final uniqueNewItems = newItems
+            .where((it) => !existingKeys.contains(it.id.isNotEmpty ? it.id : it.url))
+            .toList();
 
         if (uniqueNewItems.isEmpty) return s;
 

@@ -20,6 +20,8 @@ class AdaptiveContentRow extends StatefulWidget {
     required this.onTap,
     required this.onLongPress,
     this.onSeeAll,
+    this.onLoadMore,
+    this.isLoadingMore = false,
     this.heroTagBuilder,
   });
 
@@ -28,6 +30,8 @@ class AdaptiveContentRow extends StatefulWidget {
   final void Function(MediaItem item, String? heroTag) onTap;
   final void Function(MediaItem) onLongPress;
   final VoidCallback? onSeeAll;
+  final VoidCallback? onLoadMore;
+  final bool isLoadingMore;
 
   /// Optional unique Hero tag for long-press quick actions.
   final String Function(MediaItem item, int index)? heroTagBuilder;
@@ -48,8 +52,10 @@ class _AdaptiveContentRowState extends State<AdaptiveContentRow> {
   @override
   void didUpdateWidget(covariant AdaptiveContentRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.items != widget.items || oldWidget.title != widget.title) {
+    if (oldWidget.title != widget.title) {
       _landscape = false;
+      _resolveAdaptive();
+    } else if (oldWidget.items.isEmpty && widget.items.isNotEmpty) {
       _resolveAdaptive();
     }
   }
@@ -119,8 +125,10 @@ class _AdaptiveContentRowState extends State<AdaptiveContentRow> {
           itemWidth: width,
           itemHeight: height,
           itemCount: widget.items.length,
-      onSeeAll: widget.onSeeAll,
-      itemBuilder: (context, index) {
+          onSeeAll: widget.onSeeAll,
+          onLoadMore: widget.onLoadMore,
+          isLoadingMore: widget.isLoadingMore,
+          itemBuilder: (context, index) {
         final item = widget.items[index];
         return PosterCard(
           title: item.title,

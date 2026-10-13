@@ -18,6 +18,7 @@ class PeopleRow extends StatelessWidget {
     required this.onLongPress,
     this.onSeeAll,
     this.onLoadMore,
+    this.isLoadingMore = false,
   });
 
   final String title;
@@ -26,6 +27,7 @@ class PeopleRow extends StatelessWidget {
   final void Function(MediaItem) onLongPress;
   final VoidCallback? onSeeAll;
   final VoidCallback? onLoadMore;
+  final bool isLoadingMore;
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +41,7 @@ class PeopleRow extends StatelessWidget {
       itemCount: items.length,
       onSeeAll: onSeeAll,
       onLoadMore: onLoadMore,
+      isLoadingMore: isLoadingMore,
       itemBuilder: (context, index) {
         final item = items[index];
         return _PersonCard(

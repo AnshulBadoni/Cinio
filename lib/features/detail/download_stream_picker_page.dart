@@ -595,7 +595,7 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
                           imageUrl: widget.titleLogoUrl!,
                           height: 44,
                           fit: BoxFit.contain,
-                          errorWidget: (_, __, ___) => _titleTextFallback(),
+                          errorWidget: (_, _, _) => _titleTextFallback(),
                         )
                       : _titleTextFallback(),
                 ),
@@ -634,7 +634,7 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
               CachedNetworkImage(
                 imageUrl: thumb,
                 fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => Container(
+                errorWidget: (_, _, _) => Container(
                   color: const Color(0xFF1B1B1F),
                   child: const Center(
                     child: Icon(Icons.image_not_supported_outlined, color: Colors.white30, size: 36),

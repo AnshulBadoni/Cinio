@@ -26,6 +26,7 @@ class SeeAllScreen extends StatefulWidget {
     this.onLongPress,
     this.tagsFor,
     this.onLoadMore,
+    this.initialPage = 1,
   });
 
   final String title;
@@ -42,6 +43,8 @@ class SeeAllScreen extends StatefulWidget {
   /// empty list (or only already-seen items) ends pagination. Null → fixed list.
   final Future<List<MediaItem>> Function(int page)? onLoadMore;
 
+  final int initialPage;
+
   @override
   State<SeeAllScreen> createState() => _SeeAllScreenState();
 }
@@ -51,8 +54,8 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
   final Set<String> _seen = {};
   final ScrollController _controller = ScrollController();
 
-  /// The last page already loaded — the initial [items] are page 1.
-  int _page = 1;
+  /// The last page already loaded — defaults to widget.initialPage.
+  late int _page = widget.initialPage;
   bool _loading = false;
   bool _end = false;
 
@@ -118,6 +121,7 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
       return SeeAllScreenTv(
         title: widget.title,
         items: widget.items,
+        initialPage: widget.initialPage,
         onTap: widget.onTap,
         onLongPress: widget.onLongPress,
         tagsFor: widget.tagsFor,

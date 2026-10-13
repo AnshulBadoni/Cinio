@@ -12,6 +12,8 @@ class DesktopMediaRow extends StatefulWidget {
     required this.items,
     required this.onTap,
     this.onSeeAll,
+    this.onLoadMore,
+    this.isLoadingMore = false,
     this.landscape = false,
     this.showTitles = true,
     this.padding,
@@ -21,6 +23,8 @@ class DesktopMediaRow extends StatefulWidget {
   final List<MediaItem> items;
   final void Function(MediaItem item) onTap;
   final VoidCallback? onSeeAll;
+  final VoidCallback? onLoadMore;
+  final bool isLoadingMore;
   final bool landscape;
   final bool showTitles;
   final EdgeInsetsGeometry? padding;
@@ -47,6 +51,16 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
   }
 
   @override
+  void didUpdateWidget(covariant DesktopMediaRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isLoadingMore && !widget.isLoadingMore) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _updateScrollButtons();
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _scrollController.removeListener(_updateScrollButtons);
     _scrollController.dispose();
@@ -64,6 +78,9 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
         _canScrollLeft = left;
         _canScrollRight = right;
       });
+    }
+    if (widget.onLoadMore != null && !widget.isLoadingMore && current >= max - 400 && max > 0) {
+      widget.onLoadMore!();
     }
   }
 
@@ -124,9 +141,25 @@ class _DesktopMediaRowState extends State<DesktopMediaRow> {
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 56),
                     physics: const ClampingScrollPhysics(),
-                    itemCount: widget.items.length,
+                    itemCount: widget.items.length + (widget.isLoadingMore ? 1 : 0),
                     separatorBuilder: (_, _) => const SizedBox(width: 22),
                     itemBuilder: (context, index) {
+                      if (index >= widget.items.length) {
+                        return SizedBox(
+                          width: _cardWidth,
+                          height: _cardHeight,
+                          child: const Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white38,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
                       final item = widget.items[index];
                       return DesktopMediaCard(
                         item: item,

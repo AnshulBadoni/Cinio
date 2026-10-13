@@ -151,6 +151,7 @@ class _HomeViewState extends State<_HomeView>
   /// Pagination state — cleared when source switches.
   final Map<String, int> _sectionPages = {};
   final Set<String> _sectionLoading = {};
+  final Set<String> _sectionEnded = {};
 
   /// Cached mode-art lookup. Rebuilt only when history boxes change or
   /// source/mode switches — not per widget rebuild.
@@ -787,8 +788,8 @@ class _HomeViewState extends State<_HomeView>
   Future<void> _loadMoreForSection(HomeSection section) async {
     if (section.more == null) return;
     final key = section.title;
-    if (_sectionLoading.contains(key)) return;
-    _sectionLoading.add(key);
+    if (_sectionLoading.contains(key) || _sectionEnded.contains(key)) return;
+    setState(() => _sectionLoading.add(key));
     final nextPage = (_sectionPages[key] ?? 1) + 1;
     try {
       final newItems = await _repo.browseMore(section.more!, nextPage);
@@ -796,25 +797,35 @@ class _HomeViewState extends State<_HomeView>
         _sectionPages[key] = nextPage;
         // Delegate to cubit so state stays immutable and reactive.
         context.read<HomeCubit>().appendItems(section.title, newItems);
+      } else if (newItems.isEmpty) {
+        _sectionEnded.add(key);
       }
     } catch (e, s) {
       _logError('loadMoreForSection', e, s);
     } finally {
-      _sectionLoading.remove(key);
+      if (mounted) {
+        setState(() => _sectionLoading.remove(key));
+      } else {
+        _sectionLoading.remove(key);
+      }
     }
   }
 
   // ── Section rows ──────────────────────────────────────────────────────────
 
   Widget _sectionRow(HomeSection section, String cardStyle) {
+    final isLoading = _sectionLoading.contains(section.title);
+    final canLoadMore = section.more != null && !_sectionEnded.contains(section.title);
+
     if (_isPeopleSection(section.title)) {
       return PeopleRow(
         title: section.title,
         items: section.items,
         onSeeAll: () => _openSeeAll(section),
-        onLoadMore: section.more != null
+        onLoadMore: canLoadMore
             ? () => _loadMoreForSection(section)
             : null,
+        isLoadingMore: isLoading,
         onTap: (item) {
           if (item.sourceId == 'tpdb:performer') {
             _openPerformer(item);
@@ -827,19 +838,25 @@ class _HomeViewState extends State<_HomeView>
         onLongPress: _showInfo,
       );
     }
-    if (_isStudioSection(section.title)) return _studioRow(section);
+    if (_isStudioSection(section.title)) {
+      return _studioRow(section, canLoadMore: canLoadMore, isLoading: isLoading);
+    }
 
     if (cardStyle == 'poster') {
-      return _fixedContentRow(section, landscape: false);
+      return _fixedContentRow(section, landscape: false, canLoadMore: canLoadMore, isLoading: isLoading);
     }
     if (cardStyle == 'landscape') {
-      return _fixedContentRow(section, landscape: true);
+      return _fixedContentRow(section, landscape: true, canLoadMore: canLoadMore, isLoading: isLoading);
     }
 
     return AdaptiveContentRow(
       title: section.title,
       items: section.items,
       onSeeAll: () => _openSeeAll(section),
+      onLoadMore: canLoadMore
+          ? () => _loadMoreForSection(section)
+          : null,
+      isLoadingMore: isLoading,
       onTap: (item, heroTag) => _openDetail(item, heroTag: heroTag),
       onLongPress: (item) => _showQuickActions(
         item,
@@ -849,7 +866,7 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  Widget _studioRow(HomeSection section) {
+  Widget _studioRow(HomeSection section, {required bool canLoadMore, required bool isLoading}) {
     return ValueListenableBuilder<int>(
       valueListenable: PlaybackPrefs.hideTitlesRevision,
       builder: (_, _, _) {
@@ -863,6 +880,8 @@ class _HomeViewState extends State<_HomeView>
           itemHeight: rowHeight,
           itemCount: section.items.length,
           onSeeAll: () => _openSeeAll(section),
+          onLoadMore: canLoadMore ? () => _loadMoreForSection(section) : null,
+          isLoadingMore: isLoading,
           itemBuilder: (c, i) {
             final item = section.items[i];
             final heroTag = _posterHeroTag(section, i, item);
@@ -897,7 +916,7 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  Widget _fixedContentRow(HomeSection section, {required bool landscape}) {
+  Widget _fixedContentRow(HomeSection section, {required bool landscape, required bool canLoadMore, required bool isLoading}) {
     return ValueListenableBuilder<int>(
       valueListenable: PlaybackPrefs.hideTitlesRevision,
       builder: (_, _, _) {
@@ -911,6 +930,8 @@ class _HomeViewState extends State<_HomeView>
           itemHeight: height,
           itemCount: section.items.length,
           onSeeAll: () => _openSeeAll(section),
+          onLoadMore: canLoadMore ? () => _loadMoreForSection(section) : null,
+          isLoadingMore: isLoading,
           itemBuilder: (c, i) {
             final item = section.items[i];
             final heroTag = _posterHeroTag(section, i, item);
@@ -952,12 +973,14 @@ class _HomeViewState extends State<_HomeView>
   }
 
   void _openSeeAll(HomeSection section) {
+    final curPage = _sectionPages[section.title] ?? 1;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => SeeAllScreen(
           title: section.title,
           items: section.items,
+          initialPage: curPage,
           onTap: (item) {
             if (item.sourceId == 'tpdb:performer') {
               _openPerformer(item);
@@ -1208,6 +1231,7 @@ class _HomeViewState extends State<_HomeView>
         _metaCache.clear();
         _sectionPages.clear();
         _sectionLoading.clear();
+        _sectionEnded.clear();
         _modeArtCache.clear();
         _heroPrewarmed = false;
         context.read<HomeCubit>().load(reset: true);
@@ -1218,7 +1242,12 @@ class _HomeViewState extends State<_HomeView>
           children: [
             RefreshIndicator(
               color: AppColors.accent,
-              onRefresh: () => context.read<HomeCubit>().load(),
+              onRefresh: () {
+                _sectionPages.clear();
+                _sectionLoading.clear();
+                _sectionEnded.clear();
+                return context.read<HomeCubit>().load();
+              },
               child: _HomeScrollView(stretch: _heroStretch),
             ),
             if (_slashing) _SlashOverlay(controller: _slashCtrl),

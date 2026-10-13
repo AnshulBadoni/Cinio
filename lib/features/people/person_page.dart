@@ -498,6 +498,7 @@ class _PersonPageState extends State<PersonPage> {
         builder: (_) => SeeAllScreen(
           title: title,
           items: initialItems,
+          initialPage: _page,
           onTap: (item) {
             Navigator.of(context).push(DetailScreen.route(item));
           },
@@ -1260,79 +1261,121 @@ class _PersonPageState extends State<PersonPage> {
   // ── Poster Row (Popular / Latest / Movies / Series) ─────────────────────────
 
   Widget _buildHorizontalPosters(List<PersonWork> list) {
-    return SizedBox(
-      height: 256,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: list.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 14),
-        itemBuilder: (context, idx) {
-          final w = list[idx];
-          final heroTag = 'person-poster:${w.catalogId ?? w.title}:$idx';
-          return GestureDetector(
-            onTap: () => _openWork(w, heroTag: heroTag),
-            onLongPress: () => _showWorkQuickActions(w, heroTag),
-            behavior: HitTestBehavior.opaque,
-            child: SizedBox(
-              width: 134,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Hero(
-                      tag: heroTag,
-                      createRectTween: (begin, end) =>
-                          MaterialRectArcTween(begin: begin, end: end),
+    final showLoading = _loadingMore && _hasMore;
+    final totalCount = list.length + (showLoading ? 1 : 0);
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.axis == Axis.horizontal &&
+            notification.metrics.pixels >=
+                notification.metrics.maxScrollExtent - 300) {
+          if (!_loadingMore && _hasMore && !_loading) {
+            _loadMore();
+          }
+        }
+        return false;
+      },
+      child: SizedBox(
+        height: 256,
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          itemCount: totalCount,
+          separatorBuilder: (_, _) => const SizedBox(width: 14),
+          itemBuilder: (context, idx) {
+            if (idx >= list.length) {
+              return SizedBox(
+                width: 134,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
                       child: Container(
                         width: 134,
                         height: 194,
                         color: AppColors.surface2,
-                        child: (w.cover != null && w.cover!.isNotEmpty)
-                            ? Image(
-                                image: nativeCoverProvider(w.cover!, null),
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => const Center(
+                        child: const Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white38,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+            final w = list[idx];
+            final heroTag = 'person-poster:${w.catalogId ?? w.title}:$idx';
+            return GestureDetector(
+              onTap: () => _openWork(w, heroTag: heroTag),
+              onLongPress: () => _showWorkQuickActions(w, heroTag),
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox(
+                width: 134,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Hero(
+                        tag: heroTag,
+                        createRectTween: (begin, end) =>
+                            MaterialRectArcTween(begin: begin, end: end),
+                        child: Container(
+                          width: 134,
+                          height: 194,
+                          color: AppColors.surface2,
+                          child: (w.cover != null && w.cover!.isNotEmpty)
+                              ? Image(
+                                  image: nativeCoverProvider(w.cover!, null),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => const Center(
+                                    child: Icon(Icons.movie_outlined,
+                                        color: Colors.white24, size: 32),
+                                  ),
+                                )
+                              : const Center(
                                   child: Icon(Icons.movie_outlined,
                                       color: Colors.white24, size: 32),
                                 ),
-                              )
-                            : const Center(
-                                child: Icon(Icons.movie_outlined,
-                                    color: Colors.white24, size: 32),
-                              ),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    w.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (w.releaseDate != null && w.releaseDate!.isNotEmpty)
+                    const SizedBox(height: 8),
                     Text(
-                      w.releaseDate!.length >= 4
-                          ? w.releaseDate!.substring(0, 4)
-                          : w.releaseDate!,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.5),
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w500,
+                      w.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                ],
+                    if (w.releaseDate != null && w.releaseDate!.isNotEmpty)
+                      Text(
+                        w.releaseDate!.length >= 4
+                            ? w.releaseDate!.substring(0, 4)
+                            : w.releaseDate!,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

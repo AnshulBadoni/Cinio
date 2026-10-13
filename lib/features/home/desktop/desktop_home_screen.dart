@@ -8,6 +8,7 @@ import '../../../core/models/media_item.dart';
 import '../../../core/models/provider_info.dart';
 import '../../../core/playback/my_list.dart';
 import '../../../core/playback/watch_history.dart';
+import '../../../core/repository/source_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../detail/detail_screen.dart';
 import '../../shell/desktop_nav_bar.dart';
@@ -33,6 +34,34 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
   final MyListStore _myList = sl<MyListStore>();
   final WatchHistory _watchHistory = sl<WatchHistory>();
   final ScrollController _scrollController = ScrollController();
+
+  final Map<String, int> _sectionPages = {};
+  final Set<String> _sectionLoading = {};
+  final Set<String> _sectionEnded = {};
+
+  Future<void> _loadMoreForSection(HomeSection section) async {
+    if (section.more == null) return;
+    final key = section.title;
+    if (_sectionLoading.contains(key) || _sectionEnded.contains(key)) return;
+    setState(() => _sectionLoading.add(key));
+    final nextPage = (_sectionPages[key] ?? 1) + 1;
+    try {
+      final newItems = await sl<SourceRepository>().browseMore(section.more!, nextPage);
+      if (newItems.isNotEmpty && mounted) {
+        _sectionPages[key] = nextPage;
+        _homeCubit.appendItems(section.title, newItems);
+      } else if (newItems.isEmpty) {
+        _sectionEnded.add(key);
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) {
+        setState(() => _sectionLoading.remove(key));
+      } else {
+        _sectionLoading.remove(key);
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -67,12 +96,17 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
   }
 
   void _openSeeAll(HomeSection section) {
+    final curPage = _sectionPages[section.title] ?? 1;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => SeeAllScreen(
           title: section.title,
           items: section.items,
+          initialPage: curPage,
           onTap: _openDetail,
+          onLoadMore: section.more == null
+              ? null
+              : (page) => sl<SourceRepository>().browseMore(section.more!, page),
         ),
       ),
     );
@@ -250,11 +284,14 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
                   final isLandscape = (title.contains('continue watching') ||
                           title.contains('watch again')) &&
                       section.items.any((it) => it.heroImage != null && it.heroImage!.isNotEmpty);
+                  final canLoadMore = section.more != null && !_sectionEnded.contains(section.title);
                   return DesktopMediaRow(
                     title: section.title.toUpperCase(),
                     items: section.items,
                     onTap: _openDetail,
                     onSeeAll: () => _openSeeAll(section),
+                    onLoadMore: canLoadMore ? () => _loadMoreForSection(section) : null,
+                    isLoadingMore: _sectionLoading.contains(section.title),
                     landscape: isLandscape,
                   );
                 },

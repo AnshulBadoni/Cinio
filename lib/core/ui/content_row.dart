@@ -21,6 +21,7 @@ class ContentRow extends StatefulWidget {
     this.itemHeight = 210,
     this.onSeeAll,
     this.onLoadMore,
+    this.isLoadingMore = false,
   });
 
   final String title;
@@ -31,6 +32,7 @@ class ContentRow extends StatefulWidget {
   final double itemHeight;
   final VoidCallback? onSeeAll;
   final VoidCallback? onLoadMore;
+  final bool isLoadingMore;
 
   @override
   State<ContentRow> createState() => _ContentRowState();
@@ -46,6 +48,16 @@ class _ContentRowState extends State<ContentRow> {
   }
 
   @override
+  void didUpdateWidget(covariant ContentRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isLoadingMore && !widget.isLoadingMore) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onScroll();
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -53,15 +65,18 @@ class _ContentRowState extends State<ContentRow> {
   }
 
   void _onScroll() {
-    if (widget.onLoadMore == null || !_scrollController.hasClients) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 300) {
+    if (widget.onLoadMore == null || widget.isLoadingMore || !_scrollController.hasClients) return;
+    final max = _scrollController.position.maxScrollExtent;
+    final current = _scrollController.position.pixels;
+    if (max > 0 && current >= max - 300) {
       widget.onLoadMore!();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final showLoadingCard = widget.isLoadingMore;
+    final totalCount = widget.itemCount + (showLoadingCard ? 1 : 0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -80,19 +95,40 @@ class _ContentRowState extends State<ContentRow> {
             cacheExtent: MediaQuery.of(context).accessibleNavigation
                 ? double.infinity
                 : 600,
-            itemCount: widget.itemCount,
-            itemBuilder: (context, index) => Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: SizedBox(
-                width: widget.itemWidth,
-                child: RepaintBoundary(
-                  child: RevealItem(
-                    index: index,
-                    child: widget.itemBuilder(context, index),
+            itemCount: totalCount,
+            itemBuilder: (context, index) {
+              if (index >= widget.itemCount) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: SizedBox(
+                    width: widget.itemWidth,
+                    height: widget.itemHeight,
+                    child: const Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white38,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }
+              return Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: SizedBox(
+                  width: widget.itemWidth,
+                  child: RepaintBoundary(
+                    child: RevealItem(
+                      index: index,
+                      child: widget.itemBuilder(context, index),
+                    ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ],
