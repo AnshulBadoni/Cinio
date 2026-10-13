@@ -56,8 +56,10 @@ class _SeeAllScreenTvState extends State<SeeAllScreenTv> {
   final Set<String> _seen = {};
   final ScrollController _controller = ScrollController();
 
-  /// The last page already loaded — defaults to widget.initialPage.
-  late int _page = widget.initialPage;
+  /// The last page already loaded — computed from initialPage or existing item count.
+  late int _page = widget.initialPage > 1
+      ? widget.initialPage
+      : (_items.length / 16).ceil().clamp(1, 999);
   bool _loading = false;
   bool _end = false;
 
@@ -84,7 +86,7 @@ class _SeeAllScreenTvState extends State<SeeAllScreenTv> {
   void _onScroll() {
     if (_loading || _end || !_controller.hasClients) return;
     final pos = _controller.position;
-    if (pos.pixels >= pos.maxScrollExtent * 0.8) {
+    if (pos.pixels >= pos.maxScrollExtent - 400 || pos.pixels >= pos.maxScrollExtent * 0.8) {
       _loadMore();
     }
   }
@@ -105,27 +107,57 @@ class _SeeAllScreenTvState extends State<SeeAllScreenTv> {
     final loader = widget.onLoadMore;
     if (loader == null || _loading || _end) return;
     setState(() => _loading = true);
-    List<MediaItem> next = const [];
+
     try {
-      next = await loader(_page + 1);
-    } catch (_) {
-      next = const [];
-    }
-    if (!mounted) return;
-    final fresh = <MediaItem>[];
-    for (final it in next) {
-      final k = _keyOf(it);
-      if (_seen.add(k)) fresh.add(it);
-    }
-    setState(() {
-      _loading = false;
-      if (fresh.isEmpty) {
-        _end = true;
-      } else {
-        _items.addAll(fresh);
-        _page += 1;
+      var curPage = _page;
+      var foundFresh = false;
+
+      for (var attempt = 0; attempt < 3; attempt++) {
+        curPage += 1;
+        List<MediaItem> next = const [];
+        try {
+          next = await loader(curPage);
+        } catch (_) {
+          next = const [];
+        }
+        if (!mounted) return;
+
+        if (next.isEmpty) {
+          setState(() {
+            _loading = false;
+            _end = true;
+          });
+          return;
+        }
+
+        final fresh = <MediaItem>[];
+        for (final it in next) {
+          final k = _keyOf(it);
+          if (_seen.add(k)) fresh.add(it);
+        }
+
+        if (fresh.isNotEmpty) {
+          _page = curPage;
+          foundFresh = true;
+          setState(() {
+            _loading = false;
+            _items.addAll(fresh);
+          });
+          break;
+        }
+
+        _page = curPage;
       }
-    });
+
+      if (!foundFresh && mounted) {
+        setState(() {
+          _loading = false;
+          _end = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override

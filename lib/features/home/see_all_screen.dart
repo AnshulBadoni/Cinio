@@ -54,8 +54,10 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
   final Set<String> _seen = {};
   final ScrollController _controller = ScrollController();
 
-  /// The last page already loaded — defaults to widget.initialPage.
-  late int _page = widget.initialPage;
+  /// The last page already loaded — computed from initialPage or existing item count.
+  late int _page = widget.initialPage > 1
+      ? widget.initialPage
+      : (_items.length / 16).ceil().clamp(1, 999);
   bool _loading = false;
   bool _end = false;
 
@@ -82,7 +84,7 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
   void _onScroll() {
     if (_loading || _end || !_controller.hasClients) return;
     final pos = _controller.position;
-    if (pos.pixels >= pos.maxScrollExtent * 0.8) {
+    if (pos.pixels >= pos.maxScrollExtent - 400 || pos.pixels >= pos.maxScrollExtent * 0.8) {
       _loadMore();
     }
   }
@@ -91,28 +93,61 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
     final loader = widget.onLoadMore;
     if (loader == null || _loading || _end) return;
     setState(() => _loading = true);
-    List<MediaItem> next = const [];
+
     try {
-      next = await loader(_page + 1);
-    } catch (_) {
-      next = const [];
-    }
-    if (!mounted) return;
-    final fresh = <MediaItem>[];
-    for (final it in next) {
-      final k = _keyOf(it);
-      if (_seen.add(k)) fresh.add(it);
-    }
-    setState(() {
-      _loading = false;
-      if (fresh.isEmpty) {
-        // Nothing new (empty page or all duplicates) → we've hit the end.
-        _end = true;
-      } else {
-        _items.addAll(fresh);
-        _page += 1;
+      var curPage = _page;
+      var foundFresh = false;
+
+      // Check up to 3 pages in case an intermediate page returns duplicates of items
+      // already present on initial screen load
+      for (var attempt = 0; attempt < 3; attempt++) {
+        curPage += 1;
+        List<MediaItem> next = const [];
+        try {
+          next = await loader(curPage);
+        } catch (_) {
+          next = const [];
+        }
+        if (!mounted) return;
+
+        if (next.isEmpty) {
+          // Genuinely at the end of the remote catalog
+          setState(() {
+            _loading = false;
+            _end = true;
+          });
+          return;
+        }
+
+        final fresh = <MediaItem>[];
+        for (final it in next) {
+          final k = _keyOf(it);
+          if (_seen.add(k)) fresh.add(it);
+        }
+
+        if (fresh.isNotEmpty) {
+          _page = curPage;
+          foundFresh = true;
+          setState(() {
+            _loading = false;
+            _items.addAll(fresh);
+          });
+          break;
+        }
+
+        // Entire page was duplicate, advance counter and check next page
+        _page = curPage;
       }
-    });
+
+      if (!foundFresh && mounted) {
+        setState(() {
+          _loading = false;
+          _end = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -138,36 +173,48 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
         backgroundColor: AppColors.bg,
         title: Text(widget.title, style: AppText.headline),
       ),
-      body: GridView.builder(
-        controller: paginating ? _controller : null,
-        padding: const EdgeInsets.all(16),
-        cacheExtent: 800,
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          childAspectRatio: sl<PlaybackPrefs>().hideTitles ? (2 / 3) : 0.56,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 14,
-        ),
-        itemCount: _items.length,
-        itemBuilder: (context, i) {
-          final item = _items[i];
-          return RevealItem(
-            index: i,
-            child: PosterCard(
-              title: item.title,
-              imageUrl: item.cover,
-              headers: item.coverHeaders,
-              tags: widget.tagsFor?.call(item) ?? const [],
-              qualityBadge: item.quality,
-              dubBadge: item.dubBadge,
-              cellWidth: cellW,
-              onTap: () => widget.onTap(item),
-              onLongPress: widget.onLongPress == null
-                  ? null
-                  : () => widget.onLongPress!(item),
-            ),
-          );
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (paginating && notification.metrics.axis == Axis.vertical) {
+            final pos = notification.metrics;
+            if (pos.pixels >= pos.maxScrollExtent - 400 || pos.pixels >= pos.maxScrollExtent * 0.8) {
+              if (!_loading && !_end) _loadMore();
+            }
+          }
+          return false;
         },
+        child: GridView.builder(
+          controller: paginating ? _controller : null,
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          cacheExtent: 800,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            childAspectRatio: sl<PlaybackPrefs>().hideTitles ? (2 / 3) : 0.56,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 14,
+          ),
+          itemCount: _items.length,
+          itemBuilder: (context, i) {
+            final item = _items[i];
+            return RevealItem(
+              index: i,
+              child: PosterCard(
+                title: item.title,
+                imageUrl: item.cover,
+                headers: item.coverHeaders,
+                tags: widget.tagsFor?.call(item) ?? const [],
+                qualityBadge: item.quality,
+                dubBadge: item.dubBadge,
+                cellWidth: cellW,
+                onTap: () => widget.onTap(item),
+                onLongPress: widget.onLongPress == null
+                    ? null
+                    : () => widget.onLongPress!(item),
+              ),
+            );
+          },
+        ),
       ),
       // Bottom loading indicator while the next page is in flight. Only rendered
       // in the paginating configuration, so non-paginating callers are unchanged.
