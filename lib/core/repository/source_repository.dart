@@ -436,19 +436,21 @@ class SourceRepository {
   /// error) degrades to an empty list so the caller just stops the scroll.
   Future<List<MediaItem>> browseMore(BrowseMore more, int page) async {
     try {
-      final p = _providerFor(more.sourceId);
       switch (more.kind) {
         case 'ani_popular':
-          return p.popular(page: page);
+          return _providerFor(more.sourceId).popular(page: page);
         case 'ani_latest':
+          final p = _providerFor(more.sourceId);
           return p is AniyomiProvider ? p.latest(page: page) : const [];
         case 'mihon_popular':
-          return p.popular(page: page);
+          return _providerFor(more.sourceId).popular(page: page);
         case 'mihon_latest':
+          final p = _providerFor(more.sourceId);
           return p is MihonProvider ? p.latest(page: page) : const [];
         case 'lnr_popular':
-          return p.popular(page: page);
+          return _providerFor(more.sourceId).popular(page: page);
         case 'cs_mainpage':
+          final p = _providerFor(more.sourceId);
           return (p is CloudStreamProvider && more.categoryId != null)
               ? p.browseMainPage(more.categoryId!, page)
               : const [];

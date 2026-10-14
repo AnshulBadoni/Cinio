@@ -11,13 +11,17 @@ class Environment {
   // build needs a different project (e.g. staging).
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
-    defaultValue: 'https://eogwzrlfoercfwcfwlmv.supabase.co',
+    defaultValue: 'https://jnnrzvyzqxtvefvglfxs.supabase.co',
   );
   static const String supabaseAnonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
-    defaultValue:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvZ3d6cmxmb2VyY2Z3Y2Z3bG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNjgzODIsImV4cCI6MjA5OTk0NDM4Mn0.qr-nHnB9vb7BodP55XJ9-6Rwp__eOGCS6txhLiuWVZw',
+    defaultValue: 'sb_publishable_mAck7LXGqz4AMXceWWmMOQ_I4Uu-Hec',
   );
+
+  // Fallback project configuration (for legacy user data or backup)
+  static const String fallbackSupabaseUrl = 'https://eogwzrlfoercfwcfwlmv.supabase.co';
+  static const String fallbackSupabaseAnonKey =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvZ3d6cmxmb2VyY2Z3Y2Z3bG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNjgzODIsImV4cCI6MjA5OTk0NDM4Mn0.qr-nHnB9vb7BodP55XJ9-6Rwp__eOGCS6txhLiuWVZw';
 
   /// Where Appwrite sends the password-recovery link. Appwrite appends
   /// Password-reset landing. Supabase now drives reset (via the auth `site_url`,
