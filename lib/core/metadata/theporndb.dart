@@ -161,7 +161,7 @@ class ThePornDb {
             final list = res['data'] as List?;
             if (list != null && list.isNotEmpty) {
               final row = list.first;
-              if (row is Map && _qualifiesAsActor(row, requireRating: false)) {
+              if (row is Map && _qualifiesAsActor(row, requireRating: true)) {
                 return _performer(row);
               }
             }
@@ -174,12 +174,14 @@ class ThePornDb {
       }
     }
 
-    final apiPage = page > 2 ? page - 2 : page;
+    final apiPage = page > 3 ? page - 3 : page;
     final data = await _get('/performers', queryParameters: {
       'page': apiPage,
       'per_page': 50,
       'orderBy': orderBy,
       'gender': 'Female',
+      'rating': 4,
+      'rating_operation': '>=',
       'age': 50,
       'age_operation': '<',
       if (isSearch) 'q': query.trim(),
@@ -188,7 +190,7 @@ class ThePornDb {
     if (rows is! List) return const [];
     final list = [
       for (final row in rows)
-        if (row is Map && _qualifiesAsActor(row, requireRating: false)) _performer(row),
+        if (row is Map && _qualifiesAsActor(row, requireRating: true)) _performer(row),
     ];
     list.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
     return list.take(24).toList();

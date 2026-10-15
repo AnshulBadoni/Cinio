@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
+import '../../core/models/watch_status.dart';
+import '../../core/playback/list_status_store.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/playback/watch_history.dart';
+import '../../core/reading/read_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/poster_card.dart';
@@ -80,6 +84,17 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
 
   /// Dedupe key — prefer the stable id, fall back to the url.
   String _keyOf(MediaItem m) => m.id.isNotEmpty ? m.id : m.url;
+
+  bool _isItemCompleted(MediaItem item) {
+    if (sl<ListStatusStore>().statusOf(item) == WatchStatus.completed) return true;
+    final h = sl<WatchHistory>().get(item.sourceId, item.id) ??
+        sl<WatchHistory>().get(item.sourceId, item.url);
+    if (h != null && h.finished) return true;
+    final r = sl<ReadHistory>().get(item.sourceId, item.id) ??
+        sl<ReadHistory>().get(item.sourceId, item.url);
+    if (r != null && r.finished) return true;
+    return false;
+  }
 
   void _onScroll() {
     if (_loading || _end || !_controller.hasClients) return;
@@ -207,6 +222,7 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
                 qualityBadge: item.quality,
                 dubBadge: item.dubBadge,
                 cellWidth: cellW,
+                completed: _isItemCompleted(item),
                 onTap: () => widget.onTap(item),
                 onLongPress: widget.onLongPress == null
                     ? null

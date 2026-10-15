@@ -1047,99 +1047,6 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
-  /// Filters action — sort + content type + audio + genre + which sources to
-  /// search, all in one sheet now. Shows a small accent count badge (instead
-  /// of only a tint) for how many of those are non-default, so the icon
-  /// carries the same signal the old separate sort icon's tint used to.
-  Widget _filterAction() {
-    return BlocBuilder<SearchBloc, SearchState>(
-      buildWhen: (p, c) =>
-          p.sort != c.sort ||
-          p.contentFilter != c.contentFilter ||
-          p.audioFilter != c.audioFilter ||
-          p.genreFilter != c.genreFilter ||
-          p.statusFilter != c.statusFilter ||
-          p.currentSourceOnly != c.currentSourceOnly,
-      builder: (context, state) => ListenableBuilder(
-        listenable: sl<SearchSourcePrefs>(),
-        builder: (context, _) {
-          // Source excludes only count as an active filter when actually
-          // fanning out to all sources.
-          final sourceExcluded =
-              !state.currentSourceOnly &&
-              sl<SearchSourcePrefs>().excluded.isNotEmpty;
-          final count = state.activeFilterCount + (sourceExcluded ? 1 : 0);
-          return _iconWithBadge(
-            icon: Icons.tune_rounded,
-            tooltip: 'Filters',
-            count: count,
-            onPressed: () => _openFilterSheet(context),
-          );
-        },
-      ),
-    );
-  }
-
-  /// A control-row icon button with a small accent count badge in the corner
-  /// when [count] > 0 — used by [_filterAction] to surface how many
-  /// sort/type/audio/genre/source selections are non-default at a glance,
-  /// instead of a bare on/off tint.
-  Widget _iconWithBadge({
-    required IconData icon,
-    required String tooltip,
-    required int count,
-    required VoidCallback onPressed,
-  }) {
-    return SizedBox(
-      width: 36,
-      height: 36,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          IconButton(
-            icon: Icon(
-              icon,
-              size: 20,
-              color: count > 0 ? AppColors.accent : AppColors.textTertiary,
-            ),
-            tooltip: tooltip,
-            onPressed: onPressed,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-          ),
-          if (count > 0)
-            Positioned(
-              top: 3,
-              right: 3,
-              child: IgnorePointer(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 1,
-                  ),
-                  constraints: const BoxConstraints(minWidth: 14),
-                  decoration: BoxDecoration(
-                    color: AppColors.accent,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: AppColors.surface, width: 1.5),
-                  ),
-                  child: Text(
-                    '$count',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      height: 1.3,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 
   /// Per-source filter routing for [sourceId] by [sourceFilterEcosystemOf] —
   /// the tap handler for the section-header tune icon (or null to hide it)
@@ -2022,6 +1929,35 @@ class _SearchViewState extends State<_SearchView>
 
   // ── Idle view: endless Discover feed ───────────────────────────────────────
   Widget _idleView(SearchState state) {
+    if (state.catalogSource == SearchCatalogSource.providers) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.search_rounded,
+                size: 52,
+                color: AppColors.textTertiary,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Search across providers',
+                textAlign: TextAlign.center,
+                style: AppText.headline,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Type a title in the search box above to search installed providers.',
+                textAlign: TextAlign.center,
+                style: AppText.caption,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final items = state.discoverItems;
     if (items.isEmpty && state.status == SearchStatus.loading) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2));

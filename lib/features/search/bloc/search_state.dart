@@ -441,12 +441,29 @@ class SearchState extends Equatable {
 
   /// Applies the content-type + audio + genre + status filters to [item].
   bool _passes(MediaItem item) {
-    if (!contentFilter.matches(item)) return false;
-    if (!audioFilter.matches(item)) return false;
-    if (genreFilter != null && !SearchMeta.matchesGenre(item, genreFilter!)) {
-      return false;
+    final isProviderSearch = catalogSource == SearchCatalogSource.providers;
+
+    if (contentFilter != SearchContentFilter.all) {
+      if (!contentFilter.matches(item)) return false;
     }
-    if (!statusFilter.matches(item)) return false;
+    if (audioFilter != SearchAudioFilter.any) {
+      final hasAudio = item.subCount != null || item.dubCount != null;
+      if (hasAudio && !audioFilter.matches(item)) return false;
+    }
+    if (genreFilter != null) {
+      if (item.genres.isNotEmpty) {
+        if (!SearchMeta.matchesGenre(item, genreFilter!)) return false;
+      } else if (!isProviderSearch) {
+        return false;
+      }
+    }
+    if (statusFilter != SearchStatusFilter.any) {
+      if (item.status != null) {
+        if (!statusFilter.matches(item)) return false;
+      } else if (!isProviderSearch) {
+        return false;
+      }
+    }
     return true;
   }
 

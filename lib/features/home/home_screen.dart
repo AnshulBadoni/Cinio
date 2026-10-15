@@ -197,10 +197,18 @@ class _HomeViewState extends State<_HomeView>
       });
       _checkSourceUpdates();
     }
+    _listStatus.revision.addListener(_onLibraryStatusChanged);
+    _myList.revision.addListener(_onLibraryStatusChanged);
+  }
+
+  void _onLibraryStatusChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _listStatus.revision.removeListener(_onLibraryStatusChanged);
+    _myList.revision.removeListener(_onLibraryStatusChanged);
     _slashCtrl.dispose();
     _heroStretch.dispose();
     super.dispose();
@@ -821,6 +829,17 @@ class _HomeViewState extends State<_HomeView>
 
   // ── Section rows ──────────────────────────────────────────────────────────
 
+  bool _isItemCompleted(MediaItem item) {
+    if (_listStatus.statusOf(item) == WatchStatus.completed) return true;
+    final h = sl<WatchHistory>().get(item.sourceId, item.id) ??
+        sl<WatchHistory>().get(item.sourceId, item.url);
+    if (h != null && h.finished) return true;
+    final r = sl<ReadHistory>().get(item.sourceId, item.id) ??
+        sl<ReadHistory>().get(item.sourceId, item.url);
+    if (r != null && r.finished) return true;
+    return false;
+  }
+
   Widget _sectionRow(HomeSection section, String cardStyle) {
     final isLoading = _sectionLoading.contains(section.title);
     final canLoadMore = section.more != null && !_sectionEnded.contains(section.title);
@@ -865,6 +884,7 @@ class _HomeViewState extends State<_HomeView>
           ? () => _loadMoreForSection(section)
           : null,
       isLoadingMore: isLoading,
+      completedBuilder: _isItemCompleted,
       onTap: (item, heroTag) => _openDetail(item, heroTag: heroTag),
       onLongPress: (item) => _showQuickActions(
         item,
@@ -903,7 +923,7 @@ class _HomeViewState extends State<_HomeView>
                 qualityBadge: item.quality,
                 dubBadge: item.dubBadge,
                 heroTag: heroTag,
-                completed: _listStatus.statusOf(item) != null || sl<MyListStore>().contains(item),
+                completed: _isItemCompleted(item),
                 onTap: () {
                   if (item.sourceId == 'tpdb:studio') {
                     _openStudio(item);
@@ -950,7 +970,7 @@ class _HomeViewState extends State<_HomeView>
               cellWidth: width,
               qualityBadge: item.quality,
               dubBadge: item.dubBadge,
-              completed: _listStatus.statusOf(item) != null || sl<MyListStore>().contains(item),
+              completed: _isItemCompleted(item),
               heroTag: heroTag,
               onTap: () => _openDetail(item, heroTag: heroTag),
               onLongPress: () => _showQuickActions(item, heroTag),
