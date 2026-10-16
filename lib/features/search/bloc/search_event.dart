@@ -116,6 +116,11 @@ class SearchStatusFilterChanged extends SearchEvent {
   List<Object?> get props => [filter];
 }
 
+/// Clears all narrowing filters (content, audio, genre, status, source) back to defaults.
+class SearchClearFilters extends SearchEvent {
+  const SearchClearFilters();
+}
+
 /// Fired once on open to load trending titles for the idle screen.
 class SearchCatalogSourceChanged extends SearchEvent {
   const SearchCatalogSourceChanged(this.source);

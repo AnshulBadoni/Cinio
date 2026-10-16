@@ -63,7 +63,7 @@ class SearchPrefs extends ChangeNotifier {
   /// When true, search queries ONLY the currently-active Home source instead of
   /// fanning out to every enabled source. Defaults to true — the product pick.
   bool get currentSourceOnly =>
-      _box.get(_currentSourceOnlyKey, defaultValue: true) as bool;
+      _box.get(_currentSourceOnlyKey, defaultValue: false) as bool;
 
   Future<void> setCurrentSourceOnly(bool value) async {
     if (value == currentSourceOnly) return;

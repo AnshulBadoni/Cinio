@@ -49,6 +49,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     on<SearchAudioFilterChanged>(_onAudioFilterChanged);
     on<SearchGenreFilterChanged>(_onGenreFilterChanged);
     on<SearchStatusFilterChanged>(_onStatusFilterChanged);
+    on<SearchClearFilters>(_onClearFilters);
     on<SearchRunRequested>(_onRunRequested);
     on<SearchSubmitted>(_onSubmitted);
     on<SearchSourceFiltersApplied>(_onSourceFiltersApplied);
@@ -218,17 +219,14 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       SearchCatalogSource.mixed => CatalogSource.mixed,
     };
     unawaited(sl<CatalogSourcePrefs>().setSource(prefsSource));
-    final providerFilter = switch (state.discoverType) {
-      SearchDiscoverType.all => SearchContentFilter.all,
-      SearchDiscoverType.anime => SearchContentFilter.anime,
-      SearchDiscoverType.movies => SearchContentFilter.movies,
-      SearchDiscoverType.series => SearchContentFilter.movies,
-    };
     emit(state.copyWith(
       catalogSource: nextSource,
-      contentFilter: nextSource == SearchCatalogSource.providers
-          ? providerFilter
-          : SearchContentFilter.all,
+      contentFilter: SearchContentFilter.all,
+      audioFilter: SearchAudioFilter.any,
+      clearGenreFilter: true,
+      statusFilter: SearchStatusFilter.any,
+      sourceFilter: kAllSources,
+      currentSourceOnly: false,
     ));
     if (state.query.trim().isEmpty) {
       add(const SearchDiscoverRequested());
@@ -253,27 +251,15 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     SearchDiscoverTypeChanged event,
     Emitter<SearchState> emit,
   ) {
-    final providerFilter = switch (event.type) {
-      SearchDiscoverType.all => SearchContentFilter.all,
-      SearchDiscoverType.anime => SearchContentFilter.anime,
-      SearchDiscoverType.movies => SearchContentFilter.movies,
-      // Provider MediaItems do not have a universal movie-vs-series type;
-      // keep the legacy non-anime bucket for Providers. TMDB has a true
-      // Series filter via its TV catalog.
-      SearchDiscoverType.series => SearchContentFilter.movies,
-    };
     emit(state.copyWith(
       discoverType: event.type,
       contentFilter: state.catalogSource == SearchCatalogSource.providers
-          ? providerFilter
+          ? SearchContentFilter.all
           : state.contentFilter,
     ));
-    if (state.catalogSource == SearchCatalogSource.providers) {
-      _prefs.setContentFilterName(providerFilter.name);
-    }
     if (state.query.trim().isEmpty) {
       add(const SearchDiscoverRequested());
-    } else if (state.catalogSource == SearchCatalogSource.tmdb || state.catalogSource == SearchCatalogSource.thePornDb || state.catalogSource == SearchCatalogSource.mixed) {
+    } else {
       add(const SearchSubmitted());
     }
   }
@@ -727,6 +713,30 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     }
   }
 
+  Future<void> _onClearFilters(
+    SearchClearFilters event,
+    Emitter<SearchState> emit,
+  ) async {
+    emit(
+      state.copyWith(
+        contentFilter: SearchContentFilter.all,
+        audioFilter: SearchAudioFilter.any,
+        clearGenreFilter: true,
+        statusFilter: SearchStatusFilter.any,
+        sourceFilter: kAllSources,
+      ),
+    );
+    _prefs.setContentFilterName(SearchContentFilter.all.name);
+    _prefs.setAudioFilterName(SearchAudioFilter.any.name);
+    _prefs.setGenre(null);
+    _prefs.setStatusFilterName(SearchStatusFilter.any.name);
+    if (state.query.trim().isEmpty) {
+      add(const SearchDiscoverRequested());
+    } else {
+      add(const SearchSubmitted());
+    }
+  }
+
   /// The single entry point for the heavy search. Sets [query] when provided
   /// (suggestion taps), cancels any pending autocomplete, clears suggestions,
   /// and runs the cross-source search.
@@ -842,8 +852,9 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     // all-sources mode it's every loaded source EXCEPT the ones the user
     // switched off for search (search-only — doesn't affect Home use).
     List<({String id, String name})> sources;
-    if (state.currentSourceOnly) {
-      final activeId = sl<ActiveSourceCubit>().state;
+    final activeId = sl<ActiveSourceCubit>().state;
+    final hasValidActive = activeId.isNotEmpty && _repo.hasSource(activeId);
+    if (state.currentSourceOnly && hasValidActive) {
       sources = [(id: activeId, name: _repo.displayName(activeId))];
     } else {
       final prefs = sl<SearchSourcePrefs>();

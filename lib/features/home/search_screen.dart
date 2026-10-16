@@ -1776,13 +1776,7 @@ class _SearchViewState extends State<_SearchView>
               const SizedBox(height: 16),
               TextButton(
                 onPressed: () {
-                  final bloc = context.read<SearchBloc>();
-                  bloc
-                    ..add(
-                      const SearchContentFilterChanged(SearchContentFilter.all),
-                    )
-                    ..add(const SearchAudioFilterChanged(SearchAudioFilter.any))
-                    ..add(const SearchGenreFilterChanged(null));
+                  context.read<SearchBloc>().add(const SearchClearFilters());
                 },
                 child: Text(
                   'Clear filters',
@@ -2220,10 +2214,7 @@ class _SearchFilterSheet extends StatelessWidget {
       ..add(const SearchCatalogChanged(SearchCatalog.trending))
       ..add(const SearchDiscoverTypeChanged(SearchDiscoverType.all))
       ..add(const SearchSortChanged(SearchSort.bestMatch))
-      ..add(const SearchContentFilterChanged(SearchContentFilter.all))
-      ..add(const SearchAudioFilterChanged(SearchAudioFilter.any))
-      ..add(const SearchGenreFilterChanged(null))
-      ..add(const SearchStatusFilterChanged(SearchStatusFilter.any));
+      ..add(const SearchClearFilters());
   }
 
   bool _canReset(SearchState state, SearchSourcePrefs prefs) =>

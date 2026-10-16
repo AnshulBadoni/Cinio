@@ -385,7 +385,7 @@ class SearchState extends Equatable {
     this.groups = const [],
     this.sourceFilter = kAllSources,
     this.ecosystem = SearchEcosystem.all,
-    this.currentSourceOnly = true,
+    this.currentSourceOnly = false,
     this.sort = SearchSort.bestMatch,
     this.contentFilter = SearchContentFilter.all,
     this.audioFilter = SearchAudioFilter.any,
@@ -416,50 +416,51 @@ class SearchState extends Equatable {
   /// True when any client-side filter narrows the results (drives the active
   /// tint on the filter button and the "no results — clear filters" hint).
   /// Deliberately excludes [sort] — a sort choice reorders, never narrows.
-  bool get hasActiveFilter =>
-      catalogSource != SearchCatalogSource.tmdb ||
-      catalog != SearchCatalog.trending ||
-      discoverType != SearchDiscoverType.all ||
-      contentFilter != SearchContentFilter.all ||
-      audioFilter != SearchAudioFilter.any ||
-      genreFilter != null ||
-      statusFilter != SearchStatusFilter.any;
+  bool get hasActiveFilter {
+    if (catalogSource == SearchCatalogSource.providers) {
+      return sourceFilter != kAllSources;
+    }
+    return contentFilter != SearchContentFilter.all ||
+        audioFilter != SearchAudioFilter.any ||
+        genreFilter != null ||
+        statusFilter != SearchStatusFilter.any ||
+        sourceFilter != kAllSources;
+  }
 
   /// Count of non-default selections across the whole merged Filters sheet —
   /// [sort] included, unlike [hasActiveFilter] — for the sheet header/toolbar
   /// badge. Sort used to tint its own separate icon; now that it lives in the
   /// same sheet, a non-default sort still needs a visible signal somewhere.
   int get activeFilterCount =>
-      (catalogSource != SearchCatalogSource.tmdb ? 1 : 0) +
-      (catalog != SearchCatalog.trending ? 1 : 0) +
-      (discoverType != SearchDiscoverType.all ? 1 : 0) +
       (sort != SearchSort.bestMatch ? 1 : 0) +
       (contentFilter != SearchContentFilter.all ? 1 : 0) +
       (audioFilter != SearchAudioFilter.any ? 1 : 0) +
       (genreFilter != null ? 1 : 0) +
-      (statusFilter != SearchStatusFilter.any ? 1 : 0);
+      (statusFilter != SearchStatusFilter.any ? 1 : 0) +
+      (sourceFilter != kAllSources ? 1 : 0);
 
   /// Applies the content-type + audio + genre + status filters to [item].
   bool _passes(MediaItem item) {
     final isProviderSearch = catalogSource == SearchCatalogSource.providers;
 
     if (contentFilter != SearchContentFilter.all) {
-      if (!contentFilter.matches(item)) return false;
+      if (!isProviderSearch && !contentFilter.matches(item)) return false;
     }
     if (audioFilter != SearchAudioFilter.any) {
       final hasAudio = item.subCount != null || item.dubCount != null;
       if (hasAudio && !audioFilter.matches(item)) return false;
+      if (!hasAudio && !isProviderSearch) return false;
     }
     if (genreFilter != null) {
       if (item.genres.isNotEmpty) {
-        if (!SearchMeta.matchesGenre(item, genreFilter!)) return false;
+        if (!isProviderSearch && !SearchMeta.matchesGenre(item, genreFilter!)) return false;
       } else if (!isProviderSearch) {
         return false;
       }
     }
     if (statusFilter != SearchStatusFilter.any) {
       if (item.status != null) {
-        if (!statusFilter.matches(item)) return false;
+        if (!isProviderSearch && !statusFilter.matches(item)) return false;
       } else if (!isProviderSearch) {
         return false;
       }
