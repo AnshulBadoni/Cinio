@@ -51,7 +51,7 @@ class HlsDownloader {
     // 3. Fetch the decryption key if the stream is encrypted.
     Uint8List? key;
     if (pl.keyUrl != null) {
-      key = await _fetchBytes(pl.keyUrl!, headers);
+      key = await _fetchBytes(pl.keyUrl!, headers, canceled: canceled);
       if (key == null || key.length != 16) return 'AES key fetch failed';
     }
 
@@ -78,7 +78,11 @@ class HlsDownloader {
         final i = nextIndex++;
         if (i >= total) return;
 
-        Uint8List? bytes = await _fetchBytes(pl.segments[i], headers);
+        Uint8List? bytes = await _fetchBytes(
+          pl.segments[i],
+          headers,
+          canceled: canceled,
+        );
         if (bytes == null) {
           failed = true;
           failReason ??= 'segment ${i + 1}/$total unreachable';
@@ -107,7 +111,7 @@ class HlsDownloader {
     // playlists have no `#EXT-X-MAP`, so initUrl is null and this is skipped
     // (TS downloads are unchanged). The init segment is never encrypted.
     if (pl.initUrl != null) {
-      final init = await _fetchBytes(pl.initUrl!, headers);
+      final init = await _fetchBytes(pl.initUrl!, headers, canceled: canceled);
       if (init == null) {
         await sink.close();
         try {
@@ -206,37 +210,69 @@ class HlsDownloader {
 
   // ── HTTP ──────────────────────────────────────────────────────────────────
 
-  Future<String?> _fetchText(String url, Map<String, String> headers) async {
-    try {
-      final r = await _dio.getUri<String>(
-        Uri.parse(url),
-        options: Options(
-          responseType: ResponseType.plain,
-          headers: headers,
-          validateStatus: (s) => s != null && s < 500,
-        ),
-      );
-      return r.statusCode == 200 ? r.data : null;
-    } catch (_) {
-      return null;
+  Future<String?> _fetchText(
+    String url,
+    Map<String, String> headers, {
+    int maxRetries = 3,
+  }) async {
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        final r = await _dio.getUri<String>(
+          Uri.parse(url),
+          options: Options(
+            responseType: ResponseType.plain,
+            headers: headers,
+            validateStatus: (s) => s != null && s < 500,
+          ),
+        );
+        if (r.statusCode == 200 && r.data != null) return r.data;
+        if (attempt < maxRetries) {
+          final isRateLimit = r.statusCode == 429;
+          final delayMs = isRateLimit ? (1500 * (attempt + 1)) : (500 * (attempt + 1));
+          await Future<void>.delayed(Duration(milliseconds: delayMs));
+        }
+      } catch (_) {
+        if (attempt < maxRetries) {
+          await Future<void>.delayed(Duration(milliseconds: 600 * (attempt + 1)));
+        }
+      }
     }
+    return null;
   }
 
-  Future<Uint8List?> _fetchBytes(String url, Map<String, String> headers) async {
-    try {
-      final r = await _dio.getUri<List<int>>(
-        Uri.parse(url),
-        options: Options(
-          responseType: ResponseType.bytes,
-          headers: headers,
-          validateStatus: (s) => s != null && s < 500,
-        ),
-      );
-      if (r.statusCode != 200 || r.data == null) return null;
-      return Uint8List.fromList(r.data!);
-    } catch (_) {
-      return null;
+  Future<Uint8List?> _fetchBytes(
+    String url,
+    Map<String, String> headers, {
+    int maxRetries = 4,
+    bool Function()? canceled,
+  }) async {
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
+      if (canceled?.call() == true) return null;
+      try {
+        final r = await _dio.getUri<List<int>>(
+          Uri.parse(url),
+          options: Options(
+            responseType: ResponseType.bytes,
+            headers: headers,
+            validateStatus: (s) => s != null && s < 500,
+          ),
+        );
+        if (r.statusCode == 200 && r.data != null) {
+          return Uint8List.fromList(r.data!);
+        }
+        if (attempt < maxRetries && canceled?.call() != true) {
+          final isRateLimit = r.statusCode == 429;
+          final delayMs = isRateLimit ? (1500 * (attempt + 1)) : (500 * (attempt + 1));
+          await Future<void>.delayed(Duration(milliseconds: delayMs));
+        }
+      } catch (_) {
+        if (attempt < maxRetries && canceled?.call() != true) {
+          final delayMs = 600 * (attempt + 1);
+          await Future<void>.delayed(Duration(milliseconds: delayMs));
+        }
+      }
     }
+    return null;
   }
 
   static String _resolveRef(String ref, String base) {

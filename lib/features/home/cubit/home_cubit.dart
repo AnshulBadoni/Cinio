@@ -263,40 +263,12 @@ class HomeCubit extends Cubit<HomeState> {
   // ── Helper Resolvers ──────────────────────────────────────────────────────
 
   List<String> _resolveKindsForSource(CatalogSource source) {
-    if (source == CatalogSource.thePornDb) {
-      return const [
-        'tpdb_recent',
-        'tpdb_trending',
-        'tpdb_performers',
-        'tpdb_popular',
-        'tpdb_top_rated',
-      ];
+    final prefs = _catalogPrefs;
+    if (prefs != null) {
+      final custom = prefs.getSectionOrder(source);
+      if (custom.isNotEmpty) return custom;
     }
-    if (source == CatalogSource.mixed) {
-      return const [
-        'mixed_recent',
-        'tmdb_new_releases',
-        'mixed_trending_movies',
-        'tmdb_trending_series',
-        'mixed_popular_movies',
-        'tmdb_popular_series',
-        'tmdb_trending_anime',
-        'mixed_top_rated_movies',
-        'tmdb_top_rated_series',
-        'tpdb_performers',
-      ];
-    }
-    return const [
-      'tmdb_recent',
-      'tmdb_new_releases',
-      'tmdb_trending_movies',
-      'tmdb_trending_series',
-      'tmdb_popular_movies',
-      'tmdb_popular_series',
-      'tmdb_trending_anime',
-      'tmdb_top_rated_movies',
-      'tmdb_top_rated_series',
-    ];
+    return CatalogSourcePrefs.defaultKindsFor(source);
   }
 
   String _resolveTpdbKind(String kind) => switch (kind) {

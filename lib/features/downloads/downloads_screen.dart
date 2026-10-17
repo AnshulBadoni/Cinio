@@ -467,6 +467,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                 bytes: totalBytes,
                 anyExpanded: false,
                 onToggleAll: () {},
+                failedCount: manager.all.where((r) => r.status == DownloadStatus.failed).length,
+                onRetryFailed: () => unawaited(manager.retryAllFailed()),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -516,6 +518,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
       );
     }
 
+    final failedCount =
+        manager.all.where((r) => r.status == DownloadStatus.failed).length;
     final anyExpanded = showIds.any(_expanded.contains);
     return ListView(
       padding: const EdgeInsets.only(bottom: 64),
@@ -524,6 +528,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           count: done.length,
           bytes: totalBytes,
           anyExpanded: anyExpanded,
+          failedCount: failedCount,
+          onRetryFailed: () => unawaited(manager.retryAllFailed()),
           onToggleAll: () => setState(() {
             if (anyExpanded) {
               _expanded.clear();
@@ -542,6 +548,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     required int bytes,
     required bool anyExpanded,
     required VoidCallback onToggleAll,
+    int failedCount = 0,
+    VoidCallback? onRetryFailed,
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 8, 2),
@@ -558,6 +566,20 @@ class _DownloadsScreenState extends State<DownloadsScreen>
             style: AppText.caption,
           ),
           const Spacer(),
+          if (failedCount > 0 && onRetryFailed != null) ...[
+            TextButton.icon(
+              icon: const Icon(Icons.refresh_rounded, size: 14),
+              label: Text('Retry failed ($failedCount)'),
+              onPressed: onRetryFailed,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 0),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
           TextButton(
             onPressed: onToggleAll,
             style: TextButton.styleFrom(

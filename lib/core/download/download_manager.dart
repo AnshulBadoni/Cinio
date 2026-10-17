@@ -47,7 +47,8 @@ class DownloadManager extends ChangeNotifier {
 
   static const String boxName = 'downloads';
   static const String _sharedDir = 'Zangetsu';
-  static const int _resolveConcurrency = 3;
+  static const int _resolveConcurrency = 2;
+  static const int _maxAutoRetries = 3;
 
   /// Minimum interval between [notifyListeners] calls for progress updates.
   /// Status changes (done/failed/paused) bypass this and notify immediately.
@@ -103,6 +104,12 @@ class DownloadManager extends ChangeNotifier {
   /// Status transitions (done/failed/paused/queued) bypass the throttle.
   final Map<String, int> _lastNotifyMs = {};
 
+  /// Per-download auto-retry attempt counter for transient failures.
+  final Map<String, int> _autoRetries = {};
+
+  /// Per-download scheduled auto-retry timers.
+  final Map<String, Timer> _retryTimers = {};
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   bool _initialized = false;
@@ -149,13 +156,7 @@ class DownloadManager extends ChangeNotifier {
         level: 'E',
       );
       if (await _tryNext(rec)) return;
-      _put(
-        rec.copyWith(
-          status: DownloadStatus.failed,
-          error: () => "Couldn't start download",
-        ),
-      );
-      _notifyImmediate(rec.id);
+      await _handleDownloadFailure(rec, "Couldn't start download");
     });
 
     _listenBackgroundService();
@@ -217,8 +218,7 @@ class DownloadManager extends ChangeNotifier {
           level: 'E',
         );
         if (await _tryNext(rec)) return;
-        _put(rec.copyWith(status: DownloadStatus.failed, error: () => err));
-        _notifyImmediate(id);
+        await _handleDownloadFailure(rec, err);
       });
     } catch (_) {}
   }
@@ -319,6 +319,10 @@ class DownloadManager extends ChangeNotifier {
     _hlsDoneSub?.cancel();
     _hlsFailedSub?.cancel();
     _torrentSub?.cancel();
+    for (final timer in _retryTimers.values) {
+      timer.cancel();
+    }
+    _retryTimers.clear();
     // Abort any in-flight subtitle fetches.
     for (final token in _subtitleCancels.values) {
       token.cancel('manager disposed');
@@ -420,6 +424,9 @@ class DownloadManager extends ChangeNotifier {
         (i + _resolveConcurrency).clamp(0, pending.length),
       );
       await Future.wait(batch.map((rec) => _resolveAndEnqueue(rec)));
+      if (i + _resolveConcurrency < pending.length) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
     }
   }
 
@@ -480,10 +487,21 @@ class DownloadManager extends ChangeNotifier {
     _put(rec.copyWith(status: DownloadStatus.resolving));
     notifyListeners();
     try {
-      final sources = await _repo.sources(
-        rec.episodeUrl,
-        sourceId: rec.sourceId,
-      );
+      List<VideoSource> sources = const [];
+      for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+          sources = await _repo.sources(
+            rec.episodeUrl,
+            sourceId: rec.sourceId,
+          );
+          if (sources.isNotEmpty) break;
+        } catch (e) {
+          if (attempt == 2) rethrow;
+          await Future<void>.delayed(
+            Duration(milliseconds: 600 * (attempt + 1)),
+          );
+        }
+      }
       if (_isCanceled(rec.id)) return;
       final ranked = _ranked(sources, rec.quality);
       if (ranked.isEmpty) {
@@ -508,14 +526,50 @@ class DownloadManager extends ChangeNotifier {
         'download resolve failed (${rec.showTitle}): $e',
         level: 'E',
       );
+      await _handleDownloadFailure(rec, 'Resolve failed');
+    }
+  }
+
+  Future<void> _handleDownloadFailure(DownloadRecord rec, String err) async {
+    if (_isCanceled(rec.id)) return;
+    final attempts = _autoRetries[rec.id] ?? 0;
+    if (attempts < _maxAutoRetries) {
+      final retryNum = attempts + 1;
+      _autoRetries[rec.id] = retryNum;
+      final delaySeconds = retryNum * 3;
+      AppLogger.instance.log(
+        '[download] Auto-retrying ${rec.showTitle} ${rec.episodeTitle} '
+        'in ${delaySeconds}s (attempt $retryNum/$_maxAutoRetries)',
+        level: 'W',
+      );
       _put(
         rec.copyWith(
-          status: DownloadStatus.failed,
-          error: () => 'Resolve failed',
+          status: DownloadStatus.queued,
+          error: () => 'Retrying ($retryNum/$_maxAutoRetries) in ${delaySeconds}s…',
         ),
       );
-      notifyListeners();
+      _notifyImmediate(rec.id);
+
+      _retryTimers[rec.id]?.cancel();
+      _retryTimers[rec.id] = Timer(Duration(seconds: delaySeconds), () async {
+        _retryTimers.remove(rec.id);
+        if (_isCanceled(rec.id)) return;
+        final current = _records[rec.id];
+        if (current == null ||
+            current.status == DownloadStatus.canceled ||
+            current.status == DownloadStatus.done) {
+          return;
+        }
+        await _resolveAndEnqueue(
+          current.copyWith(status: DownloadStatus.queued, error: () => null),
+        );
+      });
+      return;
     }
+
+    _autoRetries.remove(rec.id);
+    _put(rec.copyWith(status: DownloadStatus.failed, error: () => err));
+    _notifyImmediate(rec.id);
   }
 
   /// Advance to the next fallback mirror, preserving the original subtitle mode.
@@ -622,13 +676,7 @@ class DownloadManager extends ChangeNotifier {
     } catch (_) {
       if (_isCanceled(rec.id)) return;
       if (await _tryNext(rec)) return;
-      _put(
-        rec.copyWith(
-          status: DownloadStatus.failed,
-          error: () => "Couldn't start download",
-        ),
-      );
-      _notifyImmediate(rec.id);
+      await _handleDownloadFailure(rec, "Couldn't start download");
     }
   }
 
@@ -875,6 +923,7 @@ class DownloadManager extends ChangeNotifier {
   // ── Controls ──────────────────────────────────────────────────────────────
 
   Future<void> pause(DownloadRecord rec) async {
+    _retryTimers.remove(rec.id)?.cancel();
     if (rec.isTorrent) {
       try {
         await _torrentSvc.pause(rec.id);
@@ -893,6 +942,7 @@ class DownloadManager extends ChangeNotifier {
   /// HTTP Range — background_downloader's `allowPause: true` enables this — so
   /// progress is NOT lost even though the task object is new.
   Future<void> resume(DownloadRecord rec) async {
+    _retryTimers.remove(rec.id)?.cancel();
     if (rec.isTorrent) {
       try {
         await _torrentSvc.resume(rec.id);
@@ -914,6 +964,8 @@ class DownloadManager extends ChangeNotifier {
   Future<void> retry(DownloadRecord rec) async {
     if (rec.isTorrent || rec.status == DownloadStatus.done || rec.isActive)
       return;
+    _retryTimers.remove(rec.id)?.cancel();
+    _autoRetries.remove(rec.id);
     _candidates.remove(rec.id);
     await _resolveAndEnqueue(
       rec.copyWith(status: DownloadStatus.queued, error: () => null),
@@ -931,6 +983,8 @@ class DownloadManager extends ChangeNotifier {
   }
 
   Future<void> cancel(DownloadRecord rec) async {
+    _retryTimers.remove(rec.id)?.cancel();
+    _autoRetries.remove(rec.id);
     _candidates.remove(rec.id);
 
     // Abort in-flight subtitle fetches so they don't silently finish after
@@ -965,6 +1019,8 @@ class DownloadManager extends ChangeNotifier {
       !_records.containsKey(id);
 
   Future<void> delete(DownloadRecord rec) async {
+    _retryTimers.remove(rec.id)?.cancel();
+    _autoRetries.remove(rec.id);
     _candidates.remove(rec.id);
     _subtitleModes.remove(rec.id);
     _subtitleCancels.remove(rec.id)?.cancel('deleted');
@@ -1149,11 +1205,9 @@ class DownloadManager extends ChangeNotifier {
             level: 'E',
           );
           if (await _tryNext(rec)) return;
-          _put(
-            rec.copyWith(
-              status: DownloadStatus.failed,
-              error: () => update.exception?.description ?? 'Download failed',
-            ),
+          await _handleDownloadFailure(
+            rec,
+            update.exception?.description ?? 'Download failed',
           );
         case TaskStatus.waitingToRetry:
           _put(rec.copyWith(status: DownloadStatus.downloading));
@@ -1173,13 +1227,7 @@ class DownloadManager extends ChangeNotifier {
       path = task.fileUri?.toString();
       if (path == null) {
         if (await _tryNext(rec)) return;
-        _put(
-          rec.copyWith(
-            status: DownloadStatus.failed,
-            error: () => "Couldn't save to the chosen folder",
-          ),
-        );
-        _notifyImmediate(rec.id);
+        await _handleDownloadFailure(rec, "Couldn't save to the chosen folder");
         return;
       }
       final size = await _documentSize(path);
@@ -1188,13 +1236,10 @@ class DownloadManager extends ChangeNotifier {
           await _fileDownloader.uri.deleteFile(Uri.parse(path));
         } catch (_) {}
         if (await _tryNext(rec)) return;
-        _put(
-          rec.copyWith(
-            status: DownloadStatus.failed,
-            error: () => "This source can't be downloaded (stream-only / DASH)",
-          ),
+        await _handleDownloadFailure(
+          rec,
+          "This source can't be downloaded (stream-only / DASH)",
         );
-        _notifyImmediate(rec.id);
         return;
       }
     } else {
@@ -1207,11 +1252,11 @@ class DownloadManager extends ChangeNotifier {
         if (looksHtml || (size > 0 && size < 524288)) {
           if (await f.exists()) await f.delete();
           if (await _tryNext(rec)) return;
-          _put(
-            rec.copyWith(
-              status: DownloadStatus.failed,
-              error: () => 'That server returned a web page, not a video',
-            ),
+          await _handleDownloadFailure(
+            rec,
+            looksHtml
+                ? 'That server returned a web page, not a video'
+                : "This source can't be downloaded (stream-only / DASH)",
           );
           return;
         }
@@ -1277,6 +1322,8 @@ class DownloadManager extends ChangeNotifier {
   }
 
   Future<void> _markDone(DownloadRecord rec, String? path) async {
+    _retryTimers.remove(rec.id)?.cancel();
+    _autoRetries.remove(rec.id);
     _subtitleModes.remove(rec.id);
     _lastNotifyMs.remove(rec.id);
     _put(

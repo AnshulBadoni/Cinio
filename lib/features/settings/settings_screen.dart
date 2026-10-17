@@ -251,6 +251,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _openSectionOrderSheet() async {
+    final prefs = sl<CatalogSourcePrefs>();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _ReorderHomeSectionsSheet(prefs: prefs),
+    );
+    if (mounted) {
+      setState(() {});
+      sl<HomeCubit>().load(reset: true);
+    }
+  }
+
   /// Bottom sheet to pick the search results layout (grid vs CloudStream-style
   /// rows). Persisted via [SearchPrefs]; the search screen reads it live.
   Future<void> _pickSearchLayout() async {
@@ -918,6 +935,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       _SettingsEntry(
         section: 'Interface',
+        icon: Icons.sort_rounded,
+        title: 'Home section order',
+        subtitle: 'Reorder sections for TMDB & ThePornDB',
+        keywords: 'home section order reorder customize rows tmdb theporndb mixed',
+        onTap: _openSectionOrderSheet,
+      ),
+      _SettingsEntry(
+        section: 'Interface',
         icon: Icons.download_rounded,
         title: 'Batch download style',
         subtitle: 'How the multi-episode sheet looks',
@@ -1346,3 +1371,167 @@ class _SettingsEntry {
     iconAccent: iconAccent,
   );
 }
+
+class _ReorderHomeSectionsSheet extends StatefulWidget {
+  const _ReorderHomeSectionsSheet({required this.prefs});
+
+  final CatalogSourcePrefs prefs;
+
+  @override
+  State<_ReorderHomeSectionsSheet> createState() => _ReorderHomeSectionsSheetState();
+}
+
+class _ReorderHomeSectionsSheetState extends State<_ReorderHomeSectionsSheet> {
+  late CatalogSource _currentSource;
+  late List<String> _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentSource = widget.prefs.source == CatalogSource.provider
+        ? CatalogSource.tmdb
+        : widget.prefs.source;
+    _items = List<String>.from(widget.prefs.getSectionOrder(_currentSource));
+  }
+
+  void _switchSource(CatalogSource source) {
+    setState(() {
+      _currentSource = source;
+      _items = List<String>.from(widget.prefs.getSectionOrder(source));
+    });
+  }
+
+  Future<void> _reset() async {
+    await widget.prefs.resetSectionOrder(_currentSource);
+    setState(() {
+      _items = List<String>.from(widget.prefs.getSectionOrder(_currentSource));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Home section order', style: AppText.headline),
+                  ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('Reset'),
+                    onPressed: _reset,
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.accent,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
+              child: Text(
+                'Hold and drag sections to change their order on the Home screen.',
+                style: AppText.caption,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final s in const [
+                      CatalogSource.tmdb,
+                      CatalogSource.thePornDb,
+                      CatalogSource.mixed,
+                    ]) ...[
+                      ChoiceChip(
+                        label: Text(s.label),
+                        selected: _currentSource == s,
+                        onSelected: (_) => _switchSource(s),
+                        selectedColor: AppColors.accentSoft,
+                        labelStyle: TextStyle(
+                          color: _currentSource == s
+                              ? AppColors.accent
+                              : AppColors.textSecondary,
+                          fontWeight: _currentSource == s
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                        side: BorderSide(
+                          color: _currentSource == s
+                              ? AppColors.accent
+                              : AppColors.hairline,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Divider(color: AppColors.hairline, height: 1),
+            Flexible(
+              child: ReorderableListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                shrinkWrap: true,
+                itemCount: _items.length,
+                onReorder: (oldIndex, newIndex) {
+                  setState(() {
+                    if (newIndex > oldIndex) newIndex -= 1;
+                    final item = _items.removeAt(oldIndex);
+                    _items.insert(newIndex, item);
+                  });
+                  widget.prefs.setSectionOrder(_currentSource, _items);
+                },
+                itemBuilder: (context, index) {
+                  final kind = _items[index];
+                  final title = CatalogSourcePrefs.sectionTitle(kind);
+                  return ListTile(
+                    key: ValueKey(kind),
+                    leading: const Icon(
+                      Icons.drag_handle_rounded,
+                      color: AppColors.textSecondary,
+                    ),
+                    title: Text(
+                      title,
+                      style: AppText.body.copyWith(color: AppColors.textPrimary),
+                    ),
+                    trailing: Text(
+                      '#${index + 1}',
+                      style: AppText.caption.copyWith(color: AppColors.textTertiary),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
