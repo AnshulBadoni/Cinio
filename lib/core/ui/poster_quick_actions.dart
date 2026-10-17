@@ -38,10 +38,11 @@ Future<void> showPosterQuickActions(
       opaque: false,
       barrierDismissible: true,
       barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 260),
-      reverseTransitionDuration: const Duration(milliseconds: 220),
+      transitionDuration: const Duration(milliseconds: 320),
+      reverseTransitionDuration: const Duration(milliseconds: 240),
       pageBuilder: (context, animation, secondaryAnimation) =>
           _PosterQuickActions(
+        animation: animation,
         item: item,
         heroTag: heroTag,
         onPlay: onPlay,
@@ -54,23 +55,15 @@ Future<void> showPosterQuickActions(
         initialInLibrary: inLibrary,
         initialWatched: watched,
       ),
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.fastOutSlowIn,
-          reverseCurve: Curves.easeInCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: child,
-        );
-      },
+      transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+          child,
     ),
   );
 }
 
 class _PosterQuickActions extends StatefulWidget {
   const _PosterQuickActions({
+    required this.animation,
     required this.item,
     required this.heroTag,
     required this.onPlay,
@@ -83,6 +76,8 @@ class _PosterQuickActions extends StatefulWidget {
     required this.initialWatched,
     this.playLabel,
   });
+
+  final Animation<double> animation;
 
   final MediaItem item;
   final String heroTag;
@@ -134,13 +129,17 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
       final provider = nativeCoverProvider(cover, widget.item.coverHeaders);
       final stream = provider.resolve(ImageConfiguration.empty);
       _imageStream = stream;
-      _imageStreamListener = ImageStreamListener((info, _) {
+      _imageStreamListener = ImageStreamListener((info, synchronousCall) {
         final w = info.image.width;
         final h = info.image.height;
-        if (w > 0 && h > 0 && mounted) {
+        if (w > 0 && h > 0) {
           final ratio = w / h;
           if (_aspectRatio != ratio) {
-            setState(() => _aspectRatio = ratio);
+            if (synchronousCall) {
+              _aspectRatio = ratio;
+            } else if (mounted) {
+              setState(() => _aspectRatio = ratio);
+            }
           }
         }
       });
@@ -199,6 +198,62 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
     });
   }
 
+  Widget _quickActionsFlightShuttle(
+    BuildContext flightContext,
+    Animation<double> animation,
+    HeroFlightDirection direction,
+    BuildContext fromHeroContext,
+    BuildContext toHeroContext,
+  ) {
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+
+    return AnimatedBuilder(
+      animation: curved,
+      builder: (context, child) {
+        final t = curved.value.clamp(0.0, 1.0);
+        // Interpolate corner radius: 12.0 on grid card -> 14.0 in quick actions modal
+        final radius = 12.0 + (2.0 * t);
+        final shadowAlpha = 0.40 * t;
+        final blur = 22.0 * t;
+        final spread = 2.0 * t;
+
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            boxShadow: [
+              if (t > 0.05)
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: shadowAlpha),
+                  blurRadius: blur,
+                  spreadRadius: spread,
+                  offset: Offset(0, 8.0 * t),
+                ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(radius),
+            child: child,
+          ),
+        );
+      },
+      child: widget.item.cover?.isNotEmpty == true
+          ? Image(
+              image: nativeCoverProvider(
+                widget.item.cover!,
+                widget.item.coverHeaders,
+              ),
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              filterQuality: FilterQuality.high,
+            )
+          : ColoredBox(color: AppColors.surface2),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
@@ -224,22 +279,93 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
       maxBoxWidth = 310.0;
     }
 
+    final pillWidgets = <Widget>[
+      _QuickActionButton(
+        icon: _watched
+            ? Icons.replay_rounded
+            : Icons.play_arrow_rounded,
+        label: _playText,
+        primary: true,
+        onTap: _play,
+      ),
+      _QuickActionButton(
+        icon: Icons.info_outline_rounded,
+        label: 'Info',
+        onTap: _info,
+      ),
+      if (widget.onStatus != null)
+        _QuickActionButton(
+          icon: Icons.bookmark_outline_rounded,
+          label: 'Status & Categories',
+          onTap: () {
+            Navigator.of(context).pop();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              widget.onStatus!();
+            });
+          },
+        ),
+      _QuickActionButton(
+        icon: _watched
+            ? Icons.check_rounded
+            : Icons.done_all_rounded,
+        label: _watched ? 'Watched' : 'Mark as watched',
+        onTap: _markWatched,
+      ),
+      _QuickActionButton(
+        icon: _inLibrary
+            ? Icons.delete_outline_rounded
+            : Icons.add_rounded,
+        label: _inLibrary ? 'Remove from Library' : 'Add to Library',
+        destructive: _inLibrary,
+        onTap: _toggleLibrary,
+      ),
+      if (widget.onRemoveHistory != null)
+        _QuickActionButton(
+          icon: Icons.history_toggle_off_rounded,
+          label: 'Remove from History',
+          destructive: true,
+          onTap: () async {
+            if (_busy) return;
+            setState(() => _busy = true);
+            final nav = Navigator.of(context);
+            try {
+              await widget.onRemoveHistory!();
+              if (mounted) nav.pop();
+            } finally {
+              if (mounted) setState(() => _busy = false);
+            }
+          },
+        ),
+    ];
+
     return Material(
       color: Colors.transparent,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).pop(),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                child: ColoredBox(
-                  color: Colors.black.withValues(alpha: 0.65),
+          AnimatedBuilder(
+            animation: widget.animation,
+            builder: (context, _) {
+              final t = widget.animation.value.clamp(0.0, 1.0);
+              final curveT = Curves.easeOutCubic.transform(t);
+              final blurSigma = 14.0 * curveT;
+              final scrimAlpha = 0.65 * curveT;
+              return Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).pop(),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: blurSigma.clamp(0.001, 14.0),
+                      sigmaY: blurSigma.clamp(0.001, 14.0),
+                    ),
+                    child: ColoredBox(
+                      color: Colors.black.withValues(alpha: scrimAlpha),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
           SafeArea(
             child: Center(
@@ -253,124 +379,91 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                       Hero(
                         tag: widget.heroTag,
                         createRectTween: (begin, end) =>
-                            RectTween(begin: begin, end: end),
-                        flightShuttleBuilder:
-                            (context, animation, direction, fromHero, toHero) =>
-                                direction == HeroFlightDirection.push
-                                    ? fromHero.widget
-                                    : toHero.widget,
-                        child: PosterShatterEffect(
-                          key: _shatterKey,
-                          child: PosterPowerUpEffect(
-                            key: _powerUpKey,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: SizedBox(
-                                width: posterWidth,
-                                height: posterHeight,
-                                child: widget.item.cover?.isNotEmpty == true
-                                    ? Image(
-                                        image: nativeCoverProvider(
-                                          widget.item.cover!,
-                                          widget.item.coverHeaders,
-                                        ),
-                                        fit: BoxFit.cover,
-                                        gaplessPlayback: true,
-                                        filterQuality: FilterQuality.high,
-                                        errorBuilder: (context, error, stackTrace) =>
-                                            ColoredBox(color: AppColors.surface2),
-                                      )
-                                    : ColoredBox(color: AppColors.surface2),
+                            MaterialRectArcTween(begin: begin, end: end),
+                        flightShuttleBuilder: _quickActionsFlightShuttle,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.40),
+                                blurRadius: 22,
+                                spreadRadius: 2,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: PosterShatterEffect(
+                            key: _shatterKey,
+                            child: PosterPowerUpEffect(
+                              key: _powerUpKey,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(14),
+                                child: SizedBox(
+                                  width: posterWidth,
+                                  height: posterHeight,
+                                  child: widget.item.cover?.isNotEmpty == true
+                                      ? Image(
+                                          image: nativeCoverProvider(
+                                            widget.item.cover!,
+                                            widget.item.coverHeaders,
+                                          ),
+                                          fit: BoxFit.cover,
+                                          gaplessPlayback: true,
+                                          filterQuality: FilterQuality.high,
+                                          errorBuilder: (context, error, stackTrace) =>
+                                              ColoredBox(color: AppColors.surface2),
+                                        )
+                                      : ColoredBox(color: AppColors.surface2),
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
                       const SizedBox(height: 14),
-                      Text(
-                        widget.item.title,
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.display.copyWith(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        [
-                          if (widget.item.year?.isNotEmpty == true)
-                            widget.item.year!,
-                          widget.item.tmdbIsTv ? 'Series' : 'Movie',
-                        ].join('  ·  '),
-                        textAlign: TextAlign.center,
-                        style: AppText.caption.copyWith(
-                          color: AppColors.textSecondary,
-                          fontSize: 12.5,
+                      _StaggeredItem(
+                        animation: widget.animation,
+                        start: 0.16,
+                        end: 0.58,
+                        offsetY: 14.0,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              widget.item.title,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.display.copyWith(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              [
+                                if (widget.item.year?.isNotEmpty == true)
+                                  widget.item.year!,
+                                widget.item.tmdbIsTv ? 'Series' : 'Movie',
+                              ].join('  ·  '),
+                              textAlign: TextAlign.center,
+                              style: AppText.caption.copyWith(
+                                color: AppColors.textSecondary,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 16),
-                      _QuickActionButton(
-                        icon: _watched
-                            ? Icons.replay_rounded
-                            : Icons.play_arrow_rounded,
-                        label: _playText,
-                        primary: true,
-                        onTap: _play,
-                      ),
-                      const SizedBox(height: 8),
-                      _QuickActionButton(
-                        icon: Icons.info_outline_rounded,
-                        label: 'Info',
-                        onTap: _info,
-                      ),
-                      if (widget.onStatus != null) ...[
-                        const SizedBox(height: 8),
-                        _QuickActionButton(
-                          icon: Icons.bookmark_outline_rounded,
-                          label: 'Status & Categories',
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              widget.onStatus!();
-                            });
-                          },
-                        ),
-                      ],
-                      const SizedBox(height: 8),
-                      _QuickActionButton(
-                        icon: _watched
-                            ? Icons.check_rounded
-                            : Icons.done_all_rounded,
-                        label: _watched ? 'Watched' : 'Mark as watched',
-                        onTap: _markWatched,
-                      ),
-                      const SizedBox(height: 8),
-                      _QuickActionButton(
-                        icon: _inLibrary
-                            ? Icons.delete_outline_rounded
-                            : Icons.add_rounded,
-                        label: _inLibrary ? 'Remove from Library' : 'Add to Library',
-                        destructive: _inLibrary,
-                        onTap: _toggleLibrary,
-                      ),
-                      if (widget.onRemoveHistory != null) ...[
-                        const SizedBox(height: 8),
-                        _QuickActionButton(
-                          icon: Icons.history_toggle_off_rounded,
-                          label: 'Remove from History',
-                          destructive: true,
-                          onTap: () async {
-                            if (_busy) return;
-                            setState(() => _busy = true);
-                            try {
-                              await widget.onRemoveHistory!();
-                              if (mounted) Navigator.of(context).pop();
-                            } finally {
-                              if (mounted) setState(() => _busy = false);
-                            }
-                          },
+                      for (int i = 0; i < pillWidgets.length; i++) ...[
+                        if (i > 0) const SizedBox(height: 8),
+                        _StaggeredItem(
+                          animation: widget.animation,
+                          start: 0.22 + (i * 0.07),
+                          end: (0.22 + (i * 0.07) + 0.42).clamp(0.0, 1.0),
+                          child: pillWidgets[i],
                         ),
                       ],
                       if (_busy) ...[
@@ -391,7 +484,51 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
       ),
     );
   }
+}
 
+/// Staggered slide-up and fade-in container for quick action modal items.
+class _StaggeredItem extends StatelessWidget {
+  const _StaggeredItem({
+    required this.animation,
+    required this.start,
+    required this.end,
+    this.offsetY = 18.0,
+    required this.child,
+  });
+
+  final Animation<double> animation;
+  final double start;
+  final double end;
+  final double offsetY;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Interval(
+        start.clamp(0.0, 1.0),
+        end.clamp(0.0, 1.0),
+        curve: Curves.easeOutCubic,
+      ),
+      reverseCurve: Curves.easeInCubic,
+    );
+
+    return AnimatedBuilder(
+      animation: curved,
+      builder: (context, child) {
+        final progress = curved.value;
+        return Opacity(
+          opacity: progress.clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: Offset(0, offsetY * (1.0 - progress)),
+            child: child,
+          ),
+        );
+      },
+      child: child,
+    );
+  }
 }
 
 class _QuickActionButton extends StatelessWidget {
@@ -442,53 +579,50 @@ class _QuickActionButton extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: radius,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Material(
-          color: matColor,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: radius,
-            child: Container(
-              height: 54,
-              padding: const EdgeInsets.symmetric(horizontal: 22),
-              decoration: BoxDecoration(
-                borderRadius: radius,
-                border: Border.all(
-                  color: borderColor,
-                ),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: gradientColors,
-                ),
+      child: Material(
+        color: matColor,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: Container(
+            height: 54,
+            padding: const EdgeInsets.symmetric(horizontal: 22),
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              border: Border.all(
+                color: borderColor,
               ),
-              child: Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      icon,
-                      color: fgColor,
-                      size: 21,
-                    ),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: AppText.button.copyWith(
-                          color: fgColor,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: gradientColors,
+              ),
+            ),
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon,
+                    color: fgColor,
+                    size: 21,
+                  ),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: AppText.button.copyWith(
+                        color: fgColor,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),

@@ -185,6 +185,7 @@ class _PosterCardState extends State<PosterCard> {
   void _handleTapCancel() => setState(() => _pressed = false);
 
   void _handleLongPress() {
+    if (_pressed) setState(() => _pressed = false);
     widget.onLongPress?.call();
   }
 
