@@ -90,6 +90,8 @@ class _ActorCard extends StatelessWidget {
     final photo = person.photo;
     final isTpdb = person.source == PersonSource.thePornDbPerformer ||
         person.source == PersonSource.thePornDbStudio;
+    final isStudio = person.source == PersonSource.thePornDbStudio ||
+        person.source == PersonSource.tmdbCompany;
 
     return GestureDetector(
       onTap: onTap,
@@ -110,8 +112,8 @@ class _ActorCard extends StatelessWidget {
                                 Container(color: AppColors.surface2),
                             errorWidget: (_, _, _) => Container(
                               color: AppColors.surface2,
-                              child: const Icon(
-                                Icons.person_rounded,
+                              child: Icon(
+                                isStudio ? Icons.business_rounded : Icons.person_rounded,
                                 color: AppColors.textTertiary,
                                 size: 40,
                               ),
@@ -119,8 +121,8 @@ class _ActorCard extends StatelessWidget {
                           )
                         : Container(
                             color: AppColors.surface2,
-                            child: const Icon(
-                              Icons.person_rounded,
+                            child: Icon(
+                              isStudio ? Icons.business_rounded : Icons.person_rounded,
                               color: AppColors.textTertiary,
                               size: 40,
                             ),
@@ -166,7 +168,7 @@ class _ActorCard extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            isTpdb ? 'Performer' : 'Actor',
+            isStudio ? 'Studio' : (isTpdb ? 'Performer' : 'Actor'),
             maxLines: 1,
             textAlign: TextAlign.center,
             style: AppText.caption.copyWith(

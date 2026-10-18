@@ -149,6 +149,19 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
       ));
       return;
     }
+    if (item.sourceId == 'tmdb:company' || item.id.startsWith('tmdb:company:')) {
+      final raw = item.id.replaceFirst('tmdb:company:', '');
+      Navigator.of(context).push(PersonPage.route(
+        PersonRef(
+          id: int.tryParse(raw) ?? 0,
+          source: PersonSource.tmdbCompany,
+          name: item.title,
+          photo: item.cover,
+        ),
+        sourceId: item.sourceId,
+      ));
+      return;
+    }
     Navigator.push(context, DetailScreen.route(item));
   }
 

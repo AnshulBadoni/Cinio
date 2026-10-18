@@ -943,6 +943,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       _SettingsEntry(
         section: 'Interface',
+        icon: Icons.filter_alt_outlined,
+        title: 'Filter Mature (50+) & Gay Content',
+        subtitle: 'Filter older performers (50+) and male/gay content on ThePornDB',
+        keywords: 'theporndb filter mature old gay trans adult catalog content',
+        trailing: Switch.adaptive(
+          value: sl<CatalogSourcePrefs>().tpdbFilterOldAndGay,
+          activeThumbColor: AppColors.accent,
+          onChanged: (v) async {
+            await sl<CatalogSourcePrefs>().setTpdbFilterOldAndGay(v);
+            if (mounted) setState(() {});
+          },
+        ),
+      ),
+      _SettingsEntry(
+        section: 'Interface',
         icon: Icons.download_rounded,
         title: 'Batch download style',
         subtitle: 'How the multi-episode sheet looks',

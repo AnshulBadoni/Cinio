@@ -766,7 +766,23 @@ class TmdbDiscoverService {
         if (cRows is List && cRows.isNotEmpty) {
           final firstComp = cRows.first;
           final cId = (firstComp is Map ? firstComp['id'] : null)?.toString();
-          if (cId != null) {
+          final cName = (firstComp is Map ? firstComp['name'] : null)?.toString();
+          final cLogo = (firstComp is Map ? firstComp['logo_path'] : null)?.toString();
+          if (cId != null && cName != null) {
+            final logoUrl = cLogo != null && cLogo.isNotEmpty ? '${Tmdb.img}/w342$cLogo' : null;
+            final studioItem = MediaItem(
+              id: 'tmdb:company:$cId',
+              title: cName,
+              cover: logoUrl,
+              heroImage: cLogo != null && cLogo.isNotEmpty ? '${Tmdb.img}/w780$cLogo' : null,
+              url: 'tmdb://company/$cId',
+              type: ProviderType.movie,
+              sourceId: 'tmdb:company',
+            );
+            if (!out.any((i) => i.id == studioItem.id)) {
+              out.insert(0, studioItem);
+            }
+
             final compMoviesRes = await _dio.get<dynamic>(
               '${Tmdb.base}/discover/movie',
               queryParameters: {'with_companies': cId, 'page': 1, 'sort_by': 'popularity.desc'},

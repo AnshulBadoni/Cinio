@@ -2917,26 +2917,29 @@ class _DetailViewState extends State<_DetailView>
     );
   }
 
+  void _openStudio(String studioName) {
+    final isTpdb = widget.item.sourceId.startsWith('tpdb') ||
+        widget.item.id.startsWith('tpdb');
+    Navigator.of(context).push(
+      PersonPage.route(
+        PersonRef(
+          id: 0,
+          source: isTpdb ? PersonSource.thePornDbStudio : PersonSource.tmdbCompany,
+          name: studioName,
+        ),
+        sourceId: widget.item.sourceId,
+      ),
+    );
+  }
+
   Widget _buildCreditsSection(MediaDetail detail) {
     final director = detail.director;
     final writer = detail.writer;
-    if ((director == null || director.isEmpty) && (writer == null || writer.isEmpty)) {
-      if (detail.studios.isNotEmpty) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-          child: Text.rich(
-            TextSpan(
-              children: [
-                const TextSpan(text: 'Studio: ', style: TextStyle(color: Colors.white60, fontSize: 13)),
-                TextSpan(
-                  text: detail.studios.join(', '),
-                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
-                ),
-              ],
-            ),
-          ),
-        );
-      }
+    final hasDirector = director != null && director.isNotEmpty;
+    final hasWriter = writer != null && writer.isNotEmpty;
+    final hasStudios = detail.studios.isNotEmpty;
+
+    if (!hasDirector && !hasWriter && !hasStudios) {
       return const SizedBox.shrink();
     }
 
@@ -2945,7 +2948,7 @@ class _DetailViewState extends State<_DetailView>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (director != null && director.isNotEmpty)
+          if (hasDirector)
             Padding(
               padding: const EdgeInsets.only(bottom: 3),
               child: Text.rich(
@@ -2960,15 +2963,58 @@ class _DetailViewState extends State<_DetailView>
                 ),
               ),
             ),
-          if (writer != null && writer.isNotEmpty)
-            Text.rich(
-              TextSpan(
+          if (hasWriter)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(text: 'Writer: ', style: TextStyle(color: Colors.white60, fontSize: 13)),
+                    TextSpan(
+                      text: writer,
+                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (hasStudios)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 2),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  const TextSpan(text: 'Writer: ', style: TextStyle(color: Colors.white60, fontSize: 13)),
-                  TextSpan(
-                    text: writer,
-                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
-                  ),
+                  const Text('Studio: ', style: TextStyle(color: Colors.white60, fontSize: 13)),
+                  for (final studio in detail.studios)
+                    GestureDetector(
+                      onTap: () => _openStudio(studio),
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.14), width: 0.8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.business_rounded, size: 12, color: AppColors.accent),
+                            const SizedBox(width: 4.5),
+                            Text(
+                              studio,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -3510,15 +3556,20 @@ class _DetailViewState extends State<_DetailView>
         if (cert.isNotEmpty) _detailTableRow('Certification', cert),
         if (country.isNotEmpty) _detailTableRow('Origin Country', country),
         if (language.isNotEmpty) _detailTableRow('Original Language', language),
-        if (detail.studios.isNotEmpty) _detailTableRow('Studio', detail.studios.join(', ')),
+        if (detail.studios.isNotEmpty)
+          _detailTableRow(
+            'Studio',
+            detail.studios.join(', '),
+            onTap: () => _openStudio(detail.studios.first),
+          ),
         if (sourceName.isNotEmpty) _detailTableRow('Source', sourceName),
         const SizedBox(height: 20),
       ],
     );
   }
 
-  Widget _detailTableRow(String label, String value) {
-    return Column(
+  Widget _detailTableRow(String label, String value, {VoidCallback? onTap}) {
+    final row = Column(
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -3533,16 +3584,29 @@ class _DetailViewState extends State<_DetailView>
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              const SizedBox(width: 16),
               Flexible(
-                child: Text(
-                  value,
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        value,
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          color: onTap != null ? AppColors.accent : Colors.white70,
+                          fontSize: 14,
+                          fontWeight: onTap != null ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (onTap != null) ...[
+                      const SizedBox(width: 4),
+                      Icon(CupertinoIcons.chevron_right, size: 14, color: AppColors.accent),
+                    ],
+                  ],
                 ),
               ),
             ],
@@ -3555,6 +3619,15 @@ class _DetailViewState extends State<_DetailView>
         ),
       ],
     );
+
+    if (onTap != null) {
+      return GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: row,
+      );
+    }
+    return row;
   }
 
   Widget _buildRelationsSection(List<MediaRelation> relations) {

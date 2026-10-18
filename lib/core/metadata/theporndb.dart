@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import '../di/injector.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
@@ -6,6 +7,7 @@ import '../models/media_extras.dart';
 import '../models/media_item.dart';
 import '../models/person.dart';
 import '../models/provider_info.dart';
+import '../prefs/catalog_source_prefs.dart';
 
 /// ThePornDB-backed catalog. It is catalog/metadata only; playback is still
 /// resolved by the normal streaming-provider pipeline.
@@ -13,6 +15,11 @@ class ThePornDb {
   ThePornDb(this._dio);
 
   final Dio _dio;
+
+  bool get _shouldFilter =>
+      sl.isRegistered<CatalogSourcePrefs>()
+          ? sl<CatalogSourcePrefs>().tpdbFilterOldAndGay
+          : true;
 
   static const String base = 'https://api.theporndb.net';
   // Temporary development key. Replace this before the production release.
@@ -79,6 +86,7 @@ class ThePornDb {
   };
 
   bool _qualifiesMedia(Map row) {
+    if (!_shouldFilter) return true;
     // 1. Check title
     final title = (row['title'] ?? row['name'] ?? '').toString();
     if (_excludedTitleRegex.hasMatch(title)) {
@@ -132,6 +140,7 @@ class ThePornDb {
   }
 
   bool _qualifiesStudio(Map row) {
+    if (!_shouldFilter) return true;
     final name = (row['name'] ?? row['short_name'] ?? '').toString();
     if (_excludedTitleRegex.hasMatch(name)) return false;
     final tags = _names(row['tags'] ?? row['genres']);
@@ -164,7 +173,7 @@ class ThePornDb {
     // can reduce the catalog to an empty result set.
     final filteredQuery = <String, dynamic>{
       ...baseQuery,
-      ...await _straightFilterQuery(),
+      if (_shouldFilter) ...await _straightFilterQuery(),
     };
 
     final data = await _get('/movies', queryParameters: filteredQuery);
@@ -178,6 +187,7 @@ class ThePornDb {
 
 
   Future<Map<String, dynamic>> _straightFilterQuery() async {
+    if (!_shouldFilter) return const {};
     return {
       'performer_genders[Female]': 'Female',
     };
@@ -229,7 +239,7 @@ class ThePornDb {
     String? query,
   }) async {
     final isSearch = query != null && query.trim().isNotEmpty;
-    if (!isSearch) {
+    if (!isSearch && _shouldFilter) {
       const pageSize = 20;
       final offset = (page - 1) * pageSize;
       if (offset < _kTopPerformers.length) {
@@ -256,23 +266,25 @@ class ThePornDb {
       }
     }
 
-    final apiPage = page > 3 ? page - 3 : page;
+    final apiPage = page > 3 && _shouldFilter ? page - 3 : page;
     final data = await _get('/performers', queryParameters: {
       'page': apiPage,
       'per_page': 50,
       'orderBy': orderBy,
-      'gender': 'Female',
-      'rating': 4,
-      'rating_operation': '>=',
-      'age': 50,
-      'age_operation': '<',
+      if (_shouldFilter) ...{
+        'gender': 'Female',
+        'rating': 4,
+        'rating_operation': '>=',
+        'age': 50,
+        'age_operation': '<',
+      },
       if (isSearch) 'q': query.trim(),
     });
     final rows = data['data'];
     if (rows is! List) return const [];
     final list = [
       for (final row in rows)
-        if (row is Map && _qualifiesAsActor(row, requireRating: !isSearch)) _performer(row),
+        if (row is Map && _qualifiesAsActor(row, requireRating: !isSearch && _shouldFilter)) _performer(row),
     ];
     list.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
     return list.take(24).toList();
@@ -303,6 +315,7 @@ class ThePornDb {
   }
 
   bool _qualifiesAsActor(Map row, {bool requireRating = true}) {
+    if (!_shouldFilter) return true;
     final rating = _extractPerformerRating(row);
     final extras = row['extras'];
     final gender = '${row['gender'] ?? (extras is Map ? extras['gender'] : '')}'.trim().toUpperCase();

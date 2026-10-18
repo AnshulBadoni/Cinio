@@ -279,7 +279,13 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
       maxBoxWidth = 310.0;
     }
 
-    final isPerformer = widget.item.sourceId == 'tpdb:performer' ||
+    final isStudio = widget.item.sourceId == 'tpdb:studio' ||
+        widget.item.sourceId == 'tmdb:company' ||
+        widget.item.id.startsWith('tpdb:studio:') ||
+        widget.item.id.startsWith('tmdb:company:');
+
+    final isPerformer = isStudio ||
+        widget.item.sourceId == 'tpdb:performer' ||
         widget.item.sourceId == 'person' ||
         widget.item.id.startsWith('tpdb:performer:') ||
         widget.item.id.startsWith('person:');
@@ -287,10 +293,10 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
     final pillWidgets = <Widget>[
       _QuickActionButton(
         icon: isPerformer
-            ? Icons.person_rounded
+            ? (isStudio ? Icons.business_rounded : Icons.person_rounded)
             : (_watched ? Icons.replay_rounded : Icons.play_arrow_rounded),
         label: isPerformer
-            ? (widget.playLabel ?? 'View Profile')
+            ? (widget.playLabel ?? (isStudio ? 'View Studio' : 'View Profile'))
             : _playText,
         primary: true,
         onTap: _play,
@@ -452,7 +458,7 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                             const SizedBox(height: 5),
                             Text(
                               isPerformer
-                                  ? (widget.item.sourceId == 'tpdb:studio' ? 'Studio' : 'Actor')
+                                  ? (isStudio ? 'Studio' : 'Actor')
                                   : [
                                       if (widget.item.year?.isNotEmpty == true)
                                         widget.item.year!,

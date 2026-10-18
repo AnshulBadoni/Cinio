@@ -123,4 +123,14 @@ class CatalogSourcePrefs extends ChangeNotifier {
     await _box.delete('order_${source.name}');
     notifyListeners();
   }
+
+  static const String _tpdbFilterKey = 'tpdb_filter_old_and_gay';
+
+  bool get tpdbFilterOldAndGay =>
+      _box.get(_tpdbFilterKey, defaultValue: true) as bool;
+
+  Future<void> setTpdbFilterOldAndGay(bool value) async {
+    await _box.put(_tpdbFilterKey, value);
+    notifyListeners();
+  }
 }

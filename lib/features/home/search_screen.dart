@@ -236,6 +236,9 @@ class _SearchViewState extends State<_SearchView>
   }
 
   List<String> _tagsFor(MediaItem m) {
+    if (m.sourceId == 'tmdb:company' || m.sourceId == 'tpdb:studio') {
+      return const ['STUDIO'];
+    }
     // Quality is NOT here — it has its own top-right corner on the card.
     final t = <String>[];
     if ((m.dubCount ?? 0) > 0) t.add('DUB');
@@ -281,6 +284,20 @@ class _SearchViewState extends State<_SearchView>
           id: 0,
           externalId: raw,
           source: PersonSource.thePornDbStudio,
+          name: item.title,
+          photo: item.cover,
+        ),
+        sourceId: item.sourceId,
+        heroTag: heroTag,
+      ));
+      return;
+    }
+    if (item.sourceId == 'tmdb:company' || item.id.startsWith('tmdb:company:')) {
+      final raw = item.id.replaceFirst('tmdb:company:', '');
+      Navigator.of(context).push(PersonPage.route(
+        PersonRef(
+          id: int.tryParse(raw) ?? 0,
+          source: PersonSource.tmdbCompany,
           name: item.title,
           photo: item.cover,
         ),
@@ -419,7 +436,7 @@ class _SearchViewState extends State<_SearchView>
       inLibrary: inLibrary,
       watched: watched,
       onPlay: () {
-        if (item.sourceId == 'tpdb:performer' || item.sourceId == 'tpdb:studio') {
+        if (item.sourceId == 'tpdb:performer' || item.sourceId == 'tpdb:studio' || item.sourceId == 'tmdb:company') {
           _openDetail(item, heroTag: heroTag);
         } else {
           _play(item, resumeEntry: matchingHistory);
@@ -450,7 +467,7 @@ class _SearchViewState extends State<_SearchView>
       'discover-poster:${item.sourceId}:${item.id}';
 
   Future<void> _play(MediaItem item, {HistoryEntry? resumeEntry}) async {
-    if (item.sourceId == 'tpdb:performer' || item.sourceId == 'tpdb:studio') {
+    if (item.sourceId == 'tpdb:performer' || item.sourceId == 'tpdb:studio' || item.sourceId == 'tmdb:company') {
       _openDetail(item);
       return;
     }

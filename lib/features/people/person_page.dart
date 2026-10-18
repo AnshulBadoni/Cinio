@@ -123,6 +123,10 @@ class _PersonPageState extends State<PersonPage> {
     super.dispose();
   }
 
+  bool get _isStudio =>
+      widget.person.source == PersonSource.thePornDbStudio ||
+      widget.person.source == PersonSource.tmdbCompany;
+
   Future<void> _loadProfile() async {
     final p = await sl<PeopleService>().load(widget.person);
     if (!mounted) return;
@@ -134,6 +138,7 @@ class _PersonPageState extends State<PersonPage> {
         _hasMore = p.works.isNotEmpty &&
             (widget.person.source == PersonSource.thePornDbPerformer ||
                 widget.person.source == PersonSource.thePornDbStudio ||
+                widget.person.source == PersonSource.tmdbCompany ||
                 widget.person.source == PersonSource.tmdb);
       }
       if (_providerResults.isNotEmpty) {
@@ -277,8 +282,9 @@ class _PersonPageState extends State<PersonPage> {
     setState(() {
       _isFav = sl<FavoritePeopleStore>().isFavorite(widget.person);
     });
+    final label = _isStudio ? 'Favorite Studios' : 'Favorites';
     _snack(_isFav
-        ? 'Added ${widget.person.name} to Favorites'
+        ? 'Added ${widget.person.name} to $label'
         : 'Removed from Favorites');
   }
 
@@ -310,7 +316,8 @@ class _PersonPageState extends State<PersonPage> {
         year: topWork.releaseDate != null && topWork.releaseDate!.length >= 4
             ? topWork.releaseDate!.substring(0, 4)
             : null,
-        tmdbId: (widget.person.source == PersonSource.tmdb &&
+        tmdbId: ((widget.person.source == PersonSource.tmdb ||
+                    widget.person.source == PersonSource.tmdbCompany) &&
                 topWork.catalogId != null)
             ? int.tryParse(topWork.catalogId!)
             : null,
@@ -326,7 +333,7 @@ class _PersonPageState extends State<PersonPage> {
           ),
         ));
       } else {
-        _snack('No trailer found for this actor');
+        _snack(_isStudio ? 'No trailer found for this studio' : 'No trailer found for this actor');
       }
     } catch (_) {
       if (mounted) _snack('Couldn’t open trailer');
@@ -554,8 +561,8 @@ class _PersonPageState extends State<PersonPage> {
 
     final totalCount = _works.length;
     final metaText = _loading
-        ? (isTpdb ? 'Performer' : 'Acting')
-        : '${p?.subtitle ?? (isTpdb ? 'Performer' : 'Acting')} · $totalCount ${isTpdb ? 'Releases' : 'Titles'}';
+        ? (_isStudio ? 'Studio' : (isTpdb ? 'Performer' : 'Acting'))
+        : '${p?.subtitle ?? (_isStudio ? 'Studio' : (isTpdb ? 'Performer' : 'Acting'))} · $totalCount ${isTpdb ? 'Releases' : 'Titles'}';
     final effectiveHeroTag = widget.heroTag ??
         'person-avatar:${widget.person.source.name}:${widget.person.externalId ?? widget.person.id}';
 
@@ -839,8 +846,8 @@ class _PersonPageState extends State<PersonPage> {
     if (photos.isEmpty) {
       content = Container(
         color: AppColors.surface2,
-        child: const Center(
-          child: Icon(Icons.person, size: 80, color: Colors.white24),
+        child: Center(
+          child: Icon(_isStudio ? Icons.business_rounded : Icons.person, size: 80, color: Colors.white24),
         ),
       );
     } else if (photos.length == 1) {
@@ -1121,7 +1128,7 @@ class _PersonPageState extends State<PersonPage> {
           child: _buildSectionHeader(
             widget.person.source == PersonSource.anilistCharacter
                 ? 'Voiced by'
-                : 'Related Actors',
+                : (_isStudio ? 'Top Cast & Performers' : 'Related Actors'),
           ),
         ),
         SliverToBoxAdapter(child: _buildRelatedActorsRow(p.related)),
