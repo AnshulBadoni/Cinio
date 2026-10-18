@@ -88,76 +88,125 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
     _loadCurrentTab();
   }
 
-  void _initTabs() {
-    _tabs.clear();
-
-    final isTpdb = widget.item.sourceId.startsWith('tpdb:');
-    final primaryPref = isTpdb
-        ? sl<PlaybackPrefs>().tpdbPrimaryProvider
-        : sl<PlaybackPrefs>().tmdbPrimaryProvider;
-    final selectedSourceId = primaryPref.isNotEmpty
-        ? primaryPref
-        : (widget.detail.sourceId != 'tmdb:catalog' &&
-                !widget.detail.sourceId.startsWith('tpdb:'))
-            ? widget.detail.sourceId
-            : sl<SourceRepository>().sourceId;
-
-    final allProviderTabs = <_ProviderTab>[];
+  List<_ProviderTab> _buildAllCandidateTabs(bool isTpdb) {
+    final tabs = <_ProviderTab>[];
+    final addedIds = <String>{};
 
     // 1. Stremio providers
     final stremioProviders = sl<StremioManager>().providers;
     for (final p in stremioProviders) {
-      allProviderTabs.add(
-        _ProviderTab(
-          id: p.sourceId,
-          name: p.displayName,
-          isStremio: true,
-          stremioProvider: p,
-        ),
-      );
+      if (!addedIds.contains(p.sourceId)) {
+        addedIds.add(p.sourceId);
+        tabs.add(
+          _ProviderTab(
+            id: p.sourceId,
+            name: p.displayName,
+            isStremio: true,
+            stremioProvider: p,
+          ),
+        );
+      }
     }
 
-    // 2. Non-Stremio sources
-    final loadedSources = sl<SourceRepository>().loadedSources;
+    // 2. Non-Stremio sources from SourceRepository
+    final repo = sl<SourceRepository>();
+    final loadedSources = repo.loadedSources;
     for (final s in loadedSources) {
       if (s.id == 'tmdb:catalog' ||
           s.id.startsWith('tpdb:') ||
           s.id.startsWith('stremio:')) {
         continue;
       }
-      allProviderTabs.add(
-        _ProviderTab(
-          id: s.id,
-          name: s.name,
-          isStremio: false,
-        ),
-      );
-    }
-
-    // 3. Put selected provider first as requested
-    _ProviderTab? selectedTab;
-    final otherTabs = <_ProviderTab>[];
-
-    for (final tab in allProviderTabs) {
-      final isMatch = tab.id == selectedSourceId ||
-          tab.id.toLowerCase() == selectedSourceId.toLowerCase() ||
-          tab.name.toLowerCase() == selectedSourceId.toLowerCase() ||
-          (selectedSourceId.toLowerCase().contains('torrentio') &&
-              tab.name.toLowerCase().contains('torrentio'));
-
-      if (isMatch && selectedTab == null) {
-        selectedTab = tab;
-      } else {
-        otherTabs.add(tab);
+      if (!addedIds.contains(s.id)) {
+        addedIds.add(s.id);
+        tabs.add(
+          _ProviderTab(
+            id: s.id,
+            name: s.name,
+            isStremio: false,
+          ),
+        );
       }
     }
 
-    if (selectedTab != null) {
-      _tabs.add(selectedTab);
-    }
-    _tabs.addAll(otherTabs);
+    return tabs;
+  }
 
-    // If no installed providers were found, fallback
+  void _initTabs() {
+    _tabs.clear();
+
+    final isTpdb = widget.item.sourceId.startsWith('tpdb:');
+    final repo = sl<SourceRepository>();
+    final downloadPrefs = sl<DownloadPrefs>();
+    final playbackPrefs = sl<PlaybackPrefs>();
+
+    final primaryPref = isTpdb
+        ? playbackPrefs.tpdbPrimaryProvider
+        : playbackPrefs.tmdbPrimaryProvider;
+
+    final candidates = _buildAllCandidateTabs(isTpdb);
+
+    final savedOrder = isTpdb
+        ? downloadPrefs.tpdbDownloadSourceOrder
+        : downloadPrefs.tmdbDownloadSourceOrder;
+    final disabledSources = isTpdb
+        ? downloadPrefs.tpdbDisabledDownloadSources
+        : downloadPrefs.tmdbDisabledDownloadSources;
+
+    // Filter out disabled sources
+    candidates.removeWhere((t) => disabledSources.contains(t.id));
+
+    if (savedOrder.isNotEmpty) {
+      candidates.sort((a, b) {
+        final aIdx = savedOrder.indexOf(a.id);
+        final bIdx = savedOrder.indexOf(b.id);
+        final aRank = aIdx != -1 ? aIdx : 9999;
+        final bRank = bIdx != -1 ? bIdx : 9999;
+        return aRank.compareTo(bRank);
+      });
+    } else {
+      candidates.sort((a, b) {
+        int score(_ProviderTab tab) {
+          final idLower = tab.id.toLowerCase();
+          final nameLower = tab.name.toLowerCase();
+
+          // Explicit primary provider preference comes first
+          if (primaryPref.isNotEmpty &&
+              (tab.id == primaryPref || idLower == primaryPref.toLowerCase())) {
+            return -100;
+          }
+
+          if (isTpdb) {
+            // Himeros first for TPDB
+            if (idLower.contains('himeros') || nameLower.contains('himeros')) {
+              return -90;
+            }
+            // Other adult sources next
+            if (repo.isAdultSource(tab.id)) {
+              return -50;
+            }
+            return 10;
+          } else {
+            // Torrentio first for TMDB
+            if (idLower.contains('torrentio') || nameLower.contains('torrentio')) {
+              return -90;
+            }
+            // Other Stremio providers next
+            if (tab.isStremio) {
+              return -50;
+            }
+            return 10;
+          }
+        }
+
+        final diff = score(a).compareTo(score(b));
+        if (diff != 0) return diff;
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
+    }
+
+    _tabs.addAll(candidates);
+
     if (_tabs.isEmpty) {
       _tabs.add(
         const _ProviderTab(
@@ -171,7 +220,13 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
     // Prepend "All" tab at the very beginning
     _tabs.insert(0, const _ProviderTab(id: 'all', name: 'All', isAll: true));
 
-    _selectedTabIndex = 0;
+    // Determine default selected tab
+    final defaultTabChoice = downloadPrefs.defaultDownloadSourceTab;
+    if (defaultTabChoice == 'first_source' && _tabs.length > 1) {
+      _selectedTabIndex = 1;
+    } else {
+      _selectedTabIndex = 0;
+    }
   }
 
   Future<void> _loadCurrentTab() async {
@@ -496,6 +551,346 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
     ));
   }
 
+  Future<void> _openReorderSheet() async {
+    final downloadPrefs = sl<DownloadPrefs>();
+    final isTpdb = widget.item.sourceId.startsWith('tpdb:');
+
+    final candidates = _buildAllCandidateTabs(isTpdb);
+    final savedOrder = isTpdb
+        ? downloadPrefs.tpdbDownloadSourceOrder
+        : downloadPrefs.tmdbDownloadSourceOrder;
+    final disabledSet = isTpdb
+        ? Set<String>.from(downloadPrefs.tpdbDisabledDownloadSources)
+        : Set<String>.from(downloadPrefs.tmdbDisabledDownloadSources);
+
+    if (savedOrder.isNotEmpty) {
+      candidates.sort((a, b) {
+        final aIdx = savedOrder.indexOf(a.id);
+        final bIdx = savedOrder.indexOf(b.id);
+        final aRank = aIdx != -1 ? aIdx : 9999;
+        final bRank = bIdx != -1 ? bIdx : 9999;
+        return aRank.compareTo(bRank);
+      });
+    } else {
+      final repo = sl<SourceRepository>();
+      final primaryPref = isTpdb
+          ? sl<PlaybackPrefs>().tpdbPrimaryProvider
+          : sl<PlaybackPrefs>().tmdbPrimaryProvider;
+      candidates.sort((a, b) {
+        int score(_ProviderTab tab) {
+          final idLower = tab.id.toLowerCase();
+          final nameLower = tab.name.toLowerCase();
+          if (primaryPref.isNotEmpty &&
+              (tab.id == primaryPref || idLower == primaryPref.toLowerCase())) {
+            return -100;
+          }
+          if (isTpdb) {
+            if (idLower.contains('himeros') || nameLower.contains('himeros')) {
+              return -90;
+            }
+            if (repo.isAdultSource(tab.id)) return -50;
+            return 10;
+          } else {
+            if (idLower.contains('torrentio') || nameLower.contains('torrentio')) {
+              return -90;
+            }
+            if (tab.isStremio) return -50;
+            return 10;
+          }
+        }
+
+        final diff = score(a).compareTo(score(b));
+        if (diff != 0) return diff;
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
+    }
+
+    String defaultTab = downloadPrefs.defaultDownloadSourceTab;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF141418),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final firstSourceName =
+                candidates.isNotEmpty ? candidates.first.name : 'First source';
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      isTpdb
+                          ? 'TPDB Download Sources Order'
+                          : 'TMDB Download Sources Order',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Drag to order sources shown after "All". Choose which tab opens by default.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1B1B22),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Default Selected Tab',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () async {
+                                    setSheetState(() => defaultTab = 'all');
+                                    await downloadPrefs.setDefaultDownloadSourceTab('all');
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: defaultTab == 'all'
+                                          ? const Color(0xFF38BDF8).withValues(alpha: 0.20)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: defaultTab == 'all'
+                                            ? const Color(0xFF38BDF8)
+                                            : Colors.white12,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        'All',
+                                        style: TextStyle(
+                                          color: defaultTab == 'all'
+                                              ? const Color(0xFF38BDF8)
+                                              : Colors.white70,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () async {
+                                    setSheetState(() => defaultTab = 'first_source');
+                                    await downloadPrefs.setDefaultDownloadSourceTab('first_source');
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 8, horizontal: 4),
+                                    decoration: BoxDecoration(
+                                      color: defaultTab == 'first_source'
+                                          ? const Color(0xFF38BDF8).withValues(alpha: 0.20)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: defaultTab == 'first_source'
+                                            ? const Color(0xFF38BDF8)
+                                            : Colors.white12,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        'Second Tab ($firstSourceName)',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: defaultTab == 'first_source'
+                                              ? const Color(0xFF38BDF8)
+                                              : Colors.white70,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+                      ),
+                      child: candidates.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child: Center(
+                                child: Text('No sources available',
+                                    style: TextStyle(color: Colors.white54)),
+                              ),
+                            )
+                          : ReorderableListView.builder(
+                              shrinkWrap: true,
+                              itemCount: candidates.length,
+                              onReorder: (oldIndex, newIndex) async {
+                                setSheetState(() {
+                                  if (newIndex > oldIndex) newIndex--;
+                                  final item = candidates.removeAt(oldIndex);
+                                  candidates.insert(newIndex, item);
+                                });
+                                final newOrder =
+                                    candidates.map((e) => e.id).toList();
+                                if (isTpdb) {
+                                  await downloadPrefs
+                                      .setTpdbDownloadSourceOrder(newOrder);
+                                } else {
+                                  await downloadPrefs
+                                      .setTmdbDownloadSourceOrder(newOrder);
+                                }
+                              },
+                              itemBuilder: (context, idx) {
+                                final s = candidates[idx];
+                                final isHidden = disabledSet.contains(s.id);
+                                return ListTile(
+                                  key: ValueKey(s.id),
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.08),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '${idx + 1}',
+                                      style: TextStyle(
+                                        color: isHidden
+                                            ? Colors.white38
+                                            : Colors.white70,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  title: Text(
+                                    s.name,
+                                    style: TextStyle(
+                                      color: isHidden
+                                          ? Colors.white38
+                                          : Colors.white,
+                                      decoration: isHidden
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                    ),
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: Icon(
+                                          isHidden
+                                              ? Icons.visibility_off_outlined
+                                              : Icons.visibility_outlined,
+                                          color: isHidden
+                                              ? Colors.white38
+                                              : const Color(0xFF38BDF8),
+                                          size: 20,
+                                        ),
+                                        onPressed: () async {
+                                          setSheetState(() {
+                                            if (isHidden) {
+                                              disabledSet.remove(s.id);
+                                            } else {
+                                              disabledSet.add(s.id);
+                                            }
+                                          });
+                                          if (isTpdb) {
+                                            await downloadPrefs
+                                                .setTpdbDisabledDownloadSources(
+                                                    disabledSet);
+                                          } else {
+                                            await downloadPrefs
+                                                .setTmdbDisabledDownloadSources(
+                                                    disabledSet);
+                                          }
+                                        },
+                                      ),
+                                      ReorderableDragStartListener(
+                                        index: idx,
+                                        child: const Padding(
+                                          padding: EdgeInsets.symmetric(
+                                              horizontal: 8),
+                                          child: Icon(Icons.drag_handle_rounded,
+                                              color: Colors.white38),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (mounted) {
+      setState(() {
+        _initTabs();
+        _loadCurrentTab();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentTab = _tabs.isNotEmpty ? _tabs[_selectedTabIndex] : null;
@@ -503,256 +898,278 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF070709),
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top Header: Episode Thumbnail (if available) or App Bar Fallback
-            _buildHeader(context),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top Header: Episode / Movie Full Head Image edge-to-edge
+          _buildHeader(context),
 
-            // Horizontal Pill Tabs Row
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  // Refresh button pill
-                  InkWell(
-                    onTap: _onRefresh,
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      width: 48,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1B1B1F),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.refresh_rounded,
-                          color: Colors.white,
-                          size: 20,
-                        ),
+          // Horizontal Pill Tabs Row
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                // Refresh button pill
+                InkWell(
+                  onTap: _onRefresh,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    width: 44,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1B1B1F),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.refresh_rounded,
+                        color: Colors.white,
+                        size: 20,
                       ),
                     ),
                   ),
+                ),
+                const SizedBox(width: 8),
 
-                  // Provider Tabs
-                  for (var i = 0; i < _tabs.length; i++) ...[
-                    const SizedBox(width: 8),
-                    _buildPillTab(_tabs[i], isSelected: i == _selectedTabIndex, onTap: () => _onTabSelected(i)),
-                  ],
-                ],
-              ),
-            ),
-
-            // Section Header
-            if (currentTab != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                child: Text(
-                  currentTab.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                // Reorder sources & default tab settings pill
+                InkWell(
+                  onTap: _openReorderSheet,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    width: 44,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1B1B1F),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.tune_rounded,
+                        color: Colors.white,
+                        size: 19,
+                      ),
+                    ),
                   ),
                 ),
-              ),
 
-            // Content: Loading, Error, or Streams List
-            Expanded(
-              child: _buildContent(streams),
+                // Provider Tabs
+                for (var i = 0; i < _tabs.length; i++) ...[
+                  const SizedBox(width: 8),
+                  _buildPillTab(_tabs[i], isSelected: i == _selectedTabIndex, onTap: () => _onTabSelected(i)),
+                ],
+              ],
             ),
-          ],
-        ),
+          ),
+
+          // Section Header
+          if (currentTab != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Text(
+                currentTab.name,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+
+          // Content: Loading, Error, or Streams List
+          Expanded(
+            child: _buildContent(streams),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildHeader(BuildContext context) {
-    final thumb = widget.episode.thumbnail?.trim();
-    final hasThumbnail = thumb != null && thumb.isNotEmpty;
+    final topPadding = MediaQuery.paddingOf(context).top;
+    final headerHeight = 210.0 + topPadding;
 
-    if (!hasThumbnail) {
-      // Fallback: Clean App Bar with back button and title logo / title text
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        child: SizedBox(
-          height: 52,
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-              Expanded(
-                child: Center(
-                  child: (widget.titleLogoUrl != null &&
-                          widget.titleLogoUrl!.isNotEmpty)
-                      ? CachedNetworkImage(
-                          imageUrl: widget.titleLogoUrl!,
-                          height: 44,
-                          fit: BoxFit.contain,
-                          errorWidget: (_, _, _) => _titleTextFallback(),
-                        )
-                      : _titleTextFallback(),
-                ),
-              ),
-              const SizedBox(width: 48), // Balancing width for back icon
-            ],
-          ),
-        ),
-      );
-    }
+    final epThumb = widget.episode.thumbnail?.trim();
+    final detailCover = widget.detail.cover?.trim();
+    final itemCover = widget.item.cover?.trim();
+
+    final imageUrl = (epThumb != null && epThumb.isNotEmpty)
+        ? epThumb
+        : (detailCover != null && detailCover.isNotEmpty)
+            ? detailCover
+            : itemCover;
+
+    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
 
     final ep = widget.episode;
-    final epNum = ep.number != null ? (ep.number! == ep.number!.toInt() ? ep.number!.toInt() : ep.number!) : null;
+    final epNum = ep.number != null
+        ? (ep.number! == ep.number!.toInt() ? ep.number!.toInt() : ep.number!)
+        : null;
     final seasonNum = ep.season ?? seasonOf(ep);
     final epTag = (seasonNum != null && epNum != null)
         ? 'S$seasonNum E$epNum'
-        : (epNum != null ? 'E$epNum' : null);
+        : (epNum != null
+            ? 'E$epNum'
+            : (widget.item.tmdbIsTv ? 'Episode' : 'Movie'));
 
-    final epTitle = episodeDisplayTitle(ep) ?? (ep.title.trim().isNotEmpty ? ep.title.trim() : null);
+    final epTitle = episodeDisplayTitle(ep) ??
+        (ep.title.trim().isNotEmpty ? ep.title.trim() : null);
     final showTitle = widget.detail.title.trim().isNotEmpty
         ? widget.detail.title.trim()
         : widget.item.title.trim();
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          height: 190,
-          width: double.infinity,
-          color: const Color(0xFF131316),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Episode Thumbnail image
-              CachedNetworkImage(
-                imageUrl: thumb,
-                fit: BoxFit.cover,
-                errorWidget: (_, _, _) => Container(
-                  color: const Color(0xFF1B1B1F),
-                  child: const Center(
-                    child: Icon(Icons.image_not_supported_outlined, color: Colors.white30, size: 36),
+    return SizedBox(
+      height: headerHeight,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Edge-to-edge full head image
+          if (hasImage)
+            Image(
+              image: nativeCoverProvider(
+                imageUrl,
+                widget.item.coverHeaders,
+                showUrl: widget.item.url,
+                sourceId: widget.item.sourceId,
+              ),
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              errorBuilder: (_, _, _) => Container(
+                color: const Color(0xFF131316),
+                child: const Center(
+                  child: Icon(
+                    Icons.image_not_supported_outlined,
+                    color: Colors.white24,
+                    size: 36,
                   ),
                 ),
               ),
-
-              // Gradient scrim for readability
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.35),
-                        Colors.transparent,
-                        Colors.black.withValues(alpha: 0.8),
-                        Colors.black.withValues(alpha: 0.95),
-                      ],
-                      stops: const [0.0, 0.3, 0.7, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-
-              // Back button (circular frosted pill at top-left)
-              Positioned(
-                top: 10,
-                left: 10,
-                child: InkWell(
-                  onTap: () => Navigator.of(context).pop(),
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.arrow_back, color: Colors.white, size: 20),
-                    ),
-                  ),
-                ),
-              ),
-
-              // Episode Title & Tag overlay at bottom-left
-              Positioned(
-                left: 14,
-                right: 14,
-                bottom: 12,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (epTag != null) ...[
-                      Text(
-                        epTag,
-                        style: const TextStyle(
-                          color: Color(0xFF38BDF8),
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                    ],
-                    if (epTitle != null) ...[
-                      Text(
-                        epTitle,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: -0.2,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                    if (showTitle.isNotEmpty) ...[
-                      const SizedBox(height: 1),
-                      Text(
-                        showTitle,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+            )
+          else
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF1A1A24),
+                    Color(0xFF0F0F14),
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+            ),
 
-  Widget _titleTextFallback() {
-    final title = widget.detail.title.trim().isNotEmpty
-        ? widget.detail.title
-        : widget.item.title;
-    return Text(
-      title,
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
+          // Cinematic vignette and bottom fade into background
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.65),
+                    Colors.black.withValues(alpha: 0.20),
+                    Colors.black.withValues(alpha: 0.60),
+                    const Color(0xFF070709),
+                  ],
+                  stops: const [0.0, 0.35, 0.70, 1.0],
+                ),
+              ),
+            ),
+          ),
+
+          // Back button in safe area
+          Positioned(
+            top: topPadding + 6,
+            left: 12,
+            child: InkWell(
+              onTap: () => Navigator.of(context).pop(),
+              borderRadius: BorderRadius.circular(22),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.50),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    width: 0.8,
+                  ),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.arrow_back_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Episode / Movie title & metadata overlay at bottom
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 10,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (epTag.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.20),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.50),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Text(
+                      epTag,
+                      style: const TextStyle(
+                        color: Color(0xFF38BDF8),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                ],
+                if (epTitle != null) ...[
+                  Text(
+                    epTitle,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                ],
+                Text(
+                  showTitle,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.70),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      textAlign: TextAlign.center,
     );
   }
 
@@ -832,7 +1249,10 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 24, top: 4),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.paddingOf(context).bottom + 24,
+        top: 4,
+      ),
       itemCount: streams.length,
       itemBuilder: (context, index) {
         final entry = streams[index];

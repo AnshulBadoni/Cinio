@@ -40,6 +40,7 @@ import '../../core/download/chapter_download_store.dart';
 import '../../core/download/chapter_downloader.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
+import '../../core/download/download_prefs.dart';
 import '../downloads/downloads_screen.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';

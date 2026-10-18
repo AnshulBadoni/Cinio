@@ -63,4 +63,39 @@ class DownloadPrefs {
 
   Future<void> setPresentation(String value) =>
       _box.put('presentation', value == 'cards' ? 'cards' : 'list');
+
+  /// User-defined priority order of provider source IDs for TMDB downloads.
+  List<String> get tmdbDownloadSourceOrder =>
+      List<String>.from((_box.get('tmdbDownloadSourceOrder') as List?)?.cast<String>() ?? const []);
+
+  Future<void> setTmdbDownloadSourceOrder(List<String> value) =>
+      _box.put('tmdbDownloadSourceOrder', value);
+
+  /// User-defined priority order of provider source IDs for TPDB downloads.
+  List<String> get tpdbDownloadSourceOrder =>
+      List<String>.from((_box.get('tpdbDownloadSourceOrder') as List?)?.cast<String>() ?? const []);
+
+  Future<void> setTpdbDownloadSourceOrder(List<String> value) =>
+      _box.put('tpdbDownloadSourceOrder', value);
+
+  /// Disabled download sources for TMDB.
+  Set<String> get tmdbDisabledDownloadSources =>
+      Set<String>.from((_box.get('tmdbDisabledDownloadSources') as List?)?.cast<String>() ?? const []);
+
+  Future<void> setTmdbDisabledDownloadSources(Iterable<String> value) =>
+      _box.put('tmdbDisabledDownloadSources', value.toList());
+
+  /// Disabled download sources for TPDB.
+  Set<String> get tpdbDisabledDownloadSources =>
+      Set<String>.from((_box.get('tpdbDisabledDownloadSources') as List?)?.cast<String>() ?? const []);
+
+  Future<void> setTpdbDisabledDownloadSources(Iterable<String> value) =>
+      _box.put('tpdbDisabledDownloadSources', value.toList());
+
+  /// Default selected tab on download stream picker page ('all' or 'first_source').
+  String get defaultDownloadSourceTab =>
+      _box.get('defaultDownloadSourceTab', defaultValue: 'all') as String;
+
+  Future<void> setDefaultDownloadSourceTab(String value) =>
+      _box.put('defaultDownloadSourceTab', value == 'first_source' ? 'first_source' : 'all');
 }
