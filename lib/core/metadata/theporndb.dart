@@ -37,6 +37,115 @@ class ThePornDb {
     return Map<String, dynamic>.from(response.data as Map);
   }
 
+  static int? _straightTagId;
+
+  static final RegExp _excludedTitleRegex = RegExp(
+    r'\b(gay|male[\s\-]on[\s\-]male|male/male|m/m|shemale|ladyboy|transgender|femboy|sissy|tranny|crossdresser|granny|gilf|grandma|elderly|geriatric|senior|old[\s\-]man|old[\s\-]guy|old[\s\-]dude|old[\s\-]woman|old[\s\-]lady|older[\s\-]man|older[\s\-]woman|old\s*/\s*young|young\s*/\s*old)\b',
+    caseSensitive: false,
+  );
+
+  static const Set<String> _excludedTagNames = {
+    'gay',
+    'male-on-male',
+    'male on male',
+    'male/male',
+    'mm',
+    'm/m',
+    'bisexual male',
+    'shemale',
+    'trans',
+    'transgender',
+    'ladyboy',
+    'crossdresser',
+    'femboy',
+    'sissy',
+    'tranny',
+    'mature',
+    'granny',
+    'gilf',
+    'grandma',
+    'elderly',
+    'senior',
+    'geriatric',
+    'vintage',
+    'wrinkled',
+    'old / young',
+    'old/young',
+    'young / old',
+    'young/old',
+    'old man',
+    'old guy',
+    'old woman',
+    'older man',
+    'older woman',
+  };
+
+  bool _qualifiesMedia(Map row) {
+    // 1. Check title
+    final title = (row['title'] ?? row['name'] ?? '').toString();
+    if (_excludedTitleRegex.hasMatch(title)) {
+      return false;
+    }
+
+    // 2. Check tags / genres
+    final tags = _names(row['tags'] ?? row['genres']);
+    for (final tag in tags) {
+      final clean = tag.trim().toLowerCase();
+      if (_excludedTagNames.contains(clean) || _excludedTitleRegex.hasMatch(clean)) {
+        return false;
+      }
+    }
+
+    // 3. Check performers if available
+    final performers = row['performers'];
+    if (performers is List && performers.isNotEmpty) {
+      var hasFemale = false;
+      var hasIdentifiedGender = false;
+      for (final p in performers) {
+        if (p is! Map) continue;
+        final extras = p['extras'];
+        final gender = '${p['gender'] ?? (extras is Map ? extras['gender'] : '')}'.trim().toUpperCase();
+        if (gender == 'FEMALE' || gender == 'F') {
+          hasFemale = true;
+          hasIdentifiedGender = true;
+        } else if (gender == 'MALE' || gender == 'M') {
+          hasIdentifiedGender = true;
+        } else if (gender.contains('TRANS') || gender == 'SHEMALE') {
+          return false;
+        }
+
+        final birthday = p['birthday'] ?? (extras is Map ? extras['birthday'] : null);
+        final age = double.tryParse('${p['age'] ?? (extras is Map ? extras['age'] : '')}');
+        final born = birthday?.toString();
+        final derivedAge = age ?? (born != null && born.length >= 4
+            ? (DateTime.now().year - (int.tryParse(born.substring(0, 4)) ?? DateTime.now().year)).toDouble()
+            : null);
+        if (derivedAge != null && derivedAge >= 50) {
+          return false;
+        }
+      }
+      // If genders were identified and none were female, it's male-only/gay
+      if (hasIdentifiedGender && !hasFemale) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  bool _qualifiesStudio(Map row) {
+    final name = (row['name'] ?? row['short_name'] ?? '').toString();
+    if (_excludedTitleRegex.hasMatch(name)) return false;
+    final tags = _names(row['tags'] ?? row['genres']);
+    for (final tag in tags) {
+      final clean = tag.trim().toLowerCase();
+      if (_excludedTagNames.contains(clean) || _excludedTitleRegex.hasMatch(clean)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Future<List<MediaItem>> movies({
     int page = 1,
     String orderBy = 'recently_released',
@@ -44,7 +153,7 @@ class ThePornDb {
   }) async {
     final baseQuery = <String, dynamic>{
       'page': page,
-      'per_page': 16,
+      'per_page': 24,
       'orderBy': orderBy,
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
     };
@@ -65,12 +174,18 @@ class ThePornDb {
     if (rows is! List) return const <MediaItem>[];
     return [
       for (final row in rows)
-        if (row is Map) _movie(row),
+        if (row is Map && _qualifiesMedia(row)) _movie(row),
     ];
   }
 
 
   Future<Map<String, dynamic>> _straightFilterQuery() async {
+    if (_straightTagId != null) {
+      return {
+        'tags[$_straightTagId]': 'Straight',
+        'tag_and': true,
+      };
+    }
     // Prefer TPDB's explicit tag filter when the canonical Straight tag can
     // be resolved. This is the strongest server-side signal for orientation.
     try {
@@ -85,6 +200,7 @@ class ThePornDb {
           final name = row['name']?.toString().trim();
           final id = int.tryParse('${row['id']}');
           if (id != null && name != null && name.toLowerCase() == 'straight') {
+            _straightTagId = id;
             return {
               'tags[$id]': name,
               'tag_and': true,
@@ -109,6 +225,7 @@ class ThePornDb {
       'page': page,
       'per_page': 50,
       'orderBy': 'recently_released',
+      ...await _straightFilterQuery(),
     });
     final rows = data['data'];
     if (rows is! List) return const [];
@@ -116,8 +233,10 @@ class ThePornDb {
     final out = <MediaItem>[];
     for (final scene in rows) {
       if (scene is! Map || scene['performers'] is! List) continue;
+      if (!_qualifiesMedia(scene)) continue;
       for (final performer in scene['performers'] as List) {
         if (performer is! Map) continue;
+        if (!_qualifiesAsActor(performer, requireRating: false)) continue;
         final id = (performer['id'] ?? performer['_id'] ?? performer['slug']).toString();
         if (!seen.add(id)) continue;
         out.add(_performer(performer));
@@ -190,7 +309,7 @@ class ThePornDb {
     if (rows is! List) return const [];
     final list = [
       for (final row in rows)
-        if (row is Map && _qualifiesAsActor(row, requireRating: true)) _performer(row),
+        if (row is Map && _qualifiesAsActor(row, requireRating: !isSearch)) _performer(row),
     ];
     list.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
     return list.take(24).toList();
@@ -223,7 +342,7 @@ class ThePornDb {
   bool _qualifiesAsActor(Map row, {bool requireRating = true}) {
     final rating = _extractPerformerRating(row);
     final extras = row['extras'];
-    final gender = '${row['gender'] ?? (extras is Map ? extras['gender'] : '')}'.toUpperCase();
+    final gender = '${row['gender'] ?? (extras is Map ? extras['gender'] : '')}'.trim().toUpperCase();
     final birthday = row['birthday'] ?? (extras is Map ? extras['birthday'] : null);
     final age = double.tryParse('${row['age'] ?? (extras is Map ? extras['age'] : '')}');
     final born = birthday?.toString();
@@ -233,8 +352,24 @@ class ThePornDb {
     final ratingOk = requireRating
         ? (rating != null && rating >= 4.0)
         : (rating == null || rating >= 4.0);
+
+    final name = (row['name'] ?? row['full_name'] ?? '').toString();
+    if (_excludedTitleRegex.hasMatch(name)) return false;
+
+    final tags = _names(row['tags'] ?? row['genres']);
+    for (final tag in tags) {
+      final clean = tag.trim().toLowerCase();
+      if (_excludedTagNames.contains(clean) || _excludedTitleRegex.hasMatch(clean)) {
+        return false;
+      }
+    }
+
+    if (gender == 'MALE' || gender == 'TRANSGENDER' || (gender.contains('MALE') && !gender.contains('FEMALE'))) {
+      return false;
+    }
+
     return ratingOk &&
-        (gender.isEmpty || gender == 'FEMALE') &&
+        (gender.isEmpty || gender == 'FEMALE' || gender == 'F') &&
         (derivedAge == null || derivedAge < 50);
   }
 
@@ -258,7 +393,7 @@ class ThePornDb {
     if (rows is! List) return const [];
     return [
       for (final row in rows)
-        if (row is Map) _studio(row),
+        if (row is Map && _qualifiesStudio(row)) _studio(row),
     ];
   }
 
