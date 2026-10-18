@@ -37,8 +37,6 @@ class ThePornDb {
     return Map<String, dynamic>.from(response.data as Map);
   }
 
-  static int? _straightTagId;
-
   static final RegExp _excludedTitleRegex = RegExp(
     r'\b(gay|male[\s\-]on[\s\-]male|male/male|m/m|shemale|ladyboy|transgender|femboy|sissy|tranny|crossdresser|granny|gilf|grandma|elderly|geriatric|senior|old[\s\-]man|old[\s\-]guy|old[\s\-]dude|old[\s\-]woman|old[\s\-]lady|older[\s\-]man|older[\s\-]woman|old\s*/\s*young|young\s*/\s*old)\b',
     caseSensitive: false,
@@ -153,7 +151,7 @@ class ThePornDb {
   }) async {
     final baseQuery = <String, dynamic>{
       'page': page,
-      'per_page': 24,
+      'per_page': 16,
       'orderBy': orderBy,
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
     };
@@ -180,41 +178,6 @@ class ThePornDb {
 
 
   Future<Map<String, dynamic>> _straightFilterQuery() async {
-    if (_straightTagId != null) {
-      return {
-        'tags[$_straightTagId]': 'Straight',
-        'tag_and': true,
-      };
-    }
-    // Prefer TPDB's explicit tag filter when the canonical Straight tag can
-    // be resolved. This is the strongest server-side signal for orientation.
-    try {
-      final tagData = await _get('/tags', queryParameters: {
-        'q': 'Straight',
-        'orderBy': 'most_relevant',
-      });
-      final rows = tagData['data'];
-      if (rows is List) {
-        for (final row in rows) {
-          if (row is! Map) continue;
-          final name = row['name']?.toString().trim();
-          final id = int.tryParse('${row['id']}');
-          if (id != null && name != null && name.toLowerCase() == 'straight') {
-            _straightTagId = id;
-            return {
-              'tags[$id]': name,
-              'tag_and': true,
-            };
-          }
-        }
-      }
-    } catch (_) {
-      // Fall through to the documented performer-gender-only filter. A
-      // failure resolving the optional tag must never make TPDB unavailable.
-    }
-
-    // TPDB documents performer_genders as an associative array:
-    // performer_genders[Female]=Female.
     return {
       'performer_genders[Female]': 'Female',
     };

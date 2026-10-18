@@ -279,21 +279,29 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
       maxBoxWidth = 310.0;
     }
 
+    final isPerformer = widget.item.sourceId == 'tpdb:performer' ||
+        widget.item.sourceId == 'person' ||
+        widget.item.id.startsWith('tpdb:performer:') ||
+        widget.item.id.startsWith('person:');
+
     final pillWidgets = <Widget>[
       _QuickActionButton(
-        icon: _watched
-            ? Icons.replay_rounded
-            : Icons.play_arrow_rounded,
-        label: _playText,
+        icon: isPerformer
+            ? Icons.person_rounded
+            : (_watched ? Icons.replay_rounded : Icons.play_arrow_rounded),
+        label: isPerformer
+            ? (widget.playLabel ?? 'View Profile')
+            : _playText,
         primary: true,
         onTap: _play,
       ),
-      _QuickActionButton(
-        icon: Icons.info_outline_rounded,
-        label: 'Info',
-        onTap: _info,
-      ),
-      if (widget.onStatus != null)
+      if (!isPerformer)
+        _QuickActionButton(
+          icon: Icons.info_outline_rounded,
+          label: 'Info',
+          onTap: _info,
+        ),
+      if (!isPerformer && widget.onStatus != null)
         _QuickActionButton(
           icon: Icons.bookmark_outline_rounded,
           label: 'Status & Categories',
@@ -304,13 +312,14 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
             });
           },
         ),
-      _QuickActionButton(
-        icon: _watched
-            ? Icons.check_rounded
-            : Icons.done_all_rounded,
-        label: _watched ? 'Watched' : 'Mark as watched',
-        onTap: _markWatched,
-      ),
+      if (!isPerformer)
+        _QuickActionButton(
+          icon: _watched
+              ? Icons.check_rounded
+              : Icons.done_all_rounded,
+          label: _watched ? 'Watched' : 'Mark as watched',
+          onTap: _markWatched,
+        ),
       _QuickActionButton(
         icon: _inLibrary
             ? Icons.delete_outline_rounded
@@ -442,11 +451,13 @@ class _PosterQuickActionsState extends State<_PosterQuickActions> {
                             ),
                             const SizedBox(height: 5),
                             Text(
-                              [
-                                if (widget.item.year?.isNotEmpty == true)
-                                  widget.item.year!,
-                                widget.item.tmdbIsTv ? 'Series' : 'Movie',
-                              ].join('  ·  '),
+                              isPerformer
+                                  ? (widget.item.sourceId == 'tpdb:studio' ? 'Studio' : 'Actor')
+                                  : [
+                                      if (widget.item.year?.isNotEmpty == true)
+                                        widget.item.year!,
+                                      widget.item.tmdbIsTv ? 'Series' : 'Movie',
+                                    ].join('  ·  '),
                               textAlign: TextAlign.center,
                               style: AppText.caption.copyWith(
                                 color: AppColors.textSecondary,

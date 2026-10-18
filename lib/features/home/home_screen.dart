@@ -45,7 +45,6 @@ import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/ui/elastic_scroll_behavior.dart';
 import '../../core/ui/list_status_sheet.dart';
-import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/people_row.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/poster_quick_actions.dart';
@@ -371,13 +370,6 @@ class _HomeViewState extends State<_HomeView>
     if (mounted) setState(() {});
   }
 
-  String _typeLabel(ProviderType t) => switch (t) {
-    ProviderType.movie => 'Movie',
-    ProviderType.anime => 'Anime',
-    ProviderType.manga => 'Manga',
-    ProviderType.novel => 'Novel',
-  };
-
   // ── Poster quick actions ─────────────────────────────────────────────────
 
   Future<void> _showQuickActions(MediaItem item, String heroTag) async {
@@ -392,9 +384,12 @@ class _HomeViewState extends State<_HomeView>
         );
     final watched = _listStatus.statusOf(item) == WatchStatus.completed;
     final inLibrary = _myList.contains(item) || _listStatus.statusOf(item) != null;
-    final playLabel = history == null
-        ? null
-        : 'Resume ${((history.progress * 100).round()).clamp(1, 99)}%';
+    final isPerformer = item.sourceId == 'tpdb:performer';
+    final playLabel = isPerformer
+        ? 'View Profile'
+        : (history == null
+            ? null
+            : 'Resume ${((history.progress * 100).round()).clamp(1, 99)}%');
 
     if (!mounted) return;
     await showPosterQuickActions(
@@ -404,8 +399,24 @@ class _HomeViewState extends State<_HomeView>
       playLabel: playLabel,
       inLibrary: inLibrary,
       watched: watched,
-      onPlay: () => _playFeatured(item),
-      onInfo: () => _openDetail(item),
+      onPlay: () {
+        if (item.sourceId == 'tpdb:performer') {
+          _openPerformer(item);
+        } else if (item.sourceId == 'tpdb:studio') {
+          _openStudio(item);
+        } else {
+          _playFeatured(item);
+        }
+      },
+      onInfo: () {
+        if (item.sourceId == 'tpdb:performer') {
+          _openPerformer(item);
+        } else if (item.sourceId == 'tpdb:studio') {
+          _openStudio(item);
+        } else {
+          _openDetail(item);
+        }
+      },
       onMarkWatched: () async {
         if (!_myList.contains(item)) await _myList.add(item);
         await _listStatus.setStatus(item, WatchStatus.completed);
@@ -425,6 +436,9 @@ class _HomeViewState extends State<_HomeView>
 
   String _posterHeroTag(HomeSection section, int index, MediaItem item) =>
       'home-poster:${identityHashCode(section)}:$index:${item.sourceId}:${item.id}';
+
+  String _peopleHeroTag(HomeSection section, int index, MediaItem item) =>
+      'home-people:${identityHashCode(section)}:$index:${item.sourceId}:${item.id}';
 
   // ── Info sheets ───────────────────────────────────────────────────────────
 
@@ -522,34 +536,6 @@ class _HomeViewState extends State<_HomeView>
       },
     );
   }
-
-  void _showInfo(MediaItem item) {
-    showMediaInfoSheet(
-      context,
-      title: item.title,
-      englishTitle: item.englishTitle,
-      cover: item.cover,
-      headers: item.coverHeaders,
-      typeLabel: _typeLabel(item.type),
-      subCount: item.subCount,
-      dubCount: item.dubCount,
-      detail: _detailOf(item.url, item.sourceId),
-      inMyList: _myList.contains(item),
-      onPlay: () => _playFeatured(item),
-      onOpenDetail: () => _openDetail(item),
-      onToggleMyList: () async {
-        await showListStatusSheet(
-          context,
-          item: item,
-          onChanged: () {
-            if (mounted) setState(() {});
-          },
-        );
-        return _myList.contains(item);
-      },
-    );
-  }
-
 
   // ── Playback / resume ─────────────────────────────────────────────────────
 
@@ -848,6 +834,7 @@ class _HomeViewState extends State<_HomeView>
       return PeopleRow(
         title: section.title,
         items: section.items,
+        heroTagBuilder: (item, index) => _peopleHeroTag(section, index, item),
         onSeeAll: () => _openSeeAll(section),
         onLoadMore: canLoadMore
             ? () => _loadMoreForSection(section)
@@ -862,7 +849,11 @@ class _HomeViewState extends State<_HomeView>
             _openDetail(item, trailerContext: DetailTrailerContext.model);
           }
         },
-        onLongPress: _showInfo,
+        onLongPress: (item) {
+          final index = section.items.indexOf(item);
+          final heroTag = _peopleHeroTag(section, index >= 0 ? index : 0, item);
+          _showQuickActions(item, heroTag);
+        },
       );
     }
     if (_isStudioSection(section.title)) {
@@ -1021,7 +1012,10 @@ class _HomeViewState extends State<_HomeView>
               );
             }
           },
-          onLongPress: _showInfo,
+          onLongPress: (item) {
+            final heroTag = 'see-all-poster:${item.sourceId}:${item.id}';
+            _showQuickActions(item, heroTag);
+          },
           onLoadMore: section.more == null
               ? null
               : (page) => _repo.browseMore(section.more!, page),

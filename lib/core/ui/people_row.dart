@@ -8,6 +8,7 @@ import '../playback/playback_prefs.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'content_row.dart';
+import 'poster_card.dart';
 
 class PeopleRow extends StatelessWidget {
   const PeopleRow({
@@ -16,6 +17,7 @@ class PeopleRow extends StatelessWidget {
     required this.items,
     required this.onTap,
     required this.onLongPress,
+    this.heroTagBuilder,
     this.onSeeAll,
     this.onLoadMore,
     this.isLoadingMore = false,
@@ -25,6 +27,7 @@ class PeopleRow extends StatelessWidget {
   final List<MediaItem> items;
   final void Function(MediaItem) onTap;
   final void Function(MediaItem) onLongPress;
+  final String Function(MediaItem, int)? heroTagBuilder;
   final VoidCallback? onSeeAll;
   final VoidCallback? onLoadMore;
   final bool isLoadingMore;
@@ -44,9 +47,12 @@ class PeopleRow extends StatelessWidget {
       isLoadingMore: isLoadingMore,
       itemBuilder: (context, index) {
         final item = items[index];
+        final heroTag = heroTagBuilder?.call(item, index) ??
+            'people:${item.sourceId}:${item.id}:$index';
         return _PersonCard(
           item: item,
           square: square,
+          heroTag: heroTag,
           onTap: onTap,
           onLongPress: onLongPress,
         );
@@ -59,12 +65,14 @@ class _PersonCard extends StatefulWidget {
   const _PersonCard({
     required this.item,
     required this.square,
+    required this.heroTag,
     required this.onTap,
     required this.onLongPress,
   });
 
   final MediaItem item;
   final bool square;
+  final String heroTag;
   final void Function(MediaItem) onTap;
   final void Function(MediaItem) onLongPress;
 
@@ -95,18 +103,24 @@ class _PersonCardState extends State<_PersonCard> {
               SizedBox(
                 width: widget.square ? 136 : 124,
                 height: widget.square ? 136 : 124,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(widget.square ? 12 : 999),
-                  child: effectiveCover == null
-                      ? ColoredBox(color: AppColors.surface2)
-                      : CachedNetworkImage(
-                          imageUrl: effectiveCover,
-                          cacheManager: AppImageCache.manager,
-                          httpHeaders: widget.item.coverHeaders,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => ColoredBox(color: AppColors.surface2),
-                          errorWidget: (context, url, error) => ColoredBox(color: AppColors.surface2),
-                        ),
+                child: Hero(
+                  tag: widget.heroTag,
+                  createRectTween: (begin, end) =>
+                      MaterialRectArcTween(begin: begin, end: end),
+                  flightShuttleBuilder: posterHeroFlightShuttle,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(widget.square ? 12 : 999),
+                    child: effectiveCover == null
+                        ? ColoredBox(color: AppColors.surface2)
+                        : CachedNetworkImage(
+                            imageUrl: effectiveCover,
+                            cacheManager: AppImageCache.manager,
+                            httpHeaders: widget.item.coverHeaders,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => ColoredBox(color: AppColors.surface2),
+                            errorWidget: (context, url, error) => ColoredBox(color: AppColors.surface2),
+                          ),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),

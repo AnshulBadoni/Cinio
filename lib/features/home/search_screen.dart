@@ -29,7 +29,6 @@ import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/poster_quick_actions.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
@@ -236,17 +235,6 @@ class _SearchViewState extends State<_SearchView>
     context.read<SearchBloc>().add(const SearchQueryChanged(''));
   }
 
-  String _typeLabel(ProviderType t) =>
-      t == ProviderType.movie ? 'Movie' : 'Anime';
-
-  Future<MediaDetail?> _detailOf(String url, String sourceId) async {
-    try {
-      return await _repo.detail(url, sourceId: sourceId);
-    } catch (_) {
-      return null;
-    }
-  }
-
   List<String> _tagsFor(MediaItem m) {
     // Quality is NOT here — it has its own top-right corner on the card.
     final t = <String>[];
@@ -322,7 +310,7 @@ class _SearchViewState extends State<_SearchView>
           items: g.items,
           tagsFor: _tagsFor,
           onTap: _openDetail,
-          onLongPress: _showInfo,
+          onLongPress: (item) => _showQuickActions(item),
           // Search results are a fixed, already-fetched set — no pagination.
           onLoadMore: null,
         ),
@@ -406,7 +394,7 @@ class _SearchViewState extends State<_SearchView>
     return resolved?.item;
   }
 
-  Future<void> _showQuickActions(MediaItem item) async {
+  Future<void> _showQuickActions(MediaItem item, {String? heroTag}) async {
     final statusStore = sl<ListStatusStore>();
     final inLibrary = _myList.contains(item) || statusStore.statusOf(item) != null;
     final watched = statusStore.statusOf(item) == WatchStatus.completed;
@@ -416,19 +404,28 @@ class _SearchViewState extends State<_SearchView>
         .where((e) => !e.finished)
         .fold<HistoryEntry?>(null, (best, e) =>
             best == null || e.updatedAt > best.updatedAt ? e : best);
-    final playLabel = matchingHistory == null
-        ? null
-        : 'Resume ${((matchingHistory.progress * 100).round()).clamp(1, 99)}%';
+    final isPerformer = item.sourceId == 'tpdb:performer' || item.sourceId == 'person';
+    final playLabel = isPerformer
+        ? 'View Profile'
+        : (matchingHistory == null
+            ? null
+            : 'Resume ${((matchingHistory.progress * 100).round()).clamp(1, 99)}%');
     if (!mounted) return;
     await showPosterQuickActions(
       context,
       item: item,
-      heroTag: _posterHeroTag(item),
+      heroTag: heroTag ?? _posterHeroTag(item),
       playLabel: playLabel,
       inLibrary: inLibrary,
       watched: watched,
-      onPlay: () => _play(item, resumeEntry: matchingHistory),
-      onInfo: () => _openDetail(item),
+      onPlay: () {
+        if (item.sourceId == 'tpdb:performer' || item.sourceId == 'tpdb:studio') {
+          _openDetail(item, heroTag: heroTag);
+        } else {
+          _play(item, resumeEntry: matchingHistory);
+        }
+      },
+      onInfo: () => _openDetail(item, heroTag: heroTag),
       onMarkWatched: () async {
         if (!_myList.contains(item)) await _myList.add(item);
         await statusStore.setStatus(item, WatchStatus.completed);
@@ -493,44 +490,6 @@ class _SearchViewState extends State<_SearchView>
       ),
     );
     if (mounted) setState(() {});
-  }
-
-  Future<void> _showInfo(MediaItem item) async {
-    if (item.sourceId == 'tpdb:performer' || item.sourceId == 'tpdb:studio') {
-      _openDetail(item);
-      return;
-    }
-    final resolved = await _resolveCatalogItem(item);
-    if (!mounted) return;
-    final target = resolved ?? item;
-    if (resolved == null && item.sourceId == 'tmdb:catalog') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No result found for ${item.title}')),
-      );
-      return;
-    }
-    showMediaInfoSheet(
-      context,
-      title: target.title,
-      englishTitle: target.englishTitle,
-      cover: target.cover ?? item.cover,
-      headers: target.coverHeaders ?? item.coverHeaders,
-      typeLabel: _typeLabel(target.type),
-      subCount: target.subCount,
-      dubCount: target.dubCount,
-      detail: _detailOf(target.url, target.sourceId),
-      inMyList: _myList.contains(target),
-      onPlay: () => _play(target),
-      onOpenDetail: () => _openDetail(target),
-      onToggleMyList: () async {
-        if (!requireLogin(context, action: 'add to My List')) {
-          return _myList.contains(target);
-        }
-        await _myList.toggle(target);
-        if (mounted) setState(() {});
-        return _myList.contains(target);
-      },
-    );
   }
 
   // ── Filters (sort + content type + audio + genre + sources) ────────────────
@@ -1514,6 +1473,7 @@ class _SearchViewState extends State<_SearchView>
             itemCount: preview.length,
             itemBuilder: (context, i) {
               final item = preview[i];
+              final heroTag = _posterHeroTag(item);
               return Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: SizedBox(
@@ -1528,10 +1488,11 @@ class _SearchViewState extends State<_SearchView>
                         tags: _tagsFor(item),
                         qualityBadge: item.quality,
                         dubBadge: item.dubBadge,
+                        heroTag: heroTag,
                         completed: sl<ListStatusStore>().statusOf(item) != null || sl<MyListStore>().contains(item),
                         cellWidth: itemW,
-                        onTap: () => _openDetail(item),
-                        onLongPress: () => _showInfo(item),
+                        onTap: () => _openDetail(item, heroTag: heroTag),
+                        onLongPress: () => _showQuickActions(item, heroTag: heroTag),
                       ),
                     ),
                   ),
@@ -1579,6 +1540,7 @@ class _SearchViewState extends State<_SearchView>
           itemCount: preview.length,
           itemBuilder: (context, i) {
             final item = preview[i];
+            final heroTag = _posterHeroTag(item);
             return RevealItem(
               index: i,
               child: PosterCard(
@@ -1588,10 +1550,11 @@ class _SearchViewState extends State<_SearchView>
                 tags: _tagsFor(item),
                 qualityBadge: item.quality,
                 dubBadge: item.dubBadge,
+                heroTag: heroTag,
                 completed: sl<ListStatusStore>().statusOf(item) != null || sl<MyListStore>().contains(item),
                 cellWidth: cellW,
-                onTap: () => _openDetail(item),
-                onLongPress: () => _showInfo(item),
+                onTap: () => _openDetail(item, heroTag: heroTag),
+                onLongPress: () => _showQuickActions(item, heroTag: heroTag),
               ),
             );
           },
@@ -1827,7 +1790,7 @@ class _SearchViewState extends State<_SearchView>
           cellWidth: cellW,
           heroTag: heroTag,
           onTap: () => _openDetail(item, heroTag: heroTag),
-          onLongPress: () => _showInfo(item),
+          onLongPress: () => _showQuickActions(item, heroTag: heroTag),
         );
       },
     );
@@ -1859,13 +1822,15 @@ class _SearchViewState extends State<_SearchView>
           );
         }
         final item = items[i];
+        final heroTag = _posterHeroTag(item);
         return RevealItem(
           index: i,
           child: _MasonrySearchCard(
             item: item,
             index: i,
-            onTap: () => _openDetail(item),
-            onLongPress: () => _showInfo(item),
+            heroTag: heroTag,
+            onTap: () => _openDetail(item, heroTag: heroTag),
+            onLongPress: () => _showQuickActions(item, heroTag: heroTag),
           ),
         );
       },
@@ -1905,13 +1870,15 @@ class _SearchViewState extends State<_SearchView>
             itemCount: preview.length,
             itemBuilder: (context, i) {
               final item = preview[i];
+              final heroTag = _posterHeroTag(item);
               return RevealItem(
                 index: i,
                 child: _MasonrySearchCard(
                   item: item,
                   index: i,
-                  onTap: () => _openDetail(item),
-                  onLongPress: () => _showInfo(item),
+                  heroTag: heroTag,
+                  onTap: () => _openDetail(item, heroTag: heroTag),
+                  onLongPress: () => _showQuickActions(item, heroTag: heroTag),
                 ),
               );
             },
@@ -2973,12 +2940,14 @@ class _MasonrySearchCard extends StatefulWidget {
     required this.item,
     required this.index,
     required this.onTap,
+    this.heroTag,
     this.onLongPress,
   });
 
   final MediaItem item;
   final int index;
   final VoidCallback onTap;
+  final String? heroTag;
   final VoidCallback? onLongPress;
 
   @override
@@ -3012,6 +2981,37 @@ class _MasonrySearchCardState extends State<_MasonrySearchCard> {
     final String imageUrl = (isWide && hasHero ? item.heroImage : item.cover) ?? item.cover ?? '';
     final isCompleted = sl<ListStatusStore>().statusOf(item) != null || sl<MyListStore>().contains(item);
 
+    Widget artwork = (imageUrl.isNotEmpty)
+        ? CachedNetworkImage(
+            imageUrl: imageUrl,
+            cacheManager: AppImageCache.manager,
+            httpHeaders: item.coverHeaders,
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
+            memCacheWidth: isWide ? 640 : 420,
+            placeholder: (_, _) => Container(color: AppColors.surface2),
+            errorWidget: (_, _, _) => Container(
+              color: AppColors.surface2,
+              child: const Center(
+                child: Icon(Icons.movie_rounded, color: AppColors.textTertiary, size: 28),
+              ),
+            ),
+          )
+        : Container(color: AppColors.surface2);
+
+    if (widget.heroTag != null) {
+      artwork = Hero(
+        tag: widget.heroTag!,
+        createRectTween: (begin, end) =>
+            MaterialRectArcTween(begin: begin, end: end),
+        flightShuttleBuilder: posterHeroFlightShuttle,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: artwork,
+        ),
+      );
+    }
+
     return GestureDetector(
       onTap: widget.onTap,
       onLongPress: widget.onLongPress,
@@ -3030,24 +3030,7 @@ class _MasonrySearchCardState extends State<_MasonrySearchCard> {
               fit: StackFit.expand,
               children: [
                 // Artwork
-                if (imageUrl.isNotEmpty)
-                  CachedNetworkImage(
-                    imageUrl: imageUrl,
-                    cacheManager: AppImageCache.manager,
-                    httpHeaders: item.coverHeaders,
-                    fit: BoxFit.cover,
-                    alignment: Alignment.center,
-                    memCacheWidth: isWide ? 640 : 420,
-                    placeholder: (_, _) => Container(color: AppColors.surface2),
-                    errorWidget: (_, _, _) => Container(
-                      color: AppColors.surface2,
-                      child: const Center(
-                        child: Icon(Icons.movie_rounded, color: AppColors.textTertiary, size: 28),
-                      ),
-                    ),
-                  )
-                else
-                  Container(color: AppColors.surface2),
+                artwork,
 
                 // Bottom Scrim
                 Positioned.fill(
