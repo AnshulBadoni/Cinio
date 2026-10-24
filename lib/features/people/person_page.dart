@@ -564,10 +564,28 @@ class _PersonPageState extends State<PersonPage> {
     }
     final activePhotoUrl = _selectedPhotoUrl ?? (photoList.isNotEmpty ? photoList.first : null);
 
+    final fallbackSubtitle = _isStudio
+        ? 'Studio'
+        : (isTpdb
+            ? 'Performer'
+            : (widget.person.department != null && widget.person.department!.isNotEmpty
+                ? widget.person.department!
+                : 'Acting'));
+    final effectiveSubtitle = p?.subtitle ?? fallbackSubtitle;
+    final displaySubtitle = (effectiveSubtitle.toLowerCase() == 'directing' ||
+            widget.person.department?.toLowerCase() == 'director' ||
+            widget.person.department?.toLowerCase() == 'directing')
+        ? 'Director'
+        : (effectiveSubtitle.toLowerCase() == 'acting' &&
+                widget.person.department != null &&
+                widget.person.department!.isNotEmpty
+            ? widget.person.department!
+            : effectiveSubtitle);
+
     final totalCount = _works.length;
     final metaText = _loading
-        ? (_isStudio ? 'Studio' : (isTpdb ? 'Performer' : 'Acting'))
-        : '${p?.subtitle ?? (_isStudio ? 'Studio' : (isTpdb ? 'Performer' : 'Acting'))} · $totalCount ${isTpdb ? 'Releases' : 'Titles'}';
+        ? displaySubtitle
+        : '$displaySubtitle · $totalCount ${isTpdb ? 'Releases' : 'Titles'}';
     final effectiveHeroTag = widget.heroTag ??
         'person-avatar:${widget.person.source.name}:${widget.person.externalId ?? widget.person.id}';
 

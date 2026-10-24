@@ -41,7 +41,7 @@ class PeopleService {
       case PersonSource.anilistStaff:
         return _staff(ref.id);
       case PersonSource.tmdb:
-        return _tmdbPerson(ref.id);
+        return _tmdbPerson(ref.id, fallbackName: ref.name);
       case PersonSource.thePornDbPerformer:
         return _tpdbPerformer(ref.externalId ?? ref.id.toString(), fallbackName: ref.name);
       case PersonSource.thePornDbStudio:
@@ -910,20 +910,40 @@ class PeopleService {
 
   // ── TMDB ────────────────────────────────────────────────────────────────────
 
-  Future<PersonProfile?> _tmdbPerson(int id) async {
-    final person = await _get('$_tmdbBase/person/$id');
+  Future<PersonProfile?> _tmdbPerson(int id, {String? fallbackName}) async {
+    Map<String, dynamic>? person;
+    int personId = id;
+    if (personId > 0) {
+      person = await _get('$_tmdbBase/person/$personId');
+    }
+    if (person == null && fallbackName != null && fallbackName.trim().isNotEmpty) {
+      final searchRes = await _get(
+        '$_tmdbBase/search/person?query=${Uri.encodeComponent(fallbackName.trim())}',
+      );
+      final results = searchRes?['results'] as List?;
+      if (results != null && results.isNotEmpty && results.first is Map) {
+        final first = results.first as Map;
+        personId = (first['id'] as num?)?.toInt() ?? 0;
+        if (personId > 0) {
+          person = await _get('$_tmdbBase/person/$personId');
+        }
+      }
+    }
     if (person == null) return null;
-    final name = person['name'] as String?;
+    final name = (person['name'] ?? fallbackName) as String?;
     if (name == null || name.isEmpty) return null;
 
     final works = <PersonWork>[];
     final providerVideos = <PersonWork>[];
-    final credits = await _get('$_tmdbBase/person/$id/combined_credits');
+    final credits = await _get('$_tmdbBase/person/$personId/combined_credits');
     final castList = credits?['cast'];
+    final crewList = credits?['crew'];
     final related = <PersonRef>[];
-    if (castList is List) {
-      final seenIds = <String>{};
-      final sorted = castList.whereType<Map>().toList()
+    final seenIds = <String>{};
+
+    void processCreditList(List? list, {required bool isCrew}) {
+      if (list is! List) return;
+      final sorted = list.whereType<Map>().toList()
         ..sort((a, b) =>
             ((b['popularity'] as num?) ?? 0).compareTo((a['popularity'] as num?) ?? 0));
       for (final c in sorted) {
@@ -939,12 +959,13 @@ class PeopleService {
         final releaseDate = (c['release_date'] ?? c['first_air_date'])?.toString();
         final rating = (c['vote_average'] as num?)?.toDouble();
         final pop = (c['popularity'] as num?)?.toDouble();
+        final role = isCrew ? (c['job'] as String?) : (c['character'] as String?);
 
         final work = PersonWork(
           title: title,
           cover: (poster != null && poster.isNotEmpty) ? '$_img/w342$poster' : null,
           backdrop: (backdrop != null && backdrop.isNotEmpty) ? '$_img/w780$backdrop' : null,
-          subtitle: c['character'] as String?,
+          subtitle: role,
           catalogId: mediaId,
           isTv: isTv,
           releaseDate: releaseDate,
@@ -957,13 +978,24 @@ class PeopleService {
           providerVideos.add(work);
         }
       }
+    }
 
+    final knownDept = (person['known_for_department'] as String?)?.toLowerCase();
+    if (knownDept == 'directing' || knownDept == 'writing' || knownDept == 'production' || knownDept == 'crew') {
+      processCreditList(crewList, isCrew: true);
+      processCreditList(castList, isCrew: false);
+    } else {
+      processCreditList(castList, isCrew: false);
+      processCreditList(crewList, isCrew: true);
+    }
+
+    if (works.isNotEmpty) {
       // Fetch co-stars from top movie/series for the Related row
-      if (sorted.isNotEmpty) {
-        try {
-          final top = sorted.first;
-          final topType = top['media_type'] == 'tv' ? 'tv' : 'movie';
-          final topId = top['id'];
+      try {
+        final top = works.first;
+        final topType = top.isTv ? 'tv' : 'movie';
+        final topId = top.catalogId;
+        if (topId != null) {
           final topCredits = await _get('$_tmdbBase/$topType/$topId/credits');
           final topCast = topCredits?['cast'];
           if (topCast is List) {
@@ -971,7 +1003,7 @@ class PeopleService {
               final pId = (personRow['id'] as num?)?.toInt();
               final pName = personRow['name'] as String?;
               final pPic = personRow['profile_path'] as String?;
-              if (pId != null && pId != id && pName != null && pName.isNotEmpty) {
+              if (pId != null && pId != personId && pName != null && pName.isNotEmpty) {
                 related.add(PersonRef(
                   id: pId,
                   source: PersonSource.tmdb,
@@ -982,10 +1014,11 @@ class PeopleService {
               }
             }
           }
-        } catch (_) {}
-      }
+        }
+      } catch (_) {}
     }
-    _tmdbCreditsCache[id] = works;
+    _tmdbCreditsCache[personId] = works;
+    if (id > 0) _tmdbCreditsCache[id] = works;
     final profile = person['profile_path'] as String?;
     return PersonProfile(
       name: name,

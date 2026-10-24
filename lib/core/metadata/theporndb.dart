@@ -267,6 +267,16 @@ class ThePornDb {
         }
       } catch (_) {}
     }
+    // Sort performers with highest rating first, decreasing, then unrated at last
+    list.sort((a, b) {
+      final ra = a.rating;
+      final rb = b.rating;
+      if (ra != null && rb != null) return rb.compareTo(ra);
+      if (ra != null && rb == null) return -1;
+      if (ra == null && rb != null) return 1;
+      return 0;
+    });
+
     return list;
   }
 

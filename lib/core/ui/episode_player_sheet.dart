@@ -588,16 +588,15 @@ class _EpisodeActionButton extends StatelessWidget {
               ),
               if (trailing != null) ...[
                 const SizedBox(width: 12),
-                Flexible(
-                  child: Text(
-                    trailing!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.caption.copyWith(
-                      color: primary
-                          ? Colors.white.withValues(alpha: 0.82)
-                          : AppColors.textSecondary,
-                    ),
+                Text(
+                  trailing!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: AppText.caption.copyWith(
+                    color: primary
+                        ? Colors.white.withValues(alpha: 0.82)
+                        : AppColors.textSecondary,
                   ),
                 ),
               ],

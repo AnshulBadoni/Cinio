@@ -181,6 +181,11 @@ class LocalVideoService extends ChangeNotifier {
         }
       }
       notifyListeners();
+
+      // Automatically retry matching in background for any unmatched items
+      if (_items.any((it) => !it.isMatched)) {
+        unawaited(_matchPendingItems());
+      }
     }
   }
 
@@ -404,6 +409,28 @@ class LocalVideoService extends ChangeNotifier {
       epNum = int.tryParse(sEpMatch.group(2)!);
     }
 
+    // Standalone episode match: e.g. E1, E01, EP1, EP01, Ep.1, Episode 1, Part 1
+    Match? epOnlyMatch;
+    if (epNum == null) {
+      epOnlyMatch = RegExp(r'\b[eE][pP]?\.?\s*(\d{1,3})\b').firstMatch(spaced) ??
+          RegExp(r'\bepisode\s*(\d{1,3})\b', caseSensitive: false).firstMatch(spaced) ??
+          RegExp(r'\bpart\s*(\d{1,3})\b', caseSensitive: false).firstMatch(spaced);
+      if (epOnlyMatch != null) {
+        epNum = int.tryParse(epOnlyMatch.group(1)!);
+        seasonNum ??= 1;
+      }
+    }
+
+    // Standalone season match: e.g. Season 2, S2
+    Match? seasonOnlyMatch;
+    if (seasonNum == null || (seasonNum == 1 && sEpMatch == null)) {
+      seasonOnlyMatch = RegExp(r'\b(?:season|s)\s*(\d{1,2})\b', caseSensitive: false).firstMatch(spaced);
+      if (seasonOnlyMatch != null && seasonOnlyMatch != epOnlyMatch) {
+        final parsedS = int.tryParse(seasonOnlyMatch.group(1)!);
+        if (parsedS != null) seasonNum = parsedS;
+      }
+    }
+
     // Extract 4-digit release year: 19xx or 20xx
     String? year;
     final yearMatch = RegExp(r'\b(19\d{2}|20\d{2})\b').firstMatch(spaced);
@@ -411,13 +438,18 @@ class LocalVideoService extends ChangeNotifier {
       year = yearMatch.group(1);
     }
 
-    // In standard release filenames, everything before the SxxExx tag or year tag is the title.
+    // Cut off release tags, season/episode tags, or year tags to isolate the title
     int cutoff = spaced.length;
-    if (sEpMatch != null && sEpMatch.start > 0) {
-      cutoff = sEpMatch.start;
-    } else if (yearMatch != null && yearMatch.start > 0) {
-      cutoff = yearMatch.start;
+    void considerCutoff(Match? m) {
+      if (m != null && m.start > 0 && m.start < cutoff) {
+        cutoff = m.start;
+      }
     }
+
+    considerCutoff(sEpMatch);
+    considerCutoff(seasonOnlyMatch);
+    considerCutoff(epOnlyMatch);
+    considerCutoff(yearMatch);
 
     String titlePart = spaced.substring(0, cutoff);
     var clean = titlePart.replaceAll(RegExp(r'\[.*?\]|\(.*?\)', caseSensitive: false), ' ');
@@ -438,19 +470,32 @@ class LocalVideoService extends ChangeNotifier {
     }
     if (clean.isEmpty) clean = filename;
 
+    // Capitalize words nicely if input was plain lowercase or uppercase
+    if (clean == clean.toLowerCase() || clean == clean.toUpperCase()) {
+      clean = clean.split(' ').map((w) {
+        if (w.isEmpty) return '';
+        final lower = w.toLowerCase();
+        if ({'of', 'the', 'and', 'in', 'on', 'at', 'to', 'for'}.contains(lower)) {
+          return lower;
+        }
+        return '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}';
+      }).join(' ');
+      if (clean.isNotEmpty) {
+        clean = '${clean[0].toUpperCase()}${clean.substring(1)}';
+      }
+    }
+
     return (cleanTitle: clean, year: year, season: seasonNum, episode: epNum);
   }
 
   /// Runs background metadata matching against TMDB or TPDB.
   Future<void> _matchPendingItems() async {
-    final pending = _items.where((it) => !it.matchAttempted).toList();
+    final pending = _items.where((it) => !it.isMatched).toList();
     if (pending.isEmpty) return;
 
     for (final item in pending) {
       await matchItem(item);
     }
-    _persistCache();
-    notifyListeners();
   }
 
   /// Matches a single video item against metadata sources.
@@ -466,44 +511,148 @@ class LocalVideoService extends ChangeNotifier {
 
       MediaItem? bestMatch;
 
-      if (isAdultPreferred) {
-        if (sl.isRegistered<ThePornDb>()) {
-          final tpdbResults = await sl<ThePornDb>().search(query);
-          if (tpdbResults.isNotEmpty) {
-            bestMatch = tpdbResults.first;
-          }
-        }
+      // 1. If adult is preferred, check TPDB first
+      if (isAdultPreferred && sl.isRegistered<ThePornDb>()) {
+        final tpdbResults = await sl<ThePornDb>().search(query);
+        bestMatch = _findConfidentMatch(query, tpdbResults, year: item.extractedYear);
       }
 
+      // 2. TMDB search
       if (bestMatch == null && sl.isRegistered<TmdbDiscoverService>()) {
-        final tmdbResults = await sl<TmdbDiscoverService>().search(
+        final primaryType = item.isLikelySeries ? 'series' : 'movie';
+        final secondaryType = item.isLikelySeries ? 'movie' : 'series';
+
+        var tmdbResults = await sl<TmdbDiscoverService>().search(
           query: query,
-          type: item.isLikelySeries ? 'series' : 'movie',
+          type: primaryType,
         );
-        if (tmdbResults.isNotEmpty) {
-          bestMatch = tmdbResults.first;
+        bestMatch = _findConfidentMatch(query, tmdbResults, year: item.extractedYear);
+
+        // Fallback to secondary type (e.g. miniseries catalogued as movie or vice versa)
+        if (bestMatch == null) {
+          tmdbResults = await sl<TmdbDiscoverService>().search(
+            query: query,
+            type: secondaryType,
+          );
+          bestMatch = _findConfidentMatch(query, tmdbResults, year: item.extractedYear);
         }
       }
 
+      // 3. Fallback to TPDB if not adult preferred
       if (bestMatch == null && !isAdultPreferred && sl.isRegistered<ThePornDb>()) {
         final tpdbResults = await sl<ThePornDb>().search(query);
-        if (tpdbResults.isNotEmpty) {
-          bestMatch = tpdbResults.first;
-        }
+        bestMatch = _findConfidentMatch(query, tpdbResults, year: item.extractedYear);
       }
 
       if (bestMatch != null) {
         item.isMatched = true;
-        item.matchedTitle = bestMatch.title;
+        item.matchedTitle = item.isLikelySeries && item.episode != null
+            ? '${bestMatch.title} S${item.season ?? 1}:E${item.episode}'
+            : bestMatch.title;
         item.matchedPoster = bestMatch.cover;
         item.matchedBackdrop = bestMatch.heroImage ?? bestMatch.cover;
         item.matchedRating = bestMatch.rating;
         item.matchedYear = bestMatch.year;
         item.mediaItem = bestMatch;
+        _persistCache();
+        notifyListeners();
       }
     } catch (_) {
       // Matching failed gracefully, item displays fallback poster
     }
+  }
+
+  /// Checks candidate list and only returns a candidate if it passes a strict confidence threshold.
+  /// Prevents false or wrong matches.
+  static MediaItem? _findConfidentMatch(
+    String query,
+    List<MediaItem> candidates, {
+    String? year,
+  }) {
+    if (candidates.isEmpty) return null;
+
+    final normQuery = _normalizeForComparison(query);
+    if (normQuery.isEmpty) return null;
+
+    final queryWords = normQuery.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toSet();
+    MediaItem? best;
+    double bestScore = 0.0;
+
+    for (final candidate in candidates) {
+      final candTitle = candidate.title;
+      final candEng = candidate.englishTitle ?? '';
+      final normCand = _normalizeForComparison(candTitle);
+      final normEng = _normalizeForComparison(candEng);
+
+      final scoreTitle = _computeMatchScore(normQuery, queryWords, normCand);
+      final scoreEng = normEng.isNotEmpty
+          ? _computeMatchScore(normQuery, queryWords, normEng)
+          : 0.0;
+      var score = scoreTitle > scoreEng ? scoreTitle : scoreEng;
+
+      // Year bonus or penalty
+      if (year != null && candidate.year != null && candidate.year!.isNotEmpty) {
+        final y1 = int.tryParse(year);
+        final y2 = int.tryParse(candidate.year!);
+        if (y1 != null && y2 != null) {
+          final diff = (y1 - y2).abs();
+          if (diff == 0) {
+            score += 0.15;
+          } else if (diff <= 1) {
+            score += 0.05;
+          } else if (diff > 3) {
+            score -= 0.30; // Significant penalty for mismatched release years
+          }
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+
+    // Require >= 60% confidence to accept the match; otherwise don't force a wrong match.
+    if (bestScore >= 0.60) {
+      return best;
+    }
+    return null;
+  }
+
+  static String _normalizeForComparison(String text) {
+    return text
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static double _computeMatchScore(
+    String normQuery,
+    Set<String> queryWords,
+    String normTarget,
+  ) {
+    if (normTarget.isEmpty) return 0.0;
+    if (normQuery == normTarget) return 1.0;
+
+    // Substring match
+    if (normTarget.startsWith(normQuery) || normQuery.startsWith(normTarget)) {
+      final ratio = normQuery.length < normTarget.length
+          ? normQuery.length / normTarget.length
+          : normTarget.length / normQuery.length;
+      if (ratio >= 0.6) return 0.85 * ratio;
+    }
+
+    // Word intersection / Jaccard similarity
+    final targetWords = normTarget.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toSet();
+    if (targetWords.isEmpty) return 0.0;
+
+    final intersection = queryWords.intersection(targetWords).length;
+    final union = queryWords.union(targetWords).length;
+    final jaccard = union > 0 ? intersection / union : 0.0;
+    final queryCoverage = queryWords.isNotEmpty ? intersection / queryWords.length : 0.0;
+
+    return (jaccard * 0.4) + (queryCoverage * 0.6);
   }
 
   void _persistCache() {

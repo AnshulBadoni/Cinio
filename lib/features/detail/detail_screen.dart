@@ -590,10 +590,20 @@ class _DetailViewState extends State<_DetailView>
         posterUrl: widget.item.cover,
       );
     }
+    if (sl.isRegistered<DownloadManager>()) {
+      sl<DownloadManager>().addListener(_onDownloadManagerChanged);
+    }
+  }
+
+  void _onDownloadManagerChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    if (sl.isRegistered<DownloadManager>()) {
+      sl<DownloadManager>().removeListener(_onDownloadManagerChanged);
+    }
     _entranceController.dispose();
     if (sl.isRegistered<DiscordRpc>()) sl<DiscordRpc>().setBrowsing();
     _trailerDelayTimer?.cancel();
@@ -1725,6 +1735,70 @@ class _DetailViewState extends State<_DetailView>
     return (index: 0, hasResume: false);
   }
 
+  Future<void> _confirmDeleteFromDetail(
+    BuildContext context,
+    List<DownloadRecord> records,
+    String title,
+  ) async {
+    if (records.isEmpty) return;
+    final isMultiple = records.length > 1;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(
+          isMultiple ? 'Delete all downloads?' : 'Delete download?',
+          style: AppText.headline,
+        ),
+        content: Text(
+          isMultiple
+              ? 'Remove all ${records.length} downloaded episodes of “$title” from this device?'
+              : 'Remove download of “$title” from this device?',
+          style: AppText.body.copyWith(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dctx, false),
+            child: Text(
+              'Cancel',
+              style: AppText.button.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dctx, true),
+            child: Text(
+              'Delete',
+              style: AppText.button.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      if (sl.isRegistered<DownloadManager>()) {
+        await sl<DownloadManager>().deleteAll(records);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isMultiple
+                ? 'Deleted ${records.length} downloads'
+                : 'Download deleted',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      if (widget.fromDownloads) {
+        Navigator.of(context).pop();
+      } else {
+        setState(() {});
+      }
+    }
+  }
+
   Future<void> _openDownloadSheet({
     required MediaDetail detail,
     required String category,
@@ -2280,14 +2354,6 @@ class _DetailViewState extends State<_DetailView>
         ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
         : 1;
     final resumePercent = detail.isSeries ? null : _resumePercent(eps, resumeIdx);
-    final buttonLabel = isReading
-        ? (readResume!.hasResume ? 'Continue' : 'Read')
-        : (detail.isSeries
-            ? (resume.hasResume ? 'Continue E$episodeNum' : 'Play E$episodeNum')
-            : (resume.hasResume
-                ? (resumePercent != null ? 'Continue $resumePercent%' : 'Continue')
-                : (_isInCinema(detail) ? 'In Cinema' : 'Play')));
-
     final coverUrl = _seasonPosterUrl ?? detail.cover ?? item.cover ?? '';
     final heroCoverUrl = _seasonPosterUrl ?? item.heroImage ?? coverUrl;
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
@@ -2303,8 +2369,55 @@ class _DetailViewState extends State<_DetailView>
     }
 
     final currentEp = eps.isNotEmpty ? eps[resumeIdx] : null;
-    final downloadedRec = _downloadedRecordFor(currentEp, detail);
+    final dlManager = sl.isRegistered<DownloadManager>() ? sl<DownloadManager>() : null;
+    final currentRecord = dlManager?.findRecord(
+      sourceId: detail.sourceId,
+      showId: detail.id,
+      showTitle: detail.title,
+      episodeId: currentEp?.id,
+      episodeNumber: currentEp?.number,
+    );
+    final downloadedRec = (currentRecord != null &&
+            currentRecord.status == DownloadStatus.done &&
+            currentRecord.filePath != null)
+        ? currentRecord
+        : _downloadedRecordFor(currentEp, detail);
     final isDownloaded = downloadedRec != null;
+    final showRecords = dlManager?.recordsForShow(
+          showId: detail.id,
+          showTitle: detail.title,
+        ) ??
+        const <DownloadRecord>[];
+
+    final String buttonLabel;
+    final IconData playIcon;
+    if (currentRecord != null && currentRecord.status == DownloadStatus.downloading) {
+      final pct = (currentRecord.progress * 100).clamp(0, 100).round();
+      buttonLabel = 'Downloading $pct%';
+      playIcon = CupertinoIcons.arrow_down_circle_fill;
+    } else if (currentRecord != null && currentRecord.status == DownloadStatus.resolving) {
+      buttonLabel = 'Preparing download…';
+      playIcon = CupertinoIcons.arrow_down_circle;
+    } else if (currentRecord != null && currentRecord.status == DownloadStatus.queued) {
+      buttonLabel = 'Download queued';
+      playIcon = CupertinoIcons.clock_fill;
+    } else if (currentRecord != null && currentRecord.status == DownloadStatus.paused) {
+      final pct = (currentRecord.progress * 100).clamp(0, 100).round();
+      buttonLabel = 'Paused $pct%';
+      playIcon = CupertinoIcons.pause_circle_fill;
+    } else if (!isReading && !_viewingOnline && !isDownloaded) {
+      buttonLabel = detail.isSeries ? 'Download E$episodeNum' : 'Download';
+      playIcon = CupertinoIcons.arrow_down_circle;
+    } else {
+      playIcon = isReading ? CupertinoIcons.book_fill : CupertinoIcons.play_arrow_solid;
+      buttonLabel = isReading
+          ? (readResume!.hasResume ? 'Continue' : 'Read')
+          : (detail.isSeries
+              ? (resume.hasResume ? 'Continue E$episodeNum' : 'Play E$episodeNum')
+              : (resume.hasResume
+                  ? (resumePercent != null ? 'Continue $resumePercent%' : 'Continue')
+                  : (_isInCinema(detail) ? 'In Cinema' : 'Play')));
+    }
 
     final downloadLabel = _downloadLabel(
       detail,
@@ -2430,6 +2543,13 @@ class _DetailViewState extends State<_DetailView>
                   else
                     LayoutBuilder(
                       builder: (context, constraints) {
+                        final hasCloudBtn = downloadedRec != null || widget.fromDownloads;
+                        final hasDeleteBtn = showRecords.isNotEmpty || downloadedRec != null || widget.fromDownloads;
+                        final int extraBtnCount = 2 + (hasCloudBtn ? 1 : 0) + (hasDeleteBtn ? 1 : 0);
+                        final mainBtnWidth = _actionsExpanded
+                            ? 48.0
+                            : (constraints.maxWidth - (extraBtnCount * 58.0)).clamp(120.0, 320.0);
+
                         return SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           clipBehavior: Clip.none,
@@ -2440,7 +2560,7 @@ class _DetailViewState extends State<_DetailView>
                                 AnimatedContainer(
                                   duration: const Duration(milliseconds: 300),
                                   curve: Curves.easeOutCubic,
-                                  width: _actionsExpanded ? 48 : constraints.maxWidth - 48 - 10 - 48 - 10,
+                                  width: mainBtnWidth,
                                   height: 48,
                                   decoration: BoxDecoration(
                                     color: Colors.white,
@@ -2454,8 +2574,29 @@ class _DetailViewState extends State<_DetailView>
                                               widget.item.sourceId == 'tmdb:catalog' ||
                                               widget.item.sourceId.startsWith('tpdb:'))
                                           ? () {
-                                              if (!_viewingOnline && downloadedRec != null) {
+                                              if (currentRecord != null &&
+                                                  (currentRecord.status == DownloadStatus.downloading ||
+                                                   currentRecord.status == DownloadStatus.resolving ||
+                                                   currentRecord.status == DownloadStatus.queued)) {
+                                                _openDownloadSheet(
+                                                  detail: detail,
+                                                  category: category,
+                                                  episodesBySeason: episodesBySeason,
+                                                  initialSeason: currentSeason,
+                                                );
+                                              } else if (!_viewingOnline && downloadedRec != null) {
                                                 launchDownloadedEpisode(context, downloadedRec);
+                                              } else if (!_viewingOnline && !isDownloaded) {
+                                                if (currentEp != null) {
+                                                  _downloadSingle(currentEp, detail, category);
+                                                } else {
+                                                  _openDownloadSheet(
+                                                    detail: detail,
+                                                    category: category,
+                                                    episodesBySeason: episodesBySeason,
+                                                    initialSeason: currentSeason,
+                                                  );
+                                                }
                                               } else {
                                                 _openPlayer(eps, resumeIdx, detail, category);
                                               }
@@ -2480,9 +2621,7 @@ class _DetailViewState extends State<_DetailView>
                                             mainAxisAlignment: MainAxisAlignment.center,
                                             children: [
                                               Icon(
-                                                isReading
-                                                    ? CupertinoIcons.book_fill
-                                                    : CupertinoIcons.play_arrow_solid,
+                                                playIcon,
                                                 color: Colors.black,
                                                 size: 20,
                                               ),
@@ -2511,7 +2650,7 @@ class _DetailViewState extends State<_DetailView>
                                   ),
                                 ),
                                 const SizedBox(width: 10),
-                                if (downloadedRec != null || widget.fromDownloads) ...[
+                                if (hasCloudBtn) ...[
                                   _buildSmallActionBtn(
                                     icon: _viewingOnline
                                         ? CupertinoIcons.cloud_fill
@@ -2535,6 +2674,20 @@ class _DetailViewState extends State<_DetailView>
                                         ),
                                       );
                                     },
+                                  ),
+                                  const SizedBox(width: 10),
+                                ],
+                                if (hasDeleteBtn) ...[
+                                  _buildSmallActionBtn(
+                                    icon: CupertinoIcons.trash,
+                                    tooltip: 'Delete download',
+                                    onPressed: () => _confirmDeleteFromDetail(
+                                      context,
+                                      showRecords.isNotEmpty
+                                          ? showRecords
+                                          : (downloadedRec != null ? [downloadedRec] : const <DownloadRecord>[]),
+                                      detail.title,
+                                    ),
                                   ),
                                   const SizedBox(width: 10),
                                 ],
@@ -2954,6 +3107,20 @@ class _DetailViewState extends State<_DetailView>
     );
   }
 
+  void _openDirector(String directorName) {
+    Navigator.of(context).push(
+      PersonPage.route(
+        PersonRef(
+          id: 0,
+          source: PersonSource.tmdb,
+          name: directorName,
+          department: 'Director',
+        ),
+        sourceId: widget.item.sourceId,
+      ),
+    );
+  }
+
   void _openStudio(String studioName) {
     final isTpdb = widget.item.sourceId.startsWith('tpdb') ||
         widget.item.id.startsWith('tpdb');
@@ -2988,16 +3155,29 @@ class _DetailViewState extends State<_DetailView>
           if (hasDirector)
             Padding(
               padding: const EdgeInsets.only(bottom: 3),
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    const TextSpan(text: 'Director: ', style: TextStyle(color: Colors.white60, fontSize: 13)),
-                    TextSpan(
-                      text: director,
-                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+              child: Wrap(
+                spacing: 4,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Text('Director: ', style: TextStyle(color: Colors.white60, fontSize: 13)),
+                  for (var i = 0; i < director.split(RegExp(r',\s*')).length; i++) ...[
+                    if (i > 0)
+                      const Text(', ', style: TextStyle(color: Colors.white60, fontSize: 13)),
+                    GestureDetector(
+                      onTap: () => _openDirector(director.split(RegExp(r',\s*'))[i].trim()),
+                      behavior: HitTestBehavior.opaque,
+                      child: Text(
+                        director.split(RegExp(r',\s*'))[i].trim(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ],
-                ),
+                ],
               ),
             ),
           if (hasWriter)

@@ -455,6 +455,7 @@ class SourceRepository {
               ? p.browseMainPage(more.categoryId!, page)
               : const [];
         case 'tmdb_recent':
+        case 'tmdb_upcoming':
         case 'tmdb_new_releases':
         case 'tmdb_trending_movies':
         case 'tmdb_trending_series':

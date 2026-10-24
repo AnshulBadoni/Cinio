@@ -14,6 +14,7 @@ class PersonRef extends Equatable {
     required this.name,
     this.photo,
     this.externalId,
+    this.department,
   });
 
   final int id;
@@ -29,8 +30,11 @@ class PersonRef extends Equatable {
   /// TPDB performers commonly use string/UUID-like identifiers.
   final String? externalId;
 
+  /// Department / primary role hint (e.g. 'Directing', 'Director', 'Acting').
+  final String? department;
+
   @override
-  List<Object?> get props => [id, source, name, photo, externalId];
+  List<Object?> get props => [id, source, name, photo, externalId, department];
 
   PersonRef copyWith({
     int? id,
@@ -38,6 +42,7 @@ class PersonRef extends Equatable {
     String? name,
     String? photo,
     String? externalId,
+    String? department,
   }) =>
       PersonRef(
         id: id ?? this.id,
@@ -45,6 +50,7 @@ class PersonRef extends Equatable {
         name: name ?? this.name,
         photo: photo ?? this.photo,
         externalId: externalId ?? this.externalId,
+        department: department ?? this.department,
       );
 }
 

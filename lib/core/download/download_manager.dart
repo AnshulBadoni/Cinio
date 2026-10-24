@@ -396,6 +396,45 @@ class DownloadManager extends ChangeNotifier {
     return null;
   }
 
+  /// Finds any record (active, queued, paused, done) for this show/episode.
+  DownloadRecord? findRecord({
+    String? sourceId,
+    String? showId,
+    String? showTitle,
+    String? episodeId,
+    double? episodeNumber,
+  }) {
+    if (sourceId != null && showId != null && episodeId != null) {
+      final direct = recordFor(sourceId, showId, episodeId);
+      if (direct != null) return direct;
+    }
+
+    final titleLower = showTitle?.trim().toLowerCase();
+    for (final r in all) {
+      final showMatches = (showId != null && r.showId == showId) ||
+          (titleLower != null && titleLower.isNotEmpty && r.showTitle.trim().toLowerCase() == titleLower);
+      if (!showMatches) continue;
+
+      if (episodeId != null && r.episodeId == episodeId) return r;
+      if (episodeNumber != null && r.episodeNumber != null && r.episodeNumber == episodeNumber) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  /// All download records matching this show id or title.
+  List<DownloadRecord> recordsForShow({String? showId, String? showTitle}) {
+    final titleLower = showTitle?.trim().toLowerCase();
+    return all.where((r) {
+      if (showId != null && r.showId == showId) return true;
+      if (titleLower != null && titleLower.isNotEmpty && r.showTitle.trim().toLowerCase() == titleLower) {
+        return true;
+      }
+      return false;
+    }).toList();
+  }
+
   // ── Enqueue ───────────────────────────────────────────────────────────────
 
   Future<void> enqueueEpisodes({

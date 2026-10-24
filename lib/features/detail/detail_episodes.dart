@@ -2253,7 +2253,6 @@ class _WideEpisodeCarouselState extends State<_WideEpisodeCarousel> {
             onHoldCenter: () => _centerItem(i),
             onLongPress: widget.onPickPlayer != null
                 ? () {
-                    _centerItem(i);
                     widget.onPickPlayer!(fullIndex);
                   }
                 : null,
@@ -2356,7 +2355,6 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
           child: InkWell(
             onTapDown: (_) {
               setState(() => _pressed = true);
-              widget.onHoldCenter?.call();
             },
             onTapUp: (_) => setState(() => _pressed = false),
             onTapCancel: () => setState(() => _pressed = false),
@@ -2370,20 +2368,19 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
               createRectTween: (begin, end) => RectTween(begin: begin, end: end),
               flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
                   direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
-              child: Container(
-                width: 280,
-                height: 195,
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: borderColor,
-                    width: (widget.highlight || widget.isResume) ? 1.8 : 1.0,
-                    strokeAlign: BorderSide.strokeAlignInside,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 280,
+                  height: 195,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: borderColor,
+                      width: (widget.highlight || widget.isResume) ? 1.8 : 1.0,
+                    ),
                   ),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(11),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [

@@ -97,6 +97,7 @@ class TmdbDiscoverService {
   Future<HomeSection?> homeSection(String kind) async {
     final result = switch (kind) {
       'tmdb_recent' => await _recentMixed(1),
+      'tmdb_upcoming' => await _upcomingMixed(1),
       'tmdb_new_releases' => await _newReleases(1),
       'tmdb_trending_movies' => await _trendingKind('movie', 1),
       'tmdb_trending_series' => await _trendingKind('tv', 1),
@@ -110,6 +111,7 @@ class TmdbDiscoverService {
     if (result.isEmpty) return null;
     final title = switch (kind) {
       'tmdb_recent' => 'Recent Movies & Series',
+      'tmdb_upcoming' => 'Upcoming Movies & Series',
       'tmdb_new_releases' => 'New Releases',
       'tmdb_trending_movies' => 'Trending Movies',
       'tmdb_trending_series' => 'Trending Series',
@@ -134,6 +136,7 @@ class TmdbDiscoverService {
     }
     final results = await Future.wait([
       _safe(() => _recentMixed(1)),
+      _safe(() => _upcomingMixed(1)),
       _safe(() => _newReleases(1)),
       _safe(() => _trendingKind('movie', 1)),
       _safe(() => _trendingKind('tv', 1)),
@@ -144,12 +147,12 @@ class TmdbDiscoverService {
       _safe(() => _discoverKind(kind: 'tv', catalog: 'top_rated', page: 1)),
     ]);
     final kinds = <String>[
-      'tmdb_recent', 'tmdb_new_releases', 'tmdb_trending_movies', 'tmdb_trending_series',
+      'tmdb_recent', 'tmdb_upcoming', 'tmdb_new_releases', 'tmdb_trending_movies', 'tmdb_trending_series',
       'tmdb_popular_movies', 'tmdb_popular_series', 'tmdb_trending_anime',
       'tmdb_top_rated_movies', 'tmdb_top_rated_series',
     ];
     final titles = <String>[
-      'Recent Movies & Series', 'New Releases', 'Trending Movies', 'Trending Series',
+      'Recent Movies & Series', 'Upcoming Movies & Series', 'New Releases', 'Trending Movies', 'Trending Series',
       'Popular Movies', 'Popular Series', 'Trending Anime',
       'Top Rated Movies', 'Top Rated Series',
     ];
@@ -174,6 +177,7 @@ class TmdbDiscoverService {
   Future<List<MediaItem>> browseMore(String kind, int page) async {
     switch (kind) {
       case 'tmdb_recent': return _recentMixed(page);
+      case 'tmdb_upcoming': return _upcomingMixed(page);
       case 'tmdb_new_releases': return _newReleases(page);
       case 'tmdb_trending_movies': return _trendingKind('movie', page);
       case 'tmdb_trending_series': return _trendingKind('tv', page);
@@ -183,6 +187,61 @@ class TmdbDiscoverService {
       case 'tmdb_top_rated_movies': return _discoverKind(kind: 'movie', catalog: 'top_rated', page: page);
       case 'tmdb_top_rated_series': return _discoverKind(kind: 'tv', catalog: 'top_rated', page: page);
       default: return const [];
+    }
+  }
+
+  Future<List<MediaItem>> _upcomingMixed(int page) async {
+    try {
+      final today = DateTime.now();
+      String tmdbDate(DateTime d) =>
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      final from = tmdbDate(today);
+      final to = tmdbDate(today.add(const Duration(days: 90)));
+
+      final movieFut = _dio.get<dynamic>(
+        '${Tmdb.base}/discover/movie',
+        queryParameters: {
+          'page': page,
+          'primary_release_date.gte': from,
+          'primary_release_date.lte': to,
+          'sort_by': 'popularity.desc',
+          'with_release_type': '2|3',
+        },
+        options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
+      ).then<List<MediaItem>>((res) {
+        final rows = res.data is Map ? res.data['results'] : null;
+        if (rows is! List) return const <MediaItem>[];
+        return [for (final r in rows) if (r is Map) ..._mapSearchRow(r, type: 'movies')];
+      }).catchError((_) async => const <MediaItem>[]);
+
+      final tvFut = _dio.get<dynamic>(
+        '${Tmdb.base}/discover/tv',
+        queryParameters: {
+          'page': page,
+          'first_air_date.gte': from,
+          'first_air_date.lte': to,
+          'sort_by': 'popularity.desc',
+        },
+        options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
+      ).then<List<MediaItem>>((res) {
+        final rows = res.data is Map ? res.data['results'] : null;
+        if (rows is! List) return const <MediaItem>[];
+        return [for (final r in rows) if (r is Map) ..._mapSearchRow(r, type: 'series')];
+      }).catchError((_) async => const <MediaItem>[]);
+
+      final results = await Future.wait([movieFut, tvFut]);
+      final movies = results[0];
+      final shows = results[1];
+
+      final mixed = <MediaItem>[];
+      final maxLen = math.max(movies.length, shows.length);
+      for (var i = 0; i < maxLen; i++) {
+        if (i < movies.length) mixed.add(movies[i]);
+        if (i < shows.length) mixed.add(shows[i]);
+      }
+      return mixed;
+    } catch (_) {
+      return const [];
     }
   }
 
@@ -474,7 +533,38 @@ class TmdbDiscoverService {
 
     final episodes = <Episode>[];
     final prodCompanies = row['production_companies'];
+    final networks = row['networks'];
     final studios = <String>[];
+
+    // Priority major studios / networks to lead with the recognized distributors
+    const majorStudios = [
+      'netflix', 'hbo', 'hbo max', 'max', 'disney+', 'disney', 'walt disney',
+      'warner bros', 'warner bros.', 'warner bros. pictures',
+      'universal pictures', 'universal', 'paramount', 'paramount+', 'paramount pictures',
+      'sony pictures', 'sony', 'columbia pictures', '20th century studios', '20th century fox',
+      'amazon', 'amazon studios', 'amazon prime video', 'prime video', 'apple tv+', 'apple',
+      'amc', 'amc+', 'cw', 'the cw', 'abc', 'nbc', 'cbs', 'fox', 'fx', 'hulu',
+      'showtime', 'starz', 'peacock', 'bbc', 'bbc one', 'itv', 'channel 4',
+      'lionsgate', 'mgm', 'metro-goldwyn-mayer', 'a24', 'miramax', 'brazzers'
+    ];
+
+    bool isMajor(String name) {
+      final lower = name.toLowerCase().trim();
+      return majorStudios.any((m) => lower == m || lower.contains(m));
+    }
+
+    // For TV shows, the broadcasting network (Netflix, HBO, The CW, ABC, NBC, etc.) is the primary distributor
+    if (item.tmdbIsTv && networks is List) {
+      for (final n in networks) {
+        if (n is Map) {
+          final nName = n['name']?.toString().trim();
+          if (nName != null && nName.isNotEmpty && !studios.contains(nName)) {
+            studios.add(nName);
+          }
+        }
+      }
+    }
+
     if (prodCompanies is List) {
       for (final c in prodCompanies) {
         if (c is Map) {
@@ -485,14 +575,27 @@ class TmdbDiscoverService {
         }
       }
     }
-    if (studios.isEmpty && item.tmdbIsTv && row['networks'] is List) {
-      for (final n in row['networks'] as List) {
-        if (n is Map) {
-          final nName = n['name']?.toString().trim();
-          if (nName != null && nName.isNotEmpty && !studios.contains(nName)) {
-            studios.add(nName);
-          }
-        }
+
+    // If we have studios, sort so major studios/networks come first, then take the top recognized ones
+    if (studios.isNotEmpty) {
+      studios.sort((a, b) {
+        final aMaj = isMajor(a);
+        final bMaj = isMajor(b);
+        if (aMaj && !bMaj) return -1;
+        if (!aMaj && bMaj) return 1;
+        return 0;
+      });
+      // Keep only up to 2 main studios/networks to avoid cluttering with obscure production subsidiaries
+      final filteredStudios = studios.where(isMajor).toList();
+      if (filteredStudios.isNotEmpty) {
+        studios
+          ..clear()
+          ..addAll(filteredStudios.take(2));
+      } else {
+        final top = studios.take(1).toList();
+        studios
+          ..clear()
+          ..addAll(top);
       }
     }
 
