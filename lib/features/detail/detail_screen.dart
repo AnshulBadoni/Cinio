@@ -2350,9 +2350,6 @@ class _DetailViewState extends State<_DetailView>
     final hasAnyMark = eps.any(
       (e) => store.get(item.sourceId, item.url, e.id) != null,
     );
-    final episodeNum = eps.isNotEmpty
-        ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
-        : 1;
     final resumePercent = detail.isSeries ? null : _resumePercent(eps, resumeIdx);
     final coverUrl = _seasonPosterUrl ?? detail.cover ?? item.cover ?? '';
     final heroCoverUrl = _seasonPosterUrl ?? item.heroImage ?? coverUrl;
@@ -2399,21 +2396,27 @@ class _DetailViewState extends State<_DetailView>
       buttonLabel = 'Preparing download…';
       playIcon = CupertinoIcons.arrow_down_circle;
     } else if (currentRecord != null && currentRecord.status == DownloadStatus.queued) {
-      buttonLabel = 'Download queued';
+      buttonLabel = 'Queued';
       playIcon = CupertinoIcons.clock_fill;
     } else if (currentRecord != null && currentRecord.status == DownloadStatus.paused) {
       final pct = (currentRecord.progress * 100).clamp(0, 100).round();
-      buttonLabel = 'Paused $pct%';
+      buttonLabel = pct > 0 ? 'Paused $pct%' : 'Paused';
       playIcon = CupertinoIcons.pause_circle_fill;
+    } else if (currentRecord != null && currentRecord.status == DownloadStatus.failed) {
+      buttonLabel = 'Failed';
+      playIcon = CupertinoIcons.exclamationmark_circle_fill;
+    } else if (currentRecord != null && currentRecord.status == DownloadStatus.canceled) {
+      buttonLabel = 'Canceled';
+      playIcon = CupertinoIcons.xmark_circle_fill;
     } else if (!isReading && !_viewingOnline && !isDownloaded) {
-      buttonLabel = detail.isSeries ? 'Download E$episodeNum' : 'Download';
+      buttonLabel = 'Download';
       playIcon = CupertinoIcons.arrow_down_circle;
     } else {
       playIcon = isReading ? CupertinoIcons.book_fill : CupertinoIcons.play_arrow_solid;
       buttonLabel = isReading
           ? (readResume!.hasResume ? 'Continue' : 'Read')
           : (detail.isSeries
-              ? (resume.hasResume ? 'Continue E$episodeNum' : 'Play E$episodeNum')
+              ? (resume.hasResume ? 'Continue' : 'Play')
               : (resume.hasResume
                   ? (resumePercent != null ? 'Continue $resumePercent%' : 'Continue')
                   : (_isInCinema(detail) ? 'In Cinema' : 'Play')));
@@ -2575,6 +2578,17 @@ class _DetailViewState extends State<_DetailView>
                                               widget.item.sourceId.startsWith('tpdb:'))
                                           ? () {
                                               if (currentRecord != null &&
+                                                  currentRecord.status == DownloadStatus.paused) {
+                                                sl<DownloadManager>().resume(currentRecord);
+                                                return;
+                                              }
+                                              if (currentRecord != null &&
+                                                  (currentRecord.status == DownloadStatus.failed ||
+                                                   currentRecord.status == DownloadStatus.canceled)) {
+                                                sl<DownloadManager>().retry(currentRecord);
+                                                return;
+                                              }
+                                              if (currentRecord != null &&
                                                   (currentRecord.status == DownloadStatus.downloading ||
                                                    currentRecord.status == DownloadStatus.resolving ||
                                                    currentRecord.status == DownloadStatus.queued)) {
@@ -2603,14 +2617,19 @@ class _DetailViewState extends State<_DetailView>
                                             }
                                           : null,
                                       onLongPress: () async {
-                                        if (downloadedRec != null) {
-                                          _openPlayer(eps, resumeIdx, detail, category);
-                                        } else if (widget.item.sourceId == 'tmdb:catalog' ||
-                                            widget.item.sourceId.startsWith('tpdb:')) {
-                                          final picked = await _showProviderPickerSheet(detail, category: category);
-                                          if (picked != null && mounted) {
-                                            _openPlayer(picked.detail.episodes, 0, picked.detail, category);
-                                          }
+                                        final targetEp = currentEp ??
+                                            (eps.isNotEmpty
+                                                ? eps.first
+                                                : (detail.episodes.isNotEmpty ? detail.episodes.first : null));
+                                        if (targetEp != null) {
+                                          _downloadSingle(targetEp, detail, category);
+                                        } else {
+                                          _openDownloadSheet(
+                                            detail: detail,
+                                            category: category,
+                                            episodesBySeason: episodesBySeason,
+                                            initialSeason: currentSeason,
+                                          );
                                         }
                                       },
                                       child: Center(

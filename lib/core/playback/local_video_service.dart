@@ -6,7 +6,6 @@ import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../app_mode.dart';
 import '../di/injector.dart';
 import '../hive/safe_box.dart';
 import '../metadata/theporndb.dart';
@@ -65,6 +64,26 @@ class LocalVideoItem {
 
   String get displayTitle =>
       (matchedTitle != null && matchedTitle!.isNotEmpty) ? matchedTitle! : cleanTitle;
+
+  /// Looks for a sidecar image or poster file in the same directory as the video file.
+  String? get localThumbnailPath {
+    try {
+      final file = File(path);
+      final parent = file.parent;
+      final baseName = file.uri.pathSegments.last;
+      final dot = baseName.lastIndexOf('.');
+      final stem = dot > 0 ? baseName.substring(0, dot) : baseName;
+      for (final ext in ['jpg', 'jpeg', 'png', 'webp']) {
+        final f = File('${parent.path}${Platform.pathSeparator}$stem.$ext');
+        if (f.existsSync()) return f.path;
+      }
+      for (final common in ['poster.jpg', 'cover.jpg', 'folder.jpg', 'default.jpg']) {
+        final f = File('${parent.path}${Platform.pathSeparator}$common');
+        if (f.existsSync()) return f.path;
+      }
+    } catch (_) {}
+    return null;
+  }
 
   String get extension {
     final dot = name.lastIndexOf('.');
@@ -519,8 +538,8 @@ class LocalVideoService extends ChangeNotifier {
 
       // 2. TMDB search
       if (bestMatch == null && sl.isRegistered<TmdbDiscoverService>()) {
-        final primaryType = item.isLikelySeries ? 'series' : 'movie';
-        final secondaryType = item.isLikelySeries ? 'movie' : 'series';
+        final primaryType = item.isLikelySeries ? 'series' : 'movies';
+        final secondaryType = item.isLikelySeries ? 'movies' : 'series';
 
         var tmdbResults = await sl<TmdbDiscoverService>().search(
           query: query,
@@ -533,6 +552,15 @@ class LocalVideoService extends ChangeNotifier {
           tmdbResults = await sl<TmdbDiscoverService>().search(
             query: query,
             type: secondaryType,
+          );
+          bestMatch = _findConfidentMatch(query, tmdbResults, year: item.extractedYear);
+        }
+
+        // Fallback to type 'all'
+        if (bestMatch == null) {
+          tmdbResults = await sl<TmdbDiscoverService>().search(
+            query: query,
+            type: 'all',
           );
           bestMatch = _findConfidentMatch(query, tmdbResults, year: item.extractedYear);
         }

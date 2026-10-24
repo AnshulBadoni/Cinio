@@ -202,9 +202,9 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
           }
         },
         child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 380),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
+          duration: const Duration(milliseconds: 650),
+          switchInCurve: Curves.easeInOutCubic,
+          switchOutCurve: Curves.easeInOutCubic,
           layoutBuilder: (currentChild, previousChildren) => Stack(
             fit: StackFit.expand,
             children: [

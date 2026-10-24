@@ -946,15 +946,15 @@ class _PersonPageState extends State<PersonPage> {
               final absDiff = diff.abs().clamp(0.0, 1.0);
 
               // Cinematic depth transition:
-              // 1. Subtle zoom: active image is 1.0, adjacent images ease to 0.94
-              final scale = (1.0 - absDiff * 0.06).clamp(0.92, 1.0);
+              // 1. Subtle zoom: active image is 1.0, adjacent images ease to 0.95
+              final scale = (1.0 - absDiff * 0.05).clamp(0.95, 1.0);
 
               // 2. Gentle parallax translation giving deep cinematic perspective
               final cardWidth = MediaQuery.of(context).size.width;
-              final parallaxX = -diff * cardWidth * 0.20;
+              final parallaxX = -diff * cardWidth * 0.25;
 
-              // 3. Smooth soft crossfade
-              final opacity = (1.0 - absDiff * 0.35).clamp(0.0, 1.0);
+              // 3. Smooth soft crossfade: active image is 1.0, adjacent fades cleanly to 0
+              final opacity = (1.0 - absDiff).clamp(0.0, 1.0);
 
               return Transform.translate(
                 offset: Offset(parallaxX, 0),

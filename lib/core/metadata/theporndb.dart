@@ -236,7 +236,7 @@ class ThePornDb {
     final isSearch = query != null && query.trim().isNotEmpty;
     final data = await _get('/performers', queryParameters: {
       'page': page,
-      'per_page': 28,
+      'per_page': 36,
       'orderBy': orderBy,
       if (isSearch) 'q': query.trim(),
     });
@@ -253,7 +253,7 @@ class ThePornDb {
       try {
         final nextData = await _get('/performers', queryParameters: {
           'page': page + 1,
-          'per_page': 28,
+          'per_page': 36,
           'orderBy': orderBy,
         });
         final nextRows = nextData['data'];
@@ -261,7 +261,7 @@ class ThePornDb {
           for (final row in nextRows) {
             if (row is Map && _qualifiesAsActor(row, requireRating: false)) {
               list.add(_performer(row));
-              if (list.length >= 24) break;
+              if (list.length >= 28) break;
             }
           }
         }
@@ -292,8 +292,8 @@ class ThePornDb {
     if (sps is List) {
       double? best;
       for (final s in sps) {
-        if (s is Map && s['rating'] != null) {
-          final sr = double.tryParse('${s['rating']}');
+        if (s is Map) {
+          final sr = double.tryParse('${s['rating'] ?? (s['site'] is Map ? s['site']['rating'] : null) ?? ''}');
           if (sr != null && sr > 0) {
             if (best == null || sr > best) best = sr;
           }

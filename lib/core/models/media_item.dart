@@ -38,12 +38,9 @@ class MediaItem extends Equatable {
   final String? quality;
 
   /// Browse-time catalog rating, when a catalog source exposes one.
-  @JsonKey(includeFromJson: false, includeToJson: false)
   final double? rating;
 
-  /// Browse-time release/first-air year for catalog cards. It is intentionally
-  /// not persisted with My List data.
-  @JsonKey(includeFromJson: false, includeToJson: false)
+  /// Browse-time release/first-air year for catalog cards.
   final String? year;
 
   /// "SUB", "DUB" or "SUB DUB" — what an anime listing offers, for the poster

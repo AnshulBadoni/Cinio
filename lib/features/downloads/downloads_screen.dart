@@ -620,10 +620,10 @@ class _DownloadsScreenState extends State<DownloadsScreen>
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        const columns = 3;
+        final columns = constraints.maxWidth < 600 ? 2 : (constraints.maxWidth < 900 ? 3 : 4);
         const gap = 12.0;
         final hideTitles = sl<PlaybackPrefs>().hideTitles;
-        final ratio = hideTitles ? (2 / 3) : 0.58;
+        final ratio = hideTitles ? (2 / 3) : 0.62;
         final cardWidth =
             (constraints.maxWidth - 32 - gap * (columns - 1)) / columns;
         final cardHeight = cardWidth / ratio;
@@ -884,10 +884,10 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    const columns = 3;
+                    final columns = constraints.maxWidth < 600 ? 2 : (constraints.maxWidth < 900 ? 3 : 4);
                     const gap = 12.0;
                     final hideTitles = sl<PlaybackPrefs>().hideTitles;
-                    final ratio = hideTitles ? (2 / 3) : 0.58;
+                    final ratio = hideTitles ? (2 / 3) : 0.62;
                     final cardWidth =
                         (constraints.maxWidth - gap * (columns - 1)) / columns;
                     final cardHeight = cardWidth / ratio;
@@ -1149,10 +1149,16 @@ class _LocalVideoCard extends StatelessWidget {
                 children: [
                   if (hasPoster)
                     CachedNetworkImage(
-                      imageUrl: poster!,
+                      imageUrl: poster,
                       fit: BoxFit.cover,
                       errorWidget: (_, __, ___) => _buildFallbackPoster(),
                       placeholder: (_, __) => _buildFallbackPoster(),
+                    )
+                  else if (item.localThumbnailPath != null)
+                    Image.file(
+                      File(item.localThumbnailPath!),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _buildFallbackPoster(),
                     )
                   else
                     _buildFallbackPoster(),

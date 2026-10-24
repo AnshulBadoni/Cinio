@@ -1069,11 +1069,17 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
         ? (ep.number! == ep.number!.toInt() ? ep.number!.toInt() : ep.number!)
         : null;
     final seasonNum = ep.season ?? seasonOf(ep);
-    final epTag = (seasonNum != null && epNum != null)
-        ? 'S$seasonNum E$epNum'
-        : (epNum != null
-            ? 'E$epNum'
-            : (widget.item.tmdbIsTv ? 'Episode' : 'Movie'));
+    final isSeries = widget.detail.isSeries || widget.item.tmdbIsTv;
+    final String? epTag;
+    if (!isSeries) {
+      epTag = null;
+    } else if (seasonNum != null && epNum != null) {
+      epTag = 'S$seasonNum E$epNum';
+    } else if (epNum != null) {
+      epTag = 'E$epNum';
+    } else {
+      epTag = null;
+    }
 
     final epTitle = episodeDisplayTitle(ep) ??
         (ep.title.trim().isNotEmpty ? ep.title.trim() : null);
@@ -1180,29 +1186,17 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (epTag.isNotEmpty) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 2.5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF38BDF8).withValues(alpha: 0.20),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: const Color(0xFF38BDF8).withValues(alpha: 0.50),
-                        width: 0.8,
-                      ),
-                    ),
-                    child: Text(
-                      epTag,
-                      style: const TextStyle(
-                        color: Color(0xFF38BDF8),
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                      ),
+                if (epTag != null && epTag.isNotEmpty) ...[
+                  Text(
+                    epTag,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.2,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                 ],
                 if (epTitle != null) ...[
                   Text(

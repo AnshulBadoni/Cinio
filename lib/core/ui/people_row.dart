@@ -131,6 +131,25 @@ class _PersonCardState extends State<_PersonCard> {
                 overflow: TextOverflow.ellipsis,
                 style: AppText.caption.copyWith(color: AppColors.textPrimary),
               ),
+              if (widget.item.rating != null && widget.item.rating! > 0) ...[
+                const SizedBox(height: 2),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.star_rounded, size: 12, color: Color(0xFFFFB800)),
+                    const SizedBox(width: 3),
+                    Text(
+                      widget.item.rating!.toStringAsFixed(1),
+                      style: AppText.caption.copyWith(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
