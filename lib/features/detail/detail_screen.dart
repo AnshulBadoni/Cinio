@@ -2512,43 +2512,31 @@ class _DetailViewState extends State<_DetailView>
                                 ),
                                 const SizedBox(width: 10),
                                 if (downloadedRec != null || widget.fromDownloads) ...[
-                                  OutlinedButton.icon(
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: _viewingOnline ? AppColors.accent : Colors.white,
-                                      side: BorderSide(
-                                        color: _viewingOnline
-                                            ? AppColors.accent
-                                            : Colors.white.withValues(alpha: 0.28),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(24),
-                                      ),
-                                    ),
-                                    icon: Icon(
-                                      _viewingOnline
-                                          ? Icons.offline_pin_outlined
-                                          : Icons.cloud_outlined,
-                                      size: 18,
-                                    ),
-                                    label: Text(
-                                      _viewingOnline ? 'Downloaded' : 'View Online',
-                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                                    ),
+                                  _buildSmallActionBtn(
+                                    icon: _viewingOnline
+                                        ? CupertinoIcons.cloud_fill
+                                        : CupertinoIcons.arrow_down_circle_fill,
+                                    tooltip: _viewingOnline
+                                        ? 'View Online'
+                                        : 'Downloaded (Tap for Online)',
+                                    active: _viewingOnline,
                                     onPressed: () {
                                       setState(() => _viewingOnline = !_viewingOnline);
+                                      if (_viewingOnline) {
+                                        context.read<DetailCubit>().load();
+                                      }
                                       ScaffoldMessenger.of(context).clearSnackBars();
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         SnackBar(
                                           content: Text(_viewingOnline
                                               ? 'Switched to Online mode'
-                                              : 'Switched to Downloaded (Offline) mode'),
+                                              : 'Switched to Downloaded mode'),
                                           duration: const Duration(seconds: 2),
                                         ),
                                       );
                                     },
                                   ),
-                                  const SizedBox(width: 8),
+                                  const SizedBox(width: 10),
                                 ],
                                 AnimatedSize(
                                   duration: const Duration(milliseconds: 300),
@@ -3425,6 +3413,9 @@ class _DetailViewState extends State<_DetailView>
                       ),
                       onPressed: () {
                         setState(() => _viewingOnline = !_viewingOnline);
+                        if (_viewingOnline) {
+                          context.read<DetailCubit>().load();
+                        }
                       },
                     ),
                     const SizedBox(width: 8),

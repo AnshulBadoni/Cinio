@@ -9,7 +9,6 @@ import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/playback/local_video_service.dart';
-import '../../core/ui/cinio_title_style.dart';
 import '../detail/detail_screen.dart';
 import '../../core/ui/settings_widgets.dart';
 
@@ -18,7 +17,6 @@ import '../../core/di/injector.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_prefs.dart';
 import '../../core/download/download_record.dart';
-import '../../core/mode/content_mode.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -56,7 +54,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   String _query = '';
   String _localQuery = '';
 
-  int _selectedTab = 0; // 0: Local Videos, 1: Downloads
+  int _selectedTab = 0; // 0: Downloads, 1: Local Videos
   late final PageController _pageController;
 
   /// Show ids the user has expanded. Empty = all collapsed (the default).
@@ -304,8 +302,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                     controller: _pageController,
                     onPageChanged: (i) => setState(() => _selectedTab = i),
                     children: [
-                      _buildLocalVideosTab(localService),
                       _buildDownloadsTab(groups, manager),
+                      _buildLocalVideosTab(localService),
                     ],
                   ),
                 ),
@@ -318,39 +316,30 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   }
 
   Widget _buildTabBar(DownloadManager manager, LocalVideoService localService) {
-    final downloadedCount =
-        manager.all.where((r) => r.status == DownloadStatus.done).length;
-    final localCount = localService.items.length;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: Container(
-        height: 42,
-        padding: const EdgeInsets.all(4),
+        height: 38,
+        padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.08),
-          ),
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           children: [
             Expanded(
               child: _tabPill(
                 index: 0,
-                label: 'Local Videos',
-                icon: CupertinoIcons.film,
-                badgeCount: localCount,
+                label: 'Downloads',
+                icon: CupertinoIcons.arrow_down_circle,
               ),
             ),
             const SizedBox(width: 4),
             Expanded(
               child: _tabPill(
                 index: 1,
-                label: 'Downloads',
-                icon: CupertinoIcons.arrow_down_circle,
-                badgeCount: downloadedCount,
+                label: 'Local Videos',
+                icon: CupertinoIcons.film,
               ),
             ),
           ],
@@ -363,7 +352,6 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     required int index,
     required String label,
     required IconData icon,
-    int? badgeCount,
   }) {
     final isSelected = _selectedTab == index;
     return GestureDetector(
@@ -372,23 +360,19 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           setState(() => _selectedTab = index);
           _pageController.animateToPage(
             index,
-            duration: const Duration(milliseconds: 260),
+            duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
           );
         }
       },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 160),
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.accent.withValues(alpha: 0.22)
+              ? Colors.white.withValues(alpha: 0.12)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(18),
-          border: isSelected
-              ? Border.all(
-                  color: AppColors.accent.withValues(alpha: 0.5), width: 1.2)
-              : null,
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Center(
           child: Row(
@@ -396,37 +380,18 @@ class _DownloadsScreenState extends State<DownloadsScreen>
             children: [
               Icon(
                 icon,
-                size: 15.5,
-                color: isSelected ? AppColors.accent : Colors.white60,
+                size: 15,
+                color: isSelected ? Colors.white : Colors.white54,
               ),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.white60,
+                  color: isSelected ? Colors.white : Colors.white54,
                   fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),
-              if (badgeCount != null && badgeCount > 0) ...[
-                const SizedBox(width: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                  decoration: BoxDecoration(
-                    color: isSelected ? AppColors.accent : Colors.white12,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$badgeCount',
-                    style: TextStyle(
-                      color: isSelected ? Colors.black : Colors.white70,
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -1058,30 +1023,28 @@ class _LocalVideoCard extends StatelessWidget {
 
   Widget _buildFallbackPoster() {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-        ),
-      ),
+      color: AppColors.surface2,
       padding: const EdgeInsets.all(10),
       child: Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
+            const Icon(
               Icons.video_file_outlined,
-              size: 34,
-              color: AppColors.accent.withValues(alpha: 0.65),
+              size: 32,
+              color: Colors.white38,
             ),
             const SizedBox(height: 8),
-            cinioFallbackTitle(
-              title: item.cleanTitle,
-              seed: item.path,
-              accent: AppColors.accent,
-              fontSize: 13,
+            Text(
+              item.cleanTitle,
+              textAlign: TextAlign.center,
               maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70,
+              ),
             ),
           ],
         ),
@@ -1209,61 +1172,13 @@ class _LocalVideoCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (item.matchedRating != null && item.matchedRating! > 0)
-                    Positioned(
-                      top: 7,
-                      right: 7,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.75),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.white24, width: 0.8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.star_rounded, size: 11, color: Color(0xFFFBBF24)),
-                            const SizedBox(width: 2.5),
-                            Text(
-                              item.matchedRating!.toStringAsFixed(1),
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  Positioned(
-                    top: 7,
-                    left: 7,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.accent.withValues(alpha: 0.85),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: Text(
-                        item.extension,
-                        style: const TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ),
-                  ),
                   Center(
                     child: Container(
-                      width: 38,
-                      height: 38,
+                      width: 36,
+                      height: 36,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.black.withValues(alpha: 0.45),
-                        border: Border.all(color: Colors.white30, width: 1.2),
+                        color: Colors.black.withValues(alpha: 0.5),
                       ),
                       child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
                     ),
@@ -1286,6 +1201,7 @@ class _LocalVideoCard extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             [
+              item.extension,
               if (item.formattedSize.isNotEmpty) item.formattedSize,
               if (item.matchedYear != null) item.matchedYear,
             ].join(' · '),
@@ -1416,32 +1332,16 @@ class _LocalVideoListTile extends StatelessWidget {
       ),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 4),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1.5),
-              decoration: BoxDecoration(
-                color: AppColors.accent.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                item.extension,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.accent,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              [
-                if (item.formattedSize.isNotEmpty) item.formattedSize,
-                if (item.matchedYear != null) item.matchedYear,
-              ].join(' · '),
-              style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6)),
-            ),
-          ],
+        child: Text(
+          [
+            item.extension,
+            if (item.formattedSize.isNotEmpty) item.formattedSize,
+            if (item.matchedYear != null) item.matchedYear,
+          ].join(' · '),
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.white.withValues(alpha: 0.6),
+          ),
         ),
       ),
       trailing: Row(
@@ -1572,6 +1472,7 @@ class _DownloadShowCard extends StatelessWidget {
     )).toList();
 
     final isTv = records.length > 1 || head.episodeNumber != null;
+    final parsedTmdbId = int.tryParse(head.showId);
     final mediaItem = MediaItem(
       id: head.showId,
       title: head.showTitle,
@@ -1580,6 +1481,8 @@ class _DownloadShowCard extends StatelessWidget {
       cover: head.cover,
       coverHeaders: head.coverHeaders,
       type: ProviderType.movie,
+      tmdbId: parsedTmdbId,
+      malId: head.malId,
       tmdbIsTv: isTv,
     );
 
@@ -1591,6 +1494,8 @@ class _DownloadShowCard extends StatelessWidget {
       cover: head.cover,
       coverHeaders: head.coverHeaders,
       type: ProviderType.movie,
+      tmdbId: parsedTmdbId,
+      malId: head.malId,
       episodes: episodes,
       isSeries: isTv,
       tmdbIsTv: isTv,
@@ -1856,6 +1761,7 @@ class _ShowGroup extends StatelessWidget {
     )).toList();
 
     final isTv = records.length > 1 || head.episodeNumber != null;
+    final parsedTmdbId = int.tryParse(head.showId);
     final mediaItem = MediaItem(
       id: head.showId,
       title: head.showTitle,
@@ -1864,6 +1770,8 @@ class _ShowGroup extends StatelessWidget {
       cover: head.cover,
       coverHeaders: head.coverHeaders,
       type: ProviderType.movie,
+      tmdbId: parsedTmdbId,
+      malId: head.malId,
       tmdbIsTv: isTv,
     );
 
@@ -1875,6 +1783,8 @@ class _ShowGroup extends StatelessWidget {
       cover: head.cover,
       coverHeaders: head.coverHeaders,
       type: ProviderType.movie,
+      tmdbId: parsedTmdbId,
+      malId: head.malId,
       episodes: episodesList,
       isSeries: isTv,
       tmdbIsTv: isTv,

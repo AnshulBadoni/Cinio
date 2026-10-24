@@ -348,22 +348,6 @@ class DetailCubit extends Cubit<DetailState> {
 
   Future<MediaDetail> _loadDetailForCurrentSource(String category) async {
     final sid = _effectiveSourceId;
-    final isCatalog = sid == 'tmdb:catalog' ||
-        (sid?.startsWith('tpdb:') ?? false);
-    if (!isCatalog) {
-      try {
-        return await _repo.detail(_url, category: category, sourceId: sid);
-      } catch (_) {
-        final catDetail = _catalogDetail;
-        if (catDetail != null) return catDetail;
-        if (_catalogItem != null) {
-          final shell = _shellDetail(_catalogItem, sid, _url);
-          if (shell != null) return shell;
-        }
-        rethrow;
-      }
-    }
-
     final catalogItem = _catalogItem ?? MediaItem(
       id: _catalogDetail?.id ?? _url,
       title: _catalogDetail?.title ?? _url,
@@ -375,25 +359,63 @@ class DetailCubit extends Cubit<DetailState> {
       tmdbId: _catalogDetail?.tmdbId,
       tmdbIsTv: _catalogDetail?.tmdbIsTv ?? false,
     );
-    final catDetail = _catalogDetail;
-    if (catDetail != null) return catDetail;
+    final isCatalog = sid == 'tmdb:catalog' ||
+        (sid?.startsWith('tpdb:') ?? false);
+    if (!isCatalog) {
+      if (_url.isNotEmpty && !_url.startsWith('tmdb:')) {
+        try {
+          return await _repo.detail(_url, category: category, sourceId: sid);
+        } catch (_) {}
+      }
+      final tid = _catalogDetail?.tmdbId ?? _catalogItem?.tmdbId;
+      if (tid != null && tid > 0) {
+        try {
+          return await sl<TmdbDiscoverService>().movieDetail(catalogItem);
+        } catch (_) {}
+      }
+      final catDetail = _catalogDetail;
+      if (catDetail != null) return catDetail;
+      final shell = _shellDetail(catalogItem, sid, _url);
+      if (shell != null) return shell;
+      throw Exception('Failed to load detail');
+    }
 
-    if (sid == 'tmdb:catalog') {
+    final catDetail = _catalogDetail;
+    final isSyntheticDownloadDetail = catDetail != null &&
+        (catDetail.description?.startsWith('Downloaded on this device') ?? false);
+
+    // If we have a complete non-synthetic detail from an existing screen transition, reuse it.
+    if (catDetail != null && !isSyntheticDownloadDetail && catDetail.availableSeasons.isNotEmpty) {
+      return catDetail;
+    }
+
+    if (sid == 'tmdb:catalog' ||
+        (_catalogItem?.tmdbId != null && _catalogItem!.tmdbId! > 0) ||
+        (_catalogDetail?.tmdbId != null && _catalogDetail!.tmdbId! > 0)) {
       try {
         return await sl<TmdbDiscoverService>().movieDetail(catalogItem);
       } catch (_) {
+        if (catDetail != null) return catDetail;
         final shell = _shellDetail(catalogItem, sid, _url);
         if (shell != null) return shell;
         rethrow;
       }
     }
-    try {
-      return await sl<ThePornDb>().movieDetail(catalogItem);
-    } catch (_) {
-      final shell = _shellDetail(catalogItem, sid, _url);
-      if (shell != null) return shell;
-      rethrow;
+    if (sid?.startsWith('tpdb:') ?? false) {
+      try {
+        return await sl<ThePornDb>().movieDetail(catalogItem);
+      } catch (_) {
+        if (catDetail != null) return catDetail;
+        final shell = _shellDetail(catalogItem, sid, _url);
+        if (shell != null) return shell;
+        rethrow;
+      }
     }
+
+    if (catDetail != null) return catDetail;
+    final shell = _shellDetail(catalogItem, sid, _url);
+    if (shell != null) return shell;
+    throw Exception('Failed to load detail');
   }
 
   /// Pull-to-refresh. Drops the source's HTTP cache first so the re-fetch is

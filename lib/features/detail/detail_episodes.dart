@@ -2032,17 +2032,9 @@ class _SeasonPosterRowState extends State<_SeasonPosterRow> {
                         color: isSelected
                             ? AppColors.accent
                             : Colors.white.withValues(alpha: 0.12),
-                        width: isSelected ? 2.5 : 1.0,
+                        width: isSelected ? 2.0 : 1.0,
+                        strokeAlign: BorderSide.strokeAlignInside,
                       ),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: AppColors.accent.withValues(alpha: 0.35),
-                                blurRadius: 8,
-                                spreadRadius: 1,
-                              ),
-                            ]
-                          : null,
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
@@ -2387,21 +2379,14 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
                   border: Border.all(
                     color: borderColor,
                     width: (widget.highlight || widget.isResume) ? 1.8 : 1.0,
+                    strokeAlign: BorderSide.strokeAlignInside,
                   ),
-                  boxShadow: widget.highlight
-                      ? [
-                          BoxShadow(
-                            color: AppColors.accent.withValues(alpha: 0.4),
-                            blurRadius: 10,
-                            spreadRadius: 1,
-                          ),
-                        ]
-                      : null,
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(11),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
                     // 1. Thumbnail image
                     thumbUrl.isNotEmpty
                         ? Image(
@@ -2644,6 +2629,7 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
       ),
     ),
   ),
+),
 );
   }
 }
