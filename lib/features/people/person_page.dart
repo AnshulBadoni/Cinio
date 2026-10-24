@@ -71,7 +71,6 @@ class _PersonPageState extends State<PersonPage> {
   final ScrollController _scrollController = ScrollController();
   final ValueNotifier<double> _heroStretch = ValueNotifier<double>(0.0);
   final ValueNotifier<double> _scrollOffset = ValueNotifier<double>(0.0);
-  late final PageController _pageController;
   int _currentPhotoIndex = 0;
   bool _showAppBarTitle = false;
   String? _selectedPhotoUrl;
@@ -91,7 +90,6 @@ class _PersonPageState extends State<PersonPage> {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
     _isFav = sl<FavoritePeopleStore>().isFavorite(widget.person);
     _scrollController.addListener(_onScroll);
     _loadProfile();
@@ -102,14 +100,16 @@ class _PersonPageState extends State<PersonPage> {
     _lastPhotoCount = photoCount;
     _carouselTimer?.cancel();
     if (photoCount <= 1) return;
-    _carouselTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      if (!mounted || !_pageController.hasClients) return;
-      final nextPage = (_currentPhotoIndex + 1) % photoCount;
-      _pageController.animateToPage(
-        nextPage,
-        duration: const Duration(milliseconds: 700),
-        curve: Curves.easeInOutCubic,
-      );
+    _carouselTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (!mounted) return;
+      if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+      setState(() {
+        _currentPhotoIndex = (_currentPhotoIndex + 1) % photoCount;
+        final photos = _profile?.photos;
+        if (photos != null && _currentPhotoIndex < photos.length) {
+          _selectedPhotoUrl = photos[_currentPhotoIndex];
+        }
+      });
     });
   }
 
@@ -120,7 +120,6 @@ class _PersonPageState extends State<PersonPage> {
   @override
   void dispose() {
     _carouselTimer?.cancel();
-    _pageController.dispose();
     _heroStretch.dispose();
     _scrollOffset.dispose();
     _scrollController.removeListener(_onScroll);
@@ -897,80 +896,75 @@ class _PersonPageState extends State<PersonPage> {
           if (mounted) _startCarouselTimer(photos.length);
         });
       }
-      content = PageView.builder(
-        controller: _pageController,
-        physics: const BouncingScrollPhysics(),
-        itemCount: photos.length,
-        onPageChanged: (i) {
-          if (mounted) {
+      content = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragEnd: (d) {
+          final v = d.primaryVelocity ?? 0;
+          if (v < -80) {
             setState(() {
-              _currentPhotoIndex = i;
-              _selectedPhotoUrl = photos[i];
+              _currentPhotoIndex = (_currentPhotoIndex + 1) % photos.length;
+              _selectedPhotoUrl = photos[_currentPhotoIndex];
+            });
+            _resetCarouselTimer(photos.length);
+          } else if (v > 80) {
+            setState(() {
+              _currentPhotoIndex =
+                  (_currentPhotoIndex - 1 + photos.length) % photos.length;
+              _selectedPhotoUrl = photos[_currentPhotoIndex];
             });
             _resetCarouselTimer(photos.length);
           }
         },
-        itemBuilder: (context, index) {
-          final img = CachedNetworkImage(
-            imageUrl: photos[index],
-            fit: BoxFit.cover,
-            alignment: const Alignment(0, -0.20),
-            memCacheWidth: 1080,
-            placeholder: (_, _) => Container(color: AppColors.surface2),
-            errorWidget: (_, _, _) => Container(color: AppColors.surface2),
-          );
-
-          final card = index == 0
-              ? Hero(
-                  tag: effectiveHeroTag,
-                  flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
-                    return Material(
-                      color: Colors.transparent,
-                      child: toHeroContext.widget,
-                    );
-                  },
-                  child: img,
-                )
-              : img;
-
-          return AnimatedBuilder(
-            animation: _pageController,
-            builder: (context, child) {
-              double page = _currentPhotoIndex.toDouble();
-              if (_pageController.hasClients &&
-                  _pageController.position.haveDimensions &&
-                  _pageController.page != null) {
-                page = _pageController.page!;
-              }
-              final diff = index - page;
-              final absDiff = diff.abs().clamp(0.0, 1.0);
-
-              // Cinematic depth transition:
-              // 1. Subtle zoom: active image is 1.0, adjacent images ease to 0.95
-              final scale = (1.0 - absDiff * 0.05).clamp(0.95, 1.0);
-
-              // 2. Gentle parallax translation giving deep cinematic perspective
-              final cardWidth = MediaQuery.of(context).size.width;
-              final parallaxX = -diff * cardWidth * 0.25;
-
-              // 3. Smooth soft crossfade: active image is 1.0, adjacent fades cleanly to 0
-              final opacity = (1.0 - absDiff).clamp(0.0, 1.0);
-
-              return Transform.translate(
-                offset: Offset(parallaxX, 0),
-                child: Transform.scale(
-                  scale: scale,
-                  alignment: Alignment.center,
-                  child: Opacity(
-                    opacity: opacity,
-                    child: child,
-                  ),
-                ),
-              );
-            },
-            child: SizedBox.expand(child: card),
-          );
-        },
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 650),
+          switchInCurve: Curves.easeInOutCubic,
+          switchOutCurve: Curves.easeInOutCubic,
+          layoutBuilder: (currentChild, previousChildren) => Stack(
+            fit: StackFit.expand,
+            children: [
+              ...previousChildren,
+              if (currentChild != null) currentChild,
+            ],
+          ),
+          transitionBuilder: (child, anim) =>
+              FadeTransition(opacity: anim, child: child),
+          child: KeyedSubtree(
+            key: ValueKey(_currentPhotoIndex),
+            child: SizedBox.expand(
+              child: _currentPhotoIndex == 0
+                  ? Hero(
+                      tag: effectiveHeroTag,
+                      flightShuttleBuilder: (flightContext, animation,
+                          flightDirection, fromHeroContext, toHeroContext) {
+                        return Material(
+                          color: Colors.transparent,
+                          child: toHeroContext.widget,
+                        );
+                      },
+                      child: CachedNetworkImage(
+                        imageUrl: photos[_currentPhotoIndex],
+                        fit: BoxFit.cover,
+                        alignment: const Alignment(0, -0.20),
+                        memCacheWidth: 1080,
+                        placeholder: (_, _) =>
+                            Container(color: AppColors.surface2),
+                        errorWidget: (_, _, _) =>
+                            Container(color: AppColors.surface2),
+                      ),
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: photos[_currentPhotoIndex],
+                      fit: BoxFit.cover,
+                      alignment: const Alignment(0, -0.20),
+                      memCacheWidth: 1080,
+                      placeholder: (_, _) =>
+                          Container(color: AppColors.surface2),
+                      errorWidget: (_, _, _) =>
+                          Container(color: AppColors.surface2),
+                    ),
+            ),
+          ),
+        ),
       );
     }
 
@@ -1218,18 +1212,11 @@ class _PersonPageState extends State<PersonPage> {
           return GestureDetector(
             onTap: () {
               if (_currentPhotoIndex != idx) {
-                if (_pageController.hasClients) {
-                  _pageController.animateToPage(
-                    idx,
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOutCubic,
-                  );
-                } else {
-                  setState(() {
-                    _currentPhotoIndex = idx;
-                    _selectedPhotoUrl = photo;
-                  });
-                }
+                setState(() {
+                  _currentPhotoIndex = idx;
+                  _selectedPhotoUrl = photo;
+                });
+                _resetCarouselTimer(photos.length);
               }
             },
             behavior: HitTestBehavior.opaque,

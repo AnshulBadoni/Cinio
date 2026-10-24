@@ -158,9 +158,21 @@ class HomeCubit extends Cubit<HomeState> {
         if (uniqueNewItems.isEmpty) return s;
         addedCount = uniqueNewItems.length;
 
+        final combined = [...s.items, ...uniqueNewItems];
+        if (s.title.toLowerCase().contains('actor') || s.more?.kind == 'tpdb_performers') {
+          combined.sort((a, b) {
+            final ra = a.rating;
+            final rb = b.rating;
+            if (ra != null && rb != null) return rb.compareTo(ra);
+            if (ra != null && rb == null) return -1;
+            if (ra == null && rb != null) return 1;
+            return 0;
+          });
+        }
+
         return HomeSection(
           title: s.title,
-          items: List<MediaItem>.unmodifiable([...s.items, ...uniqueNewItems]),
+          items: List<MediaItem>.unmodifiable(combined),
           more: s.more,
         );
       }

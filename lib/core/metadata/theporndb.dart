@@ -236,7 +236,7 @@ class ThePornDb {
     final isSearch = query != null && query.trim().isNotEmpty;
     final data = await _get('/performers', queryParameters: {
       'page': page,
-      'per_page': 36,
+      'per_page': 50,
       'orderBy': orderBy,
       if (isSearch) 'q': query.trim(),
     });
@@ -244,30 +244,32 @@ class ThePornDb {
     if (rows is! List) return const [];
     final list = <MediaItem>[];
     for (final row in rows) {
-      if (row is Map && _qualifiesAsActor(row, requireRating: false)) {
+      if (row is Map && _qualifiesAsActor(row, requireRating: !isSearch)) {
         list.add(_performer(row));
       }
     }
-    // Replenish if filter reduced count on normal browse
-    if (list.length < 16 && !isSearch && rows.length >= 20) {
-      try {
-        final nextData = await _get('/performers', queryParameters: {
-          'page': page + 1,
-          'per_page': 36,
-          'orderBy': orderBy,
-        });
-        final nextRows = nextData['data'];
-        if (nextRows is List) {
-          for (final row in nextRows) {
-            if (row is Map && _qualifiesAsActor(row, requireRating: false)) {
-              list.add(_performer(row));
-              if (list.length >= 28) break;
+    // Replenish if filter reduced count on normal browse so row is full of mainstream rated actors
+    if (list.length < 24 && !isSearch && rows.isNotEmpty) {
+      for (var p = page + 1; p <= page + 3 && list.length < 24; p++) {
+        try {
+          final nextData = await _get('/performers', queryParameters: {
+            'page': p,
+            'per_page': 50,
+            'orderBy': orderBy,
+          });
+          final nextRows = nextData['data'];
+          if (nextRows is List) {
+            for (final row in nextRows) {
+              if (row is Map && _qualifiesAsActor(row, requireRating: !isSearch)) {
+                list.add(_performer(row));
+                if (list.length >= 28) break;
+              }
             }
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
     }
-    // Sort performers with highest rating first, decreasing, then unrated at last
+    // Sort performers with highest rating first, decreasing from the start
     list.sort((a, b) {
       final ra = a.rating;
       final rb = b.rating;
@@ -278,6 +280,60 @@ class ThePornDb {
     });
 
     return list;
+  }
+
+  int _extractPerformerVideoCount(Map row) {
+    for (final key in [
+      'scenes_count',
+      'videos_count',
+      'scene_count',
+      'video_count',
+      'movies_count',
+      'total_scenes',
+      'scenesCount',
+      'videosCount',
+      'count',
+    ]) {
+      final val = row[key];
+      if (val is num && val > 0) return val.toInt();
+      if (val != null) {
+        final parsed = int.tryParse(val.toString());
+        if (parsed != null && parsed > 0) return parsed;
+      }
+    }
+    final extras = row['extras'];
+    if (extras is Map) {
+      for (final key in [
+        'scenes_count',
+        'videos_count',
+        'scene_count',
+        'video_count',
+        'movies_count',
+      ]) {
+        final val = extras[key];
+        if (val is num && val > 0) return val.toInt();
+        if (val != null) {
+          final parsed = int.tryParse(val.toString());
+          if (parsed != null && parsed > 0) return parsed;
+        }
+      }
+    }
+    final scenes = row['scenes'];
+    if (scenes is List && scenes.isNotEmpty) return scenes.length;
+    final sps = row['site_performers'];
+    if (sps is List && sps.isNotEmpty) return sps.length;
+
+    // Check if explicitly 0
+    if (row['scenes_count'] == 0 || row['videos_count'] == 0 || row['movies_count'] == 0) {
+      return 0;
+    }
+    if (extras is Map && (extras['scenes_count'] == 0 || extras['videos_count'] == 0)) {
+      return 0;
+    }
+    if (sps is List && sps.isEmpty) return 0;
+    if (scenes is List && scenes.isEmpty) return 0;
+
+    return 1;
   }
 
   double? _extractPerformerRating(Map row) {
@@ -307,6 +363,23 @@ class ThePornDb {
   bool _qualifiesAsActor(Map row, {bool requireRating = true}) {
     if (!_shouldFilter) return true;
     final rating = _extractPerformerRating(row);
+
+    // User request: remove non-rated ones
+    if (requireRating && (rating == null || rating <= 0)) {
+      return false;
+    }
+
+    // User request: mainstream performers not with 0 videos
+    if (_extractPerformerVideoCount(row) <= 0) {
+      return false;
+    }
+
+    // Mainstream performers must have an official poster / photo
+    final poster = _extractPerformerPoster(row) ?? _firstImage(row) ?? _extractUrl(row['image']) ?? _extractUrl(row['thumbnail']) ?? _extractUrl(row['face']);
+    if (poster == null || poster.isEmpty) {
+      return false;
+    }
+
     final extras = row['extras'];
     final gender = '${row['gender'] ?? (extras is Map ? extras['gender'] : '')}'.trim().toUpperCase();
     final birthday = row['birthday'] ?? (extras is Map ? extras['birthday'] : null);
@@ -315,9 +388,6 @@ class ThePornDb {
     final derivedAge = age ?? (born != null && born.length >= 4
         ? (DateTime.now().year - (int.tryParse(born.substring(0, 4)) ?? DateTime.now().year)).toDouble()
         : null);
-    final ratingOk = requireRating
-        ? (rating != null && rating >= 4.0)
-        : (rating == null || rating >= 4.0);
 
     final name = (row['name'] ?? row['full_name'] ?? '').toString();
     if (_excludedTitleRegex.hasMatch(name)) return false;
@@ -334,8 +404,7 @@ class ThePornDb {
       return false;
     }
 
-    return ratingOk &&
-        (gender.isEmpty || gender == 'FEMALE' || gender == 'F') &&
+    return (gender.isEmpty || gender == 'FEMALE' || gender == 'F') &&
         (derivedAge == null || derivedAge < 50);
   }
 
