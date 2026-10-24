@@ -20,8 +20,21 @@ class PeopleService {
   final Map<int, List<PersonWork>> _tmdbCompanyCreditsCache = {};
   final Map<String, int> _tmdbResolvedCompanyIds = {};
   final Map<String, String> _tpdbResolvedIds = {};
+  final Map<String, PersonProfile> _profileCache = {};
 
-  Future<PersonProfile?> load(PersonRef ref) {
+  Future<PersonProfile?> load(PersonRef ref) async {
+    final cacheKey = '${ref.source.name}:${ref.externalId ?? ref.id}:${ref.name.trim().toLowerCase()}';
+    if (_profileCache.containsKey(cacheKey)) {
+      return _profileCache[cacheKey];
+    }
+    final profile = await _loadDirect(ref);
+    if (profile != null) {
+      _profileCache[cacheKey] = profile;
+    }
+    return profile;
+  }
+
+  Future<PersonProfile?> _loadDirect(PersonRef ref) {
     switch (ref.source) {
       case PersonSource.anilistCharacter:
         return _character(ref.id);
@@ -174,25 +187,29 @@ class PeopleService {
       if (fallbackName != null) _tpdbResolvedIds[fallbackName] = resolvedId;
 
       final relatedMap = <String, PersonRef>{};
-      final works = await _tpdbPerformerWorks(
+      final providerVideos = <PersonWork>[];
+
+      // Run movies works & scenes in parallel for fast loading
+      final futureWorks = _tpdbPerformerWorks(
         resolvedId,
         page: 1,
         relatedMap: relatedMap,
         currentPerformerName: name,
       );
 
-      // Fetch scenes for wide 16:9 cards and related co-performers
-      final providerVideos = <PersonWork>[];
-      try {
-        final scenesRes = await _dio.get<dynamic>(
-          '$_tpdbBase/scenes',
-          queryParameters: {
-            'q': name,
-            'per_page': 30,
-            'orderBy': 'most_relevant',
-          },
-          options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
-        );
+      final futureScenes = _dio.get<dynamic>(
+        '$_tpdbBase/scenes',
+        queryParameters: {
+          'q': name,
+          'per_page': 24,
+          'orderBy': 'most_relevant',
+        },
+        options: Options(
+          headers: {'Authorization': 'Bearer $_tpdbKey'},
+          receiveTimeout: const Duration(seconds: 6),
+          sendTimeout: const Duration(seconds: 6),
+        ),
+      ).then<void>((scenesRes) {
         final sceneRows = scenesRes.data is Map ? scenesRes.data['data'] : null;
         if (sceneRows is List) {
           for (final s in sceneRows) {
@@ -221,7 +238,10 @@ class PeopleService {
                 if (p is! Map) continue;
                 final pName = (p['name'] ?? p['full_name'])?.toString();
                 final pId = (p['id'] ?? p['_id'] ?? p['slug'])?.toString();
-                if (pName != null && pName.isNotEmpty && pName.toLowerCase() != name.toLowerCase() && pId != null) {
+                if (pName != null &&
+                    pName.isNotEmpty &&
+                    pName.toLowerCase() != name.toLowerCase() &&
+                    pId != null) {
                   relatedMap.putIfAbsent(
                     pId,
                     () => PersonRef(
@@ -237,43 +257,10 @@ class PeopleService {
             }
           }
         }
-      } catch (_) {}
+      }, onError: (_, __) {});
 
-      // If co-performers are fewer than 12, enrich with top-rated performers from TPDB
-      if (relatedMap.length < 12) {
-        try {
-          final perfRes = await _dio.get<dynamic>(
-            '$_tpdbBase/performers',
-            queryParameters: {
-              'per_page': 24,
-              'orderBy': 'rating',
-              'age_operation': '<',
-            },
-            options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
-          );
-          final perfRows = perfRes.data is Map ? perfRes.data['data'] : null;
-          if (perfRows is List) {
-            for (final p in perfRows) {
-              if (p is! Map) continue;
-              final pName = (p['name'] ?? p['full_name'])?.toString();
-              final pId = (p['id'] ?? p['_id'] ?? p['slug'])?.toString();
-              if (pName != null && pName.isNotEmpty && pName.toLowerCase() != name.toLowerCase() && pId != null) {
-                relatedMap.putIfAbsent(
-                  pId,
-                  () => PersonRef(
-                    id: int.tryParse(pId) ?? 0,
-                    source: PersonSource.thePornDbPerformer,
-                    name: pName,
-                    photo: (p['image'] ?? p['thumbnail'] ?? p['face'])?.toString(),
-                    externalId: pId,
-                  ),
-                );
-                if (relatedMap.length >= 16) break;
-              }
-            }
-          }
-        } catch (_) {}
-      }
+      final works = await futureWorks;
+      await futureScenes;
 
       final photoList = <String>[];
       final seenUrls = <String>{};
@@ -371,30 +358,34 @@ class PeopleService {
       _tpdbResolvedIds[name] = resolvedId;
       if (fallbackName != null) _tpdbResolvedIds[fallbackName] = resolvedId;
 
-      final works = await _tpdbStudioWorks(resolvedId, studioName: name, page: 1);
-
-      String? photo;
+      final photoList = <String>[];
       for (final key in ['logo', 'poster', 'favicon', 'image', 'thumbnail']) {
         final v = row?[key]?.toString();
-        if (v != null && v.isNotEmpty) { photo = v; break; }
+        if (v != null && v.isNotEmpty) { photoList.add(v); break; }
       }
 
       final network = row?['network'];
       final subtitle = (network is Map ? network['name']?.toString() : null) ?? 'Studio';
 
-      // Load scenes for studio to populate wide 16:9 video cards and top starring performers
+      // Load studio movies and scenes in parallel
       final providerVideos = <PersonWork>[];
       final relatedMap = <String, PersonRef>{};
-      try {
-        final scenesRes = await _dio.get<dynamic>(
-          '$_tpdbBase/scenes',
-          queryParameters: {
-            'q': name,
-            'per_page': 30,
-            'orderBy': 'most_relevant',
-          },
-          options: Options(headers: {'Authorization': 'Bearer $_tpdbKey'}),
-        );
+
+      final futureWorks = _tpdbStudioWorks(resolvedId, studioName: name, page: 1);
+
+      final futureScenes = _dio.get<dynamic>(
+        '$_tpdbBase/scenes',
+        queryParameters: {
+          'q': name,
+          'per_page': 24,
+          'orderBy': 'most_relevant',
+        },
+        options: Options(
+          headers: {'Authorization': 'Bearer $_tpdbKey'},
+          receiveTimeout: const Duration(seconds: 6),
+          sendTimeout: const Duration(seconds: 6),
+        ),
+      ).then<void>((scenesRes) {
         final sceneRows = scenesRes.data is Map ? scenesRes.data['data'] : null;
         if (sceneRows is List) {
           for (final s in sceneRows) {
@@ -439,10 +430,11 @@ class PeopleService {
             }
           }
         }
-      } catch (_) {}
+      }, onError: (_, __) {});
 
-      final photoList = <String>[];
-      if (photo != null && photo.isNotEmpty) photoList.add(photo);
+      final works = await futureWorks;
+      await futureScenes;
+
       for (final w in works) {
         if (w.backdrop != null && w.backdrop!.isNotEmpty && !photoList.contains(w.backdrop)) {
           photoList.add(w.backdrop!);
@@ -456,9 +448,11 @@ class PeopleService {
         }
       }
 
+      final studioLogo = photoList.isNotEmpty ? photoList.first : null;
+
       return PersonProfile(
         name: name,
-        photo: photo ?? (photoList.isNotEmpty ? photoList.first : null),
+        photo: studioLogo,
         photos: photoList,
         description: (row?['description'] ?? row?['about'])?.toString(),
         subtitle: subtitle,

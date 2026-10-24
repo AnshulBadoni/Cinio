@@ -958,6 +958,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       _SettingsEntry(
         section: 'Interface',
+        icon: Icons.hide_source_rounded,
+        title: 'Hide provider switcher',
+        subtitle: 'Hide top-right circle on home screen to switch provider',
+        keywords: 'hide provider switcher circle button top right home interface',
+        trailing: Switch.adaptive(
+          value: sl<CatalogSourcePrefs>().hideProviderSwitcher,
+          activeThumbColor: AppColors.accent,
+          onChanged: (v) async {
+            await sl<CatalogSourcePrefs>().setHideProviderSwitcher(v);
+            if (mounted) setState(() {});
+          },
+        ),
+      ),
+      _SettingsEntry(
+        section: 'Interface',
         icon: Icons.download_rounded,
         title: 'Batch download style',
         subtitle: 'How the multi-episode sheet looks',

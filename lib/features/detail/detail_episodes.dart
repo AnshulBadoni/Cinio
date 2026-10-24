@@ -32,6 +32,8 @@ class _EpisodesTab extends StatefulWidget {
     required this.onDownload,
     this.onDownloadMany,
     this.isReading = false,
+    this.offlineMode = false,
+    this.onSwitchOnline,
   });
 
   final List<Episode> eps;
@@ -49,6 +51,8 @@ class _EpisodesTab extends StatefulWidget {
   final String showUrl;
   final int Function(List<Episode>) resumeIndex;
   final bool hasAnyMark;
+  final bool offlineMode;
+  final VoidCallback? onSwitchOnline;
 
   /// The connected tracker's watched-episode count, or null. Episodes at or
   /// below it render as watched (grey-out), merged with local playback marks.
@@ -278,6 +282,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             onToggleView: () => setState(() => _grid = !_grid),
             onJump: showRanges ? _jump : null,
             isReading: widget.isReading,
+            showOnlineToggle: widget.offlineMode,
+            viewingOnline: !widget.offlineMode,
+            onToggleOnline: widget.onSwitchOnline,
             onBulkDownload: widget.onDownloadMany != null && !isTv
                 ? () => _openBulkDownload(eps)
                 : null,
@@ -390,6 +397,8 @@ class _EpisodesTabState extends State<_EpisodesTab> {
                 showId: widget.showId,
                 isTv: isTv,
                 highlightEpId: _highlightEpId,
+                offlineMode: widget.offlineMode,
+                onSwitchOnline: widget.onSwitchOnline,
               ),
             ),
         ] else if (_grid && widget.isReading) ...[
@@ -592,6 +601,14 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         }
         final isFiller = (ep.filler || widget.fillerEps.contains(epNum)) &&
             (!sl.isRegistered<PlaybackPrefs>() || sl<PlaybackPrefs>().highlightFiller);
+        final isDownloaded = sl<DownloadManager>().findDownloadedRecord(
+          sourceId: widget.sourceId,
+          showId: widget.showId,
+          episodeId: ep.id,
+          episodeNumber: ep.number,
+        ) != null;
+        final greyedOut = widget.offlineMode && !isDownloaded;
+
         return RepaintBoundary(
           child: _EpisodeRow(
             ep: ep,
@@ -604,6 +621,8 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             isInProgress: st.inProgress,
             isResume: st.resume,
             fraction: st.fraction,
+            greyedOut: greyedOut,
+            onPromptOnline: widget.onSwitchOnline,
             onTap: () => widget.onOpen(fullIndex),
             onLongPress: widget.onPickPlayer == null
                 ? null
@@ -678,6 +697,9 @@ class _EpisodesHeader extends StatelessWidget {
     this.onJump,
     this.isReading = false,
     this.onBulkDownload,
+    this.showOnlineToggle = false,
+    this.viewingOnline = false,
+    this.onToggleOnline,
   });
 
   final bool hasMultipleSeasons;
@@ -690,6 +712,9 @@ class _EpisodesHeader extends StatelessWidget {
   final VoidCallback? onJump;
   final bool isReading;
   final VoidCallback? onBulkDownload;
+  final bool showOnlineToggle;
+  final bool viewingOnline;
+  final VoidCallback? onToggleOnline;
 
   Widget _circle(IconData icon, VoidCallback onTap, {String? semanticLabel}) =>
       Semantics(
@@ -771,6 +796,38 @@ class _EpisodesHeader extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (showOnlineToggle && onToggleOnline != null) ...[
+                TextButton.icon(
+                  icon: Icon(
+                    viewingOnline
+                        ? Icons.offline_pin_outlined
+                        : Icons.cloud_outlined,
+                    size: 16,
+                    color: viewingOnline ? AppColors.accent : Colors.white70,
+                  ),
+                  label: Text(
+                    viewingOnline ? 'Online' : 'View Online',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: viewingOnline ? AppColors.accent : Colors.white70,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    backgroundColor: viewingOnline
+                        ? AppColors.accent.withValues(alpha: 0.15)
+                        : AppColors.surface2,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    minimumSize: const Size(0, 32),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: onToggleOnline,
+                ),
+                const SizedBox(width: 8),
+              ],
               if (onBulkDownload != null) ...[
                 _circle(
                   Icons.download_rounded,
@@ -1288,6 +1345,8 @@ class _EpisodeRow extends StatelessWidget {
     required this.showId,
     required this.isTv,
     this.filler = false,
+    this.greyedOut = false,
+    this.onPromptOnline,
   });
 
   final Episode ep;
@@ -1306,6 +1365,8 @@ class _EpisodeRow extends StatelessWidget {
   final String sourceId;
   final String showId;
   final bool isTv;
+  final bool greyedOut;
+  final VoidCallback? onPromptOnline;
 
   @override
   Widget build(BuildContext context) {
@@ -1334,10 +1395,12 @@ class _EpisodeRow extends StatelessWidget {
     final quickActionHeroTag =
         'episode-quick:$sourceId:$showId:${ep.id}';
 
-    return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      splashColor: AppColors.accentSoft,
+    return Opacity(
+      opacity: greyedOut ? 0.42 : 1.0,
+      child: InkWell(
+        onTap: (greyedOut && onPromptOnline != null) ? onPromptOnline : onTap,
+        onLongPress: onLongPress,
+        splashColor: AppColors.accentSoft,
       highlightColor: AppColors.surface,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
@@ -1534,8 +1597,9 @@ class _EpisodeRow extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 
@@ -2053,6 +2117,8 @@ class _WideEpisodeCarousel extends StatefulWidget {
     required this.showId,
     required this.isTv,
     this.highlightEpId,
+    this.offlineMode = false,
+    this.onSwitchOnline,
   });
 
   final List<Episode> visible;
@@ -2075,6 +2141,8 @@ class _WideEpisodeCarousel extends StatefulWidget {
   final String showId;
   final bool isTv;
   final String? highlightEpId;
+  final bool offlineMode;
+  final VoidCallback? onSwitchOnline;
 
   @override
   State<_WideEpisodeCarousel> createState() => _WideEpisodeCarouselState();
@@ -2156,6 +2224,14 @@ class _WideEpisodeCarouselState extends State<_WideEpisodeCarousel> {
           final isFiller = widget.fillerEps.contains(epNum);
           final highlight = ep.id == widget.highlightEpId;
 
+          final isDownloaded = sl<DownloadManager>().findDownloadedRecord(
+            sourceId: widget.sourceId,
+            showId: widget.showId,
+            episodeId: ep.id,
+            episodeNumber: ep.number,
+          ) != null;
+          final greyedOut = widget.offlineMode && !isDownloaded;
+
           return _WideEpisodeCard(
             ep: ep,
             epNum: epNum,
@@ -2172,9 +2248,15 @@ class _WideEpisodeCarouselState extends State<_WideEpisodeCarousel> {
             sourceId: widget.sourceId,
             showId: widget.showId,
             isTv: widget.isTv,
+            greyedOut: greyedOut,
+            onPromptOnline: widget.onSwitchOnline,
             onTap: () {
-              _centerItem(i);
-              widget.onOpen(fullIndex);
+              if (greyedOut && widget.onSwitchOnline != null) {
+                widget.onSwitchOnline!();
+              } else {
+                _centerItem(i);
+                widget.onOpen(fullIndex);
+              }
             },
             onHoldCenter: () => _centerItem(i),
             onLongPress: widget.onPickPlayer != null
@@ -2212,6 +2294,8 @@ class _WideEpisodeCard extends StatefulWidget {
     this.onLongPress,
     this.onHoldCenter,
     required this.onDownload,
+    this.greyedOut = false,
+    this.onPromptOnline,
   });
 
   final Episode ep;
@@ -2233,6 +2317,8 @@ class _WideEpisodeCard extends StatefulWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onHoldCenter;
   final VoidCallback onDownload;
+  final bool greyedOut;
+  final VoidCallback? onPromptOnline;
 
   @override
   State<_WideEpisodeCard> createState() => _WideEpisodeCardState();
@@ -2271,58 +2357,71 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
       scale: _pressed ? 0.96 : 1.0,
       duration: const Duration(milliseconds: 140),
       curve: Curves.easeOutCubic,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTapDown: (_) {
-            setState(() => _pressed = true);
-            widget.onHoldCenter?.call();
-          },
-          onTapUp: (_) => setState(() => _pressed = false),
-          onTapCancel: () => setState(() => _pressed = false),
-          onTap: widget.onTap,
-          onLongPress: widget.onLongPress,
-          borderRadius: BorderRadius.circular(12),
-          splashColor: AppColors.accentSoft,
-          highlightColor: Colors.white10,
-          child: Hero(
-            tag: 'episode-card:${widget.sourceId}:${widget.showId}:${ep.id}',
-            createRectTween: (begin, end) => RectTween(begin: begin, end: end),
-            flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
-                direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
-            child: Container(
-              width: 280,
-              height: 195,
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: borderColor,
-                  width: (widget.highlight || widget.isResume) ? 1.8 : 1.0,
+      child: Opacity(
+        opacity: widget.greyedOut ? 0.42 : 1.0,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTapDown: (_) {
+              setState(() => _pressed = true);
+              widget.onHoldCenter?.call();
+            },
+            onTapUp: (_) => setState(() => _pressed = false),
+            onTapCancel: () => setState(() => _pressed = false),
+            onTap: widget.onTap,
+            onLongPress: widget.onLongPress,
+            borderRadius: BorderRadius.circular(12),
+            splashColor: AppColors.accentSoft,
+            highlightColor: Colors.white10,
+            child: Hero(
+              tag: 'episode-card:${widget.sourceId}:${widget.showId}:${ep.id}',
+              createRectTween: (begin, end) => RectTween(begin: begin, end: end),
+              flightShuttleBuilder: (context, animation, direction, fromHero, toHero) =>
+                  direction == HeroFlightDirection.push ? fromHero.widget : toHero.widget,
+              child: Container(
+                width: 280,
+                height: 195,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: borderColor,
+                    width: (widget.highlight || widget.isResume) ? 1.8 : 1.0,
+                  ),
+                  boxShadow: widget.highlight
+                      ? [
+                          BoxShadow(
+                            color: AppColors.accent.withValues(alpha: 0.4),
+                            blurRadius: 10,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : null,
                 ),
-                boxShadow: widget.highlight
-                    ? [
-                        BoxShadow(
-                          color: AppColors.accent.withValues(alpha: 0.4),
-                          blurRadius: 10,
-                          spreadRadius: 1,
-                        ),
-                      ]
-                    : null,
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // 1. Thumbnail image
-                  thumbUrl.isNotEmpty
-                      ? Image(
-                          image: nativeCoverProvider(thumbUrl, widget.coverHeaders),
-                          fit: BoxFit.cover,
-                          gaplessPlayback: true,
-                          filterQuality: FilterQuality.medium,
-                          errorBuilder: (context, error, stackTrace) =>
-                              ColoredBox(
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 1. Thumbnail image
+                    thumbUrl.isNotEmpty
+                        ? Image(
+                            image: nativeCoverProvider(thumbUrl, widget.coverHeaders),
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                            filterQuality: FilterQuality.medium,
+                            errorBuilder: (context, error, stackTrace) =>
+                                ColoredBox(
+                              color: AppColors.surface2,
+                              child: const Center(
+                                child: Icon(
+                                  Icons.movie_outlined,
+                                  color: AppColors.textTertiary,
+                                  size: 36,
+                                ),
+                              ),
+                            ),
+                          )
+                        : ColoredBox(
                             color: AppColors.surface2,
                             child: const Center(
                               child: Icon(
@@ -2332,34 +2431,53 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
                               ),
                             ),
                           ),
-                        )
-                      : ColoredBox(
-                          color: AppColors.surface2,
-                          child: const Center(
-                            child: Icon(
-                              Icons.movie_outlined,
-                              color: AppColors.textTertiary,
-                              size: 36,
-                            ),
-                          ),
-                        ),
 
-                // 2. Dark gradient overlay
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.45),
-                        Colors.black.withValues(alpha: 0.05),
-                        Colors.black.withValues(alpha: 0.85),
-                        Colors.black.withValues(alpha: 0.98),
-                      ],
-                      stops: const [0.0, 0.28, 0.65, 1.0],
+                  // 2. Dark gradient overlay
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.45),
+                          Colors.black.withValues(alpha: 0.05),
+                          Colors.black.withValues(alpha: 0.85),
+                          Colors.black.withValues(alpha: 0.98),
+                        ],
+                        stops: const [0.0, 0.28, 0.65, 1.0],
+                      ),
                     ),
                   ),
-                ),
+
+                  // Top right online indicator for greyed out offline episodes
+                  if (widget.greyedOut)
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.8),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.white24, width: 0.8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.cloud_outlined, size: 12, color: Colors.white70),
+                            SizedBox(width: 4),
+                            Text(
+                              'Online',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
 
                 // 3. Top-left season & episode pill badge
                 Positioned(
@@ -2525,6 +2643,7 @@ class _WideEpisodeCardState extends State<_WideEpisodeCard> {
         ),
       ),
     ),
-  );
+  ),
+);
   }
 }

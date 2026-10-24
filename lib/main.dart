@@ -190,9 +190,9 @@ class WatchApp extends StatefulWidget {
 }
 
 class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
-  /// Keep the Cinio watermark on screen long enough to actually be seen even
-  /// when dependency boot completes almost instantly.
-  static const Duration _minimumSplashDuration = Duration(milliseconds: 1600);
+  /// Keep the Cinio watermark on screen just long enough for a smooth reveal,
+  /// without artificially stalling boot when dependencies are ready.
+  static const Duration _minimumSplashDuration = Duration(milliseconds: 300);
   DateTime _splashStartedAt = DateTime.now();
 
   /// Startup, with a watchdog. NOT `late final` — Try again reassigns it.
@@ -402,12 +402,8 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         unawaited(sl<MyListStore>().retryPending());
       }
 
-        // tvOS: never block the splash on cloud I/O — sync after the shell is up.
-        if (isAppleTv) {
-          unawaited(cloudSync().catchError((_) {}));
-        } else {
-          await cloudSync();
-        }
+        // Never block the splash on cloud I/O — sync in the background once the shell is up.
+        unawaited(cloudSync().catchError((_) {}));
       }
     } catch (_) {}
     if (isOnboarded()) {
@@ -432,10 +428,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     // of onboarding + fire-and-forget so it never delays launch.
     unawaited(PushService.instance.init());
     final elapsed = DateTime.now().difference(start);
-    // The intro animation is 1600ms, so anything past that is just dead
-    // waiting. Give it a hair over (1700) so the logo lands, then go — used
-    // to be 2000ms, which sat there doing nothing for ~400ms.
-    const minSplash = Duration(milliseconds: 1700);
+    const minSplash = Duration(milliseconds: 300);
     if (elapsed < minSplash) await Future.delayed(minSplash - elapsed);
   }
 

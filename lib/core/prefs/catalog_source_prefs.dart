@@ -133,4 +133,14 @@ class CatalogSourcePrefs extends ChangeNotifier {
     await _box.put(_tpdbFilterKey, value);
     notifyListeners();
   }
+
+  static const String _hideProviderSwitcherKey = 'hide_provider_switcher';
+
+  bool get hideProviderSwitcher =>
+      _box.get(_hideProviderSwitcherKey, defaultValue: false) as bool;
+
+  Future<void> setHideProviderSwitcher(bool value) async {
+    await _box.put(_hideProviderSwitcherKey, value);
+    notifyListeners();
+  }
 }

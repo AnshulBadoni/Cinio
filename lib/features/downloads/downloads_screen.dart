@@ -1,7 +1,16 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../../core/models/media_detail.dart';
+import '../../core/models/media_item.dart';
+import '../../core/models/provider_info.dart';
+import '../../core/playback/local_video_service.dart';
+import '../../core/ui/cinio_title_style.dart';
+import '../detail/detail_screen.dart';
 import '../../core/ui/settings_widgets.dart';
 
 import '../../core/app_mode.dart';
@@ -43,7 +52,12 @@ class DownloadsScreen extends StatefulWidget {
 class _DownloadsScreenState extends State<DownloadsScreen>
     with WidgetsBindingObserver {
   final TextEditingController _searchCtrl = TextEditingController();
+  final TextEditingController _localSearchCtrl = TextEditingController();
   String _query = '';
+  String _localQuery = '';
+
+  int _selectedTab = 0; // 0: Local Videos, 1: Downloads
+  late final PageController _pageController;
 
   /// Show ids the user has expanded. Empty = all collapsed (the default).
   final Set<String> _expanded = <String>{};
@@ -52,13 +66,22 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _pageController = PageController(initialPage: _selectedTab);
     _prune();
+    if (sl.isRegistered<LocalVideoService>()) {
+      final localService = sl<LocalVideoService>();
+      if (localService.items.isEmpty && !localService.scanning) {
+        unawaited(localService.scan());
+      }
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _searchCtrl.dispose();
+    _localSearchCtrl.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -262,40 +285,27 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const DownloadsScreenTv();
     final manager = sl<DownloadManager>();
+    final localService = sl<LocalVideoService>();
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
         bottom: false,
         child: ListenableBuilder(
-          listenable: manager,
+          listenable: Listenable.merge([manager, localService]),
           builder: (context, _) {
             final groups = manager.byShow;
             return Column(
               children: [
                 _topHeaderBar(context),
+                _buildTabBar(manager, localService),
                 Expanded(
                   child: PageView(
+                    controller: _pageController,
+                    onPageChanged: (i) => setState(() => _selectedTab = i),
                     children: [
-                      if (groups.isEmpty)
-                        const EmptyState(
-                          icon: Icons.download_outlined,
-                          message: 'Episodes you download appear here',
-                        )
-                      else
-                        Column(
-                          children: [
-                            _searchField(),
-                            Expanded(child: _list(groups, manager)),
-                          ],
-                        ),
-                      ChapterDownloadsScreen(
-                        mode: ContentMode.manga,
-                        embedded: true,
-                      ),
-                      ChapterDownloadsScreen(
-                        mode: ContentMode.novel,
-                        embedded: true,
-                      ),
+                      _buildLocalVideosTab(localService),
+                      _buildDownloadsTab(groups, manager),
                     ],
                   ),
                 ),
@@ -305,6 +315,441 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         ),
       ),
     );
+  }
+
+  Widget _buildTabBar(DownloadManager manager, LocalVideoService localService) {
+    final downloadedCount =
+        manager.all.where((r) => r.status == DownloadStatus.done).length;
+    final localCount = localService.items.length;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Container(
+        height: 42,
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _tabPill(
+                index: 0,
+                label: 'Local Videos',
+                icon: CupertinoIcons.film,
+                badgeCount: localCount,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: _tabPill(
+                index: 1,
+                label: 'Downloads',
+                icon: CupertinoIcons.arrow_down_circle,
+                badgeCount: downloadedCount,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tabPill({
+    required int index,
+    required String label,
+    required IconData icon,
+    int? badgeCount,
+  }) {
+    final isSelected = _selectedTab == index;
+    return GestureDetector(
+      onTap: () {
+        if (_selectedTab != index) {
+          setState(() => _selectedTab = index);
+          _pageController.animateToPage(
+            index,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.accent.withValues(alpha: 0.22)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+          border: isSelected
+              ? Border.all(
+                  color: AppColors.accent.withValues(alpha: 0.5), width: 1.2)
+              : null,
+        ),
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 15.5,
+                color: isSelected ? AppColors.accent : Colors.white60,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.white60,
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+              if (badgeCount != null && badgeCount > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppColors.accent : Colors.white12,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$badgeCount',
+                    style: TextStyle(
+                      color: isSelected ? Colors.black : Colors.white70,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDownloadsTab(
+    Map<String, List<DownloadRecord>> groups,
+    DownloadManager manager,
+  ) {
+    if (groups.isEmpty) {
+      return const EmptyState(
+        icon: Icons.download_outlined,
+        message: 'Episodes and movies you download appear here',
+      );
+    }
+    return Column(
+      children: [
+        _searchField(),
+        Expanded(child: _list(groups, manager)),
+      ],
+    );
+  }
+
+  Widget _buildLocalVideosTab(LocalVideoService localService) {
+    if (localService.scanning && localService.items.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: AppColors.accent),
+            const SizedBox(height: 16),
+            Text(
+              localService.statusMessage ?? 'Scanning device storage for videos…',
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final query = _localQuery.trim().toLowerCase();
+    final allItems = localService.items;
+    final filtered = query.isEmpty
+        ? allItems
+        : allItems.where((it) {
+            return it.cleanTitle.toLowerCase().contains(query) ||
+                (it.matchedTitle != null &&
+                    it.matchedTitle!.toLowerCase().contains(query)) ||
+                it.name.toLowerCase().contains(query);
+          }).toList();
+
+    if (allItems.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.video_library_outlined,
+                size: 56,
+                color: AppColors.textTertiary,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'No local videos found',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Scan your device storage or add custom folders to play local videos with matched posters & metadata.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    ),
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text('Scan Storage'),
+                    onPressed: () => localService.scan(forceRescan: true),
+                  ),
+                  const SizedBox(width: 10),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white24),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    ),
+                    icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                    label: const Text('Add Folder'),
+                    onPressed: () => _pickAndAddFolder(context),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final totalBytes =
+        filtered.fold<int>(0, (sum, it) => sum + it.sizeBytes);
+    final totalSizeLabel = totalBytes > 0 ? fmtDownloadSize(totalBytes) : '';
+
+    return Column(
+      children: [
+        _localSearchField(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 12, 6),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.perm_media_outlined,
+                size: 15,
+                color: AppColors.textTertiary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '${filtered.length} videos${totalSizeLabel.isNotEmpty ? " · $totalSizeLabel" : ""}',
+                style: AppText.caption,
+              ),
+              const Spacer(),
+              if (localService.scanning)
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.accent,
+                  ),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  tooltip: 'Rescan storage',
+                  onPressed: () => localService.scan(forceRescan: true),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              const SizedBox(width: 12),
+              IconButton(
+                icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                tooltip: 'Add folder',
+                onPressed: () => _pickAndAddFolder(context),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+              const SizedBox(width: 12),
+              IconButton(
+                icon: const Icon(Icons.add_rounded, size: 20),
+                tooltip: 'Pick video files',
+                onPressed: () => _pickVideoFiles(context),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: sl<DownloadPrefs>().presentation == 'cards'
+              ? _buildLocalCardsGrid(filtered, localService)
+              : _buildLocalList(filtered, localService),
+        ),
+      ],
+    );
+  }
+
+  Widget _localSearchField() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      child: TextField(
+        controller: _localSearchCtrl,
+        onChanged: (v) => setState(() => _localQuery = v),
+        style: AppText.body.copyWith(color: AppColors.textPrimary),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'Search local videos',
+          hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            color: AppColors.textTertiary,
+          ),
+          suffixIcon: _localQuery.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: AppColors.textTertiary,
+                  ),
+                  onPressed: () {
+                    _localSearchCtrl.clear();
+                    setState(() => _localQuery = '');
+                  },
+                ),
+          filled: true,
+          fillColor: AppColors.surface,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocalCardsGrid(
+    List<LocalVideoItem> items,
+    LocalVideoService service,
+  ) {
+    if (items.isEmpty) {
+      return const EmptyState(
+        icon: Icons.search_off_rounded,
+        message: 'No local videos match your search',
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const columns = 3;
+        const gap = 12.0;
+        final hideTitles = sl<PlaybackPrefs>().hideTitles;
+        final ratio = hideTitles ? (2 / 3) : 0.58;
+        final cardWidth =
+            (constraints.maxWidth - 32 - gap * (columns - 1)) / columns;
+        final cardHeight = cardWidth / ratio;
+
+        return GridView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 64),
+          itemCount: items.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: gap,
+            mainAxisSpacing: 16,
+            childAspectRatio: ratio,
+          ),
+          itemBuilder: (context, i) {
+            return SizedBox(
+              width: cardWidth,
+              height: cardHeight,
+              child: _LocalVideoCard(
+                item: items[i],
+                service: service,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildLocalList(
+    List<LocalVideoItem> items,
+    LocalVideoService service,
+  ) {
+    if (items.isEmpty) {
+      return const EmptyState(
+        icon: Icons.search_off_rounded,
+        message: 'No local videos match your search',
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 64),
+      itemCount: items.length,
+      itemBuilder: (context, i) {
+        final item = items[i];
+        return _LocalVideoListTile(item: item, service: service);
+      },
+    );
+  }
+
+  Future<void> _pickAndAddFolder(BuildContext context) async {
+    try {
+      final selectedDirectory = await FilePicker.getDirectoryPath();
+      if (selectedDirectory != null && selectedDirectory.isNotEmpty) {
+        await sl<LocalVideoService>().addCustomFolder(selectedDirectory);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Added folder: $selectedDirectory')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open folder picker: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickVideoFiles(BuildContext context) async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.video,
+        allowMultiple: true,
+      );
+      if (result.isNotEmpty) {
+        final service = sl<LocalVideoService>();
+        for (final f in result) {
+          if (f.path != null) {
+            final dir = Directory(f.path!).parent.path;
+            await service.addCustomFolder(dir);
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not pick video: $e')),
+        );
+      }
+    }
   }
 
   Widget _topHeaderBar(BuildContext context) {
@@ -605,11 +1050,561 @@ String _episodeSearchText(DownloadRecord r) {
   return 'e${n ?? ''} ${r.episodeTitle}'.toLowerCase();
 }
 
+class _LocalVideoCard extends StatelessWidget {
+  const _LocalVideoCard({required this.item, required this.service});
+
+  final LocalVideoItem item;
+  final LocalVideoService service;
+
+  Widget _buildFallbackPoster() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+        ),
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.video_file_outlined,
+              size: 34,
+              color: AppColors.accent.withValues(alpha: 0.65),
+            ),
+            const SizedBox(height: 8),
+            cinioFallbackTitle(
+              title: item.cleanTitle,
+              seed: item.path,
+              accent: AppColors.accent,
+              fontSize: 13,
+              maxLines: 3,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showItemActions(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(
+                item.displayTitle,
+                style: AppText.headline,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.play_circle_outline_rounded),
+              title: const Text('Play Video'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                service.playVideo(context, item);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_fix_high_rounded),
+              title: const Text('Match / Edit Metadata'),
+              subtitle: const Text('Search TMDB or TPDB to match title & poster'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                _openManualMatchDialog(context, item, service);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info_outline_rounded),
+              title: const Text('File Information'),
+              subtitle: Text('${item.formattedSize} • ${item.path}'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                _showFileInfoDialog(context, item);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+              title: const Text('Delete File', style: TextStyle(color: Colors.redAccent)),
+              onTap: () async {
+                Navigator.pop(sheetCtx);
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dctx) => AlertDialog(
+                    backgroundColor: AppColors.surface,
+                    title: const Text('Delete video?'),
+                    content: Text('Permanently remove "${item.name}" from your device?'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(dctx, false), child: const Text('Cancel')),
+                      TextButton(
+                        onPressed: () => Navigator.pop(dctx, true),
+                        child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await service.deleteVideo(item);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final poster = item.matchedPoster;
+    final hasPoster = item.isMatched && poster != null && poster.isNotEmpty;
+
+    return GestureDetector(
+      onTap: () => service.playVideo(context, item),
+      onLongPress: () => _showItemActions(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (hasPoster)
+                    CachedNetworkImage(
+                      imageUrl: poster!,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => _buildFallbackPoster(),
+                      placeholder: (_, __) => _buildFallbackPoster(),
+                    )
+                  else
+                    _buildFallbackPoster(),
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.25),
+                            Colors.black.withValues(alpha: 0.88),
+                          ],
+                          stops: const [0.55, 0.78, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (item.matchedRating != null && item.matchedRating! > 0)
+                    Positioned(
+                      top: 7,
+                      right: 7,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.75),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.white24, width: 0.8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star_rounded, size: 11, color: Color(0xFFFBBF24)),
+                            const SizedBox(width: 2.5),
+                            Text(
+                              item.matchedRating!.toStringAsFixed(1),
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  Positioned(
+                    top: 7,
+                    left: 7,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text(
+                        item.extension,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Center(
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withValues(alpha: 0.45),
+                        border: Border.all(color: Colors.white30, width: 1.2),
+                      ),
+                      child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            item.displayTitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            [
+              if (item.formattedSize.isNotEmpty) item.formattedSize,
+              if (item.matchedYear != null) item.matchedYear,
+            ].join(' · '),
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.white.withValues(alpha: 0.55),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocalVideoListTile extends StatelessWidget {
+  const _LocalVideoListTile({required this.item, required this.service});
+
+  final LocalVideoItem item;
+  final LocalVideoService service;
+
+  Widget _buildListFallback() {
+    return Container(
+      color: AppColors.surface2,
+      child: const Center(
+        child: Icon(Icons.movie_outlined, color: AppColors.textTertiary, size: 24),
+      ),
+    );
+  }
+
+  void _showItemActions(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(item.displayTitle, style: AppText.headline),
+            ),
+            ListTile(
+              leading: const Icon(Icons.play_circle_outline_rounded),
+              title: const Text('Play Video'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                service.playVideo(context, item);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_fix_high_rounded),
+              title: const Text('Match / Edit Metadata'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                _openManualMatchDialog(context, item, service);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info_outline_rounded),
+              title: const Text('File Information'),
+              subtitle: Text('${item.formattedSize} • ${item.path}'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                _showFileInfoDialog(context, item);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+              title: const Text('Delete File', style: TextStyle(color: Colors.redAccent)),
+              onTap: () async {
+                Navigator.pop(sheetCtx);
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dctx) => AlertDialog(
+                    backgroundColor: AppColors.surface,
+                    title: const Text('Delete video?'),
+                    content: Text('Permanently remove "${item.name}" from your device?'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(dctx, false), child: const Text('Cancel')),
+                      TextButton(
+                        onPressed: () => Navigator.pop(dctx, true),
+                        child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await service.deleteVideo(item);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final poster = item.matchedPoster;
+    final hasPoster = item.isMatched && poster != null && poster.isNotEmpty;
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: 52,
+          height: 72,
+          child: hasPoster
+              ? CachedNetworkImage(
+                  imageUrl: poster!,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, __, ___) => _buildListFallback(),
+                )
+              : _buildListFallback(),
+        ),
+      ),
+      title: Text(
+        item.displayTitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1.5),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                item.extension,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.accent,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              [
+                if (item.formattedSize.isNotEmpty) item.formattedSize,
+                if (item.matchedYear != null) item.matchedYear,
+              ].join(' · '),
+              style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6)),
+            ),
+          ],
+        ),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: Icon(Icons.play_circle_fill_rounded, color: AppColors.accent, size: 28),
+            onPressed: () => service.playVideo(context, item),
+          ),
+          IconButton(
+            icon: const Icon(Icons.more_vert_rounded, color: Colors.white54, size: 20),
+            onPressed: () => _showItemActions(context),
+          ),
+        ],
+      ),
+      onTap: () => service.playVideo(context, item),
+      onLongPress: () => _showItemActions(context),
+    );
+  }
+}
+
+void _openManualMatchDialog(
+  BuildContext context,
+  LocalVideoItem item,
+  LocalVideoService service,
+) {
+  final ctrl = TextEditingController(text: item.displayTitle);
+  showDialog<void>(
+    context: context,
+    builder: (dctx) => AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: const Text('Match Metadata'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Enter the title to search TMDB or TPDB:',
+            style: TextStyle(fontSize: 13, color: Colors.white70),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: AppColors.surface2,
+              hintText: 'e.g. Inception, Breaking Bad',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dctx),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+          onPressed: () async {
+            final query = ctrl.text.trim();
+            Navigator.pop(dctx);
+            if (query.isNotEmpty) {
+              await service.matchItem(item, overrideQuery: query);
+            }
+          },
+          child: const Text('Search & Match', style: TextStyle(color: Colors.black)),
+        ),
+      ],
+    ),
+  );
+}
+
+void _showFileInfoDialog(BuildContext context, LocalVideoItem item) {
+  showDialog<void>(
+    context: context,
+    builder: (dctx) => AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: const Text('File Information'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('File: ${item.name}', style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text('Format: ${item.extension}'),
+          const SizedBox(height: 4),
+          Text('Size: ${item.formattedSize}'),
+          const SizedBox(height: 4),
+          Text('Modified: ${item.modified.toLocal().toString().split('.').first}'),
+          const SizedBox(height: 4),
+          Text('Path: ${item.path}', style: const TextStyle(fontSize: 11, color: Colors.white60)),
+          if (item.isMatched) ...[
+            const Divider(height: 16),
+            Text('Matched: ${item.matchedTitle ?? ""}'),
+            if (item.matchedYear != null) Text('Year: ${item.matchedYear}'),
+            if (item.matchedRating != null) Text('Rating: ★ ${item.matchedRating!.toStringAsFixed(1)}'),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dctx),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+}
+
 class _DownloadShowCard extends StatelessWidget {
   const _DownloadShowCard({required this.records, required this.manager});
 
   final List<DownloadRecord> records;
   final DownloadManager manager;
+
+  void _openDetail(BuildContext context) {
+    if (records.isEmpty) return;
+    final head = records.first;
+    final episodes = records.map((r) => Episode(
+      id: r.episodeId,
+      title: r.episodeTitle,
+      number: r.episodeNumber,
+      url: r.episodeUrl,
+      thumbnail: r.cover,
+    )).toList();
+
+    final isTv = records.length > 1 || head.episodeNumber != null;
+    final mediaItem = MediaItem(
+      id: head.showId,
+      title: head.showTitle,
+      url: head.showUrl,
+      sourceId: head.sourceId,
+      cover: head.cover,
+      coverHeaders: head.coverHeaders,
+      type: ProviderType.movie,
+      tmdbIsTv: isTv,
+    );
+
+    final catalogDetail = MediaDetail(
+      id: head.showId,
+      title: head.showTitle,
+      url: head.showUrl,
+      sourceId: head.sourceId,
+      cover: head.cover,
+      coverHeaders: head.coverHeaders,
+      type: ProviderType.movie,
+      episodes: episodes,
+      isSeries: isTv,
+      tmdbIsTv: isTv,
+      description: 'Downloaded on this device (${records.length} ${records.length == 1 ? "episode" : "episodes"})',
+    );
+
+    Navigator.of(context).push(
+      DetailScreen.route(
+        mediaItem,
+        catalogDetail: catalogDetail,
+        fromDownloads: true,
+      ),
+    );
+  }
 
   Future<void> _openEpisodes(BuildContext context) async {
     final title = records.first.showTitle;
@@ -732,7 +1727,8 @@ class _DownloadShowCard extends StatelessWidget {
     final memW = (cellWidth * dpr).round();
 
     return GestureDetector(
-      onTap: () => _openEpisodes(context),
+      onTap: () => _openDetail(context),
+      onLongPress: () => _openEpisodes(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -848,6 +1844,52 @@ class _ShowGroup extends StatelessWidget {
   final bool expanded;
   final VoidCallback onToggle;
 
+  void _openDetail(BuildContext context) {
+    if (records.isEmpty) return;
+    final head = records.first;
+    final episodesList = records.map((r) => Episode(
+      id: r.episodeId,
+      title: r.episodeTitle,
+      number: r.episodeNumber,
+      url: r.episodeUrl,
+      thumbnail: r.cover,
+    )).toList();
+
+    final isTv = records.length > 1 || head.episodeNumber != null;
+    final mediaItem = MediaItem(
+      id: head.showId,
+      title: head.showTitle,
+      url: head.showUrl,
+      sourceId: head.sourceId,
+      cover: head.cover,
+      coverHeaders: head.coverHeaders,
+      type: ProviderType.movie,
+      tmdbIsTv: isTv,
+    );
+
+    final catalogDetail = MediaDetail(
+      id: head.showId,
+      title: head.showTitle,
+      url: head.showUrl,
+      sourceId: head.sourceId,
+      cover: head.cover,
+      coverHeaders: head.coverHeaders,
+      type: ProviderType.movie,
+      episodes: episodesList,
+      isSeries: isTv,
+      tmdbIsTv: isTv,
+      description: 'Downloaded on this device (${records.length} ${records.length == 1 ? "episode" : "episodes"})',
+    );
+
+    Navigator.of(context).push(
+      DetailScreen.route(
+        mediaItem,
+        catalogDetail: catalogDetail,
+        fromDownloads: true,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final head = records.first;
@@ -864,26 +1906,29 @@ class _ShowGroup extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
             child: Row(
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: SizedBox(
-                    width: 44,
-                    height: 62,
-                    child: (head.cover != null && head.cover!.isNotEmpty)
-                        ? Image(
-                            image: nativeCoverProvider(
-                              head.cover!,
-                              head.coverHeaders,
-                              showUrl: head.showUrl,
-                              sourceId: head.sourceId,
-                            ),
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                ColoredBox(color: AppColors.surface2),
-                            loadingBuilder: (_, child, progress) =>
-                                progress == null ? child : ColoredBox(color: AppColors.surface2),
-                          )
-                        : ColoredBox(color: AppColors.surface2),
+                GestureDetector(
+                  onTap: () => _openDetail(context),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: SizedBox(
+                      width: 44,
+                      height: 62,
+                      child: (head.cover != null && head.cover!.isNotEmpty)
+                          ? Image(
+                              image: nativeCoverProvider(
+                                head.cover!,
+                                head.coverHeaders,
+                                showUrl: head.showUrl,
+                                sourceId: head.sourceId,
+                              ),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  ColoredBox(color: AppColors.surface2),
+                              loadingBuilder: (_, child, progress) =>
+                                  progress == null ? child : ColoredBox(color: AppColors.surface2),
+                            )
+                          : ColoredBox(color: AppColors.surface2),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -904,6 +1949,16 @@ class _ShowGroup extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(
+                    Icons.info_outline_rounded,
+                    color: AppColors.textTertiary,
+                    size: 20,
+                  ),
+                  tooltip: 'View details',
+                  onPressed: () => _openDetail(context),
                 ),
                 IconButton(
                   visualDensity: VisualDensity.compact,

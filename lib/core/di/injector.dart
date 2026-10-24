@@ -30,6 +30,7 @@ import '../schedule/coming_soon_service.dart';
 import '../privacy/incognito_mode.dart';
 import '../search/title_suggestion_service.dart';
 import '../ui/animation_prefs.dart';
+import '../playback/local_video_service.dart';
 import '../playback/skip_service.dart';
 import '../playback/resume_store.dart';
 import '../reading/read_history.dart';
@@ -192,6 +193,7 @@ Future<void> initDependencies() async {
   sl.registerSingleton<AppMode>(AppMode(isTv: isTv, isDesktop: isDesktop));
 
   await initHiveForApp();
+  await openBoxSafely(HomeCubit.boxName);
   if (isAppleTv) await AppImageCache.init();
   // Cache of the signed-in user so the logged-in UI appears INSTANTLY on boot
   // (AuthCubit reads it before the network session check). See AuthCubit.restore.
@@ -923,6 +925,12 @@ Future<void> initDependencies() async {
   sl.registerSingleton<DownloadManager>(
     DownloadManager(sl<SourceRepository>(), sl<DownloadPrefs>())..setup(),
   );
+
+  // Local on-device video scanner service
+  await LocalVideoService.init();
+  final localVideoService = LocalVideoService();
+  sl.registerSingleton<LocalVideoService>(localVideoService);
+  unawaited(localVideoService.loadCached());
 
   // Offline manga/novel chapters. Foreground-only, so no service to start —
   // just the index plus the fetch queue. Anything a kill interrupted last run

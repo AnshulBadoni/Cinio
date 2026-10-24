@@ -300,27 +300,34 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                     GestureDetector(
                       behavior: HitTestBehavior.translucent,
                       onTap: widget.onInfo,
-                      child: SizedBox(
-                        height: 78,
-                        width: double.infinity,
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 180),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          child: (_logoUrl != null && _logoUrl!.isNotEmpty)
-                              ? KeyedSubtree(
-                                  key: const ValueKey('logo'),
-                                  child: CachedNetworkImage(
-                                    imageUrl: _logoUrl!,
-                                    fit: BoxFit.contain,
-                                    fadeInDuration: const Duration(milliseconds: 140),
-                                    errorWidget: (context, url, error) => _titleText(),
-                                  ),
-                                )
-                              : KeyedSubtree(
-                                  key: const ValueKey('text-title'),
-                                  child: _titleText(),
-                                ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: (constraints.maxWidth * 0.80).clamp(260.0, 340.0),
+                          ),
+                          child: SizedBox(
+                            height: 78,
+                            width: double.infinity,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 180),
+                              switchInCurve: Curves.easeOutCubic,
+                              switchOutCurve: Curves.easeInCubic,
+                              child: (_logoUrl != null && _logoUrl!.isNotEmpty)
+                                  ? KeyedSubtree(
+                                      key: const ValueKey('logo'),
+                                      child: CachedNetworkImage(
+                                        imageUrl: _logoUrl!,
+                                        fit: BoxFit.contain,
+                                        fadeInDuration: const Duration(milliseconds: 140),
+                                        errorWidget: (context, url, error) => _titleText(),
+                                      ),
+                                    )
+                                  : KeyedSubtree(
+                                      key: const ValueKey('text-title'),
+                                      child: _titleText(),
+                                    ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -376,8 +383,8 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       seed: seed,
       accent: accent,
       genres: widget.item.genres,
-      fontSize: 40.0,
-      maxLines: 3,
+      fontSize: 34.0,
+      maxLines: 2,
     );
   }
 
@@ -394,29 +401,14 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       builder: (context, snap) {
         final m = snap.data;
         final children = <Widget>[];
-        final rating = m?.rating ?? widget.item.rating;
+        // User request: remove rating, only show year and 1-2 genres max
         final year = (m?.year ?? widget.item.year)?.trim();
         final genres = (m?.genres.isNotEmpty == true ? m!.genres : widget.item.genres);
-        if (rating != null && rating > 0) {
-          children.add(Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.star_rounded, color: Color(0xFFFFC107), size: 15),
-              const SizedBox(width: 4),
-              Text(rating.toStringAsFixed(1)),
-            ],
-          ));
-        }
         if (year != null && year.isNotEmpty) {
           children.add(Text(year));
         }
-        for (final genre in genres.take(3)) {
+        for (final genre in genres.take(2)) {
           children.add(Text(genre));
-        }
-        if ((m?.episodeCount ?? 0) > 1) {
-          children.add(Text(
-            '${m!.episodeCount} ${widget.reading ? 'Chapters' : 'Episodes'}',
-          ));
         }
         if (children.isEmpty) return const SizedBox.shrink();
         return SizedBox(
@@ -480,7 +472,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     );
   }
 
-  /// Inline glass circular action (My List / Info) sitting next to Play.
+  /// Inline liquid glass circular action (Play / My List) sitting next to detail.
   Widget _circleBtn(
     IconData icon,
     VoidCallback onTap, {
@@ -497,9 +489,17 @@ class _FeaturedHeroState extends State<FeaturedHero> {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.14),
+            color: active
+                ? AppColors.accent.withValues(alpha: 0.28)
+                : Colors.white.withValues(alpha: 0.16),
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Icon(
             icon,

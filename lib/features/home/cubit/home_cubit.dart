@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive/hive.dart';
 
 import '../../../core/error/exceptions.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
@@ -61,12 +62,73 @@ class HomeCubit extends Cubit<HomeState> {
   ]) : _catalogPrefs = catalogPrefs,
        _tpdb = tpdb,
        _tmdb = tmdb,
-       super(const HomeState());
+       super(
+         HomeState(
+           sections: getInitialCachedSections(
+             catalogPrefs?.source ??
+                 (tmdb != null ? CatalogSource.tmdb : CatalogSource.provider),
+           ),
+         ),
+       );
 
   final SourceRepository _repo;
   final CatalogSourcePrefs? _catalogPrefs;
   final ThePornDb? _tpdb;
   final TmdbDiscoverService? _tmdb;
+
+  static const String boxName = 'home_sections_cache';
+
+  /// Loads cached home sections from Hive storage for instant 0ms startup.
+  static List<HomeSection>? getInitialCachedSections(CatalogSource source) {
+    try {
+      if (!Hive.isBoxOpen(boxName)) return null;
+      final raw = Hive.box(boxName).get(source.name);
+      if (raw is List && raw.isNotEmpty) {
+        final parsed = <HomeSection>[];
+        for (final entry in raw) {
+          if (entry is! Map) continue;
+          final map = Map<String, dynamic>.from(entry);
+          final title = map['title'] as String? ?? '';
+          final itemsRaw = map['items'] as List? ?? const [];
+          final items = <MediaItem>[];
+          for (final it in itemsRaw) {
+            if (it is Map) {
+              items.add(MediaItem.fromJson(Map<String, dynamic>.from(it)));
+            }
+          }
+          BrowseMore? more;
+          if (map['more'] is Map) {
+            final m = Map<String, dynamic>.from(map['more'] as Map);
+            more = BrowseMore(
+              sourceId: m['sourceId'] as String? ?? '',
+              kind: m['kind'] as String? ?? '',
+              categoryId: m['categoryId'] as String?,
+            );
+          }
+          parsed.add(HomeSection(title: title, items: List<MediaItem>.unmodifiable(items), more: more));
+        }
+        if (parsed.isNotEmpty) return List<HomeSection>.unmodifiable(parsed);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Persists home sections into local Hive storage.
+  static void saveSectionsToCache(CatalogSource source, List<HomeSection> sections) {
+    try {
+      if (!Hive.isBoxOpen(boxName)) return;
+      final payload = sections.map((s) => {
+        'title': s.title,
+        'items': s.items.map((i) => i.toJson()).toList(),
+        if (s.more != null) 'more': {
+          'sourceId': s.more!.sourceId,
+          'kind': s.more!.kind,
+          'categoryId': s.more!.categoryId,
+        },
+      }).toList();
+      Hive.box(boxName).put(source.name, payload);
+    } catch (_) {}
+  }
 
   CatalogSource get _catalogSource =>
       _catalogPrefs?.source ??
@@ -128,7 +190,18 @@ class HomeCubit extends Cubit<HomeState> {
         emit(HomeState(sections: List<HomeSection>.unmodifiable(cached.$2), loading: false));
         return;
       }
-      emit(state.copyWith(loading: true));
+
+      // If in-memory is empty but disk cache exists, preserve existing sections while loading
+      if (state.sections == null) {
+        final diskSections = getInitialCachedSections(source);
+        if (diskSections != null && diskSections.isNotEmpty) {
+          emit(state.copyWith(sections: diskSections, loading: true));
+        } else {
+          emit(state.copyWith(loading: true));
+        }
+      } else {
+        emit(state.copyWith(loading: true));
+      }
     }
 
     if (source == CatalogSource.provider && sourceId.isEmpty) {
@@ -147,8 +220,11 @@ class HomeCubit extends Cubit<HomeState> {
       } else {
         final homeFuture = _repo.home();
         sections = isAppleTv
-            ? await homeFuture.timeout(const Duration(seconds: 20))
-            : await homeFuture;
+            ? await homeFuture.timeout(const Duration(seconds: 15))
+            : await homeFuture.timeout(const Duration(seconds: 15));
+        if (sections.isNotEmpty) {
+          saveSectionsToCache(source, sections);
+        }
       }
     } on TimeoutException catch (_) {
       _logDiagnostic('Load timed out for source: $sourceId');
@@ -186,10 +262,10 @@ class HomeCubit extends Cubit<HomeState> {
     final byKind = <String, HomeSection>{};
 
     Future<HomeSection?> fetch(String kind) async {
-      for (var attempt = 0; attempt < 3; attempt++) {
+      for (var attempt = 0; attempt < 2; attempt++) {
         try {
           if (source == CatalogSource.thePornDb) {
-            final section = await _tpdb!.homeSection(kind);
+            final section = await _tpdb!.homeSection(kind).timeout(const Duration(seconds: 6));
             if (section != null && section.items.isNotEmpty) return section;
           } else if (source == CatalogSource.mixed) {
             if (kind.startsWith('mixed_')) {
@@ -197,8 +273,10 @@ class HomeCubit extends Cubit<HomeState> {
               final tpdbKind = _resolveTpdbKind(kind);
               final tpdb = _tpdb;
               final results = await Future.wait([
-                _tmdb!.homeSection(tmdbKind),
-                tpdb != null ? tpdb.homeSection(tpdbKind) : Future.value(null),
+                _tmdb!.homeSection(tmdbKind).timeout(const Duration(seconds: 5), onTimeout: () => null),
+                tpdb != null
+                    ? tpdb.homeSection(tpdbKind).timeout(const Duration(seconds: 5), onTimeout: () => null)
+                    : Future.value(null),
               ]);
               final tmdbSec = results[0];
               final tpdbSec = results[1];
@@ -215,22 +293,22 @@ class HomeCubit extends Cubit<HomeState> {
             } else if (kind.startsWith('tpdb_')) {
               final tpdb = _tpdb;
               if (tpdb == null) return null;
-              final section = await tpdb.homeSection(kind);
+              final section = await tpdb.homeSection(kind).timeout(const Duration(seconds: 6));
               if (section != null && section.items.isNotEmpty) return section;
             } else {
-              final section = await _tmdb!.homeSection(kind);
+              final section = await _tmdb!.homeSection(kind).timeout(const Duration(seconds: 5));
               if (section != null && section.items.isNotEmpty) return section;
             }
           } else {
-            final section = await _tmdb!.homeSection(kind);
+            final section = await _tmdb!.homeSection(kind).timeout(const Duration(seconds: 5));
             if (section != null && section.items.isNotEmpty) return section;
           }
         } catch (e, st) {
-          if (attempt == 2) {
-            _logDiagnostic('Failed to load section $kind after 3 attempts', error: e, stackTrace: st);
+          if (attempt == 1) {
+            _logDiagnostic('Failed to load section $kind after 2 attempts', error: e, stackTrace: st);
             return null;
           }
-          await Future<void>.delayed(Duration(milliseconds: 300 * (attempt + 1)));
+          await Future<void>.delayed(const Duration(milliseconds: 250));
         }
       }
       return null;
@@ -256,6 +334,7 @@ class HomeCubit extends Cubit<HomeState> {
     ];
     if (finalOrdered.isNotEmpty) {
       _catalogCache[source] = (DateTime.now(), finalOrdered);
+      saveSectionsToCache(source, finalOrdered);
     }
     return finalOrdered;
   }

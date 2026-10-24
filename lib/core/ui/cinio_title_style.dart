@@ -239,9 +239,8 @@ class CinioTitleStyle {
         baseStyle: AppText.display.copyWith(
           fontFamily: 'Rubik',
           fontSize: effSize * 1.04,
-          fontWeight: FontWeight.w900,
-          fontStyle: FontStyle.italic,
-          height: 0.92,
+          fontWeight: FontWeight.w800,
+          height: 0.96,
           letterSpacing: (0.4 * trackingScale).clamp(-0.2, 0.8),
         ),
         gradient: LinearGradient(
@@ -255,8 +254,7 @@ class CinioTitleStyle {
           stops: const [0.0, 0.60, 1.0],
         ),
         shadows: const [
-          Shadow(color: Colors.black, offset: Offset(2.0, 2.5), blurRadius: 0),
-          Shadow(color: Colors.black, offset: Offset(3.5, 4.0), blurRadius: 3),
+          Shadow(color: Colors.black, offset: Offset(0, 3), blurRadius: 6),
         ],
         uppercase: true,
       ),
@@ -267,9 +265,8 @@ class CinioTitleStyle {
           fontFamily: 'Montserrat',
           fontSize: effSize * 0.94,
           fontWeight: FontWeight.w700,
-          fontStyle: FontStyle.italic,
-          height: 1.04,
-          letterSpacing: (4.8 * trackingScale).clamp(0.2, 4.8),
+          height: 1.02,
+          letterSpacing: (3.0 * trackingScale).clamp(0.2, 3.0),
         ),
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
@@ -282,8 +279,7 @@ class CinioTitleStyle {
           stops: [0.0, 0.50, 1.0],
         ),
         shadows: const [
-          Shadow(color: Colors.black, offset: Offset(0, 6), blurRadius: 16),
-          Shadow(color: Colors.black, offset: Offset(0, 2), blurRadius: 4),
+          Shadow(color: Colors.black, offset: Offset(0, 4), blurRadius: 10),
         ],
         uppercase: true,
       ),
@@ -346,7 +342,6 @@ class CinioTitleStyle {
           fontFamily: 'Lato',
           fontSize: effSize * 0.98,
           fontWeight: FontWeight.w600,
-          fontStyle: FontStyle.italic,
           height: 1.02,
           letterSpacing: (0.6 * trackingScale).clamp(0.0, 1.0),
         ),
@@ -421,8 +416,7 @@ class CinioTitleStyle {
           fontFamily: 'Montserrat',
           fontSize: effSize * 1.04,
           fontWeight: FontWeight.w900,
-          fontStyle: FontStyle.italic,
-          height: 0.88,
+          height: 0.92,
           letterSpacing: (-0.3 * trackingScale).clamp(-0.6, 0.0),
         ),
         gradient: LinearGradient(
@@ -437,7 +431,7 @@ class CinioTitleStyle {
         ),
         shadows: [
           Shadow(color: accent, offset: const Offset(-1.5, -1.0), blurRadius: 0),
-          const Shadow(color: Colors.black, offset: Offset(2.5, 3.0), blurRadius: 4),
+          const Shadow(color: Colors.black, offset: Offset(2.0, 2.5), blurRadius: 4),
         ],
         uppercase: true,
       ),
@@ -446,11 +440,10 @@ class CinioTitleStyle {
       CinioTitlePreset.sweatyMovie => (
         baseStyle: AppText.display.copyWith(
           fontFamily: 'Rubik',
-          fontSize: effSize * 1.14,
+          fontSize: effSize * 1.10,
           fontWeight: FontWeight.w900,
-          fontStyle: FontStyle.italic,
-          height: 0.88,
-          letterSpacing: (-0.6 * trackingScale).clamp(-1.2, 0.2),
+          height: 0.92,
+          letterSpacing: (-0.4 * trackingScale).clamp(-0.8, 0.2),
         ),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -466,18 +459,13 @@ class CinioTitleStyle {
         shadows: [
           Shadow(
             color: Color.lerp(tintMid, Colors.black, 0.80)!,
-            offset: const Offset(2.2, 3.2),
+            offset: const Offset(1.5, 2.0),
             blurRadius: 0,
           ),
           Shadow(
-            color: Colors.black.withValues(alpha: 0.95),
-            offset: const Offset(4.0, 5.5),
+            color: Colors.black.withValues(alpha: 0.90),
+            offset: const Offset(3.0, 4.0),
             blurRadius: 4,
-          ),
-          Shadow(
-            color: tintMid.withValues(alpha: 0.5),
-            offset: Offset.zero,
-            blurRadius: 18,
           ),
         ],
         uppercase: true,
@@ -584,67 +572,7 @@ Widget cinioFallbackTitle({
       ? CrossAxisAlignment.start
       : (textAlign == TextAlign.right ? CrossAxisAlignment.end : CrossAxisAlignment.center);
 
-  // Playful stacked layout inspired by "The End Of Oak Street"
-  Widget buildPlayfulStacked(double fs, double maxW) {
-    final lines = _chunkWordsForPlayfulTitle(displayMain);
-    final playfulTransforms = const [
-      (angle: -0.035, dx: -6.0),
-      (angle: 0.040, dx: 7.0),
-      (angle: -0.024, dx: -4.0),
-      (angle: 0.030, dx: 5.0),
-      (angle: -0.018, dx: -3.0),
-    ];
-
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: fittedAlign,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxW),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: crossAlign,
-          children: [
-            for (var i = 0; i < lines.length; i++)
-              Transform.translate(
-                offset: Offset(
-                  playfulTransforms[i % playfulTransforms.length].dx,
-                  i == 0 ? 0.0 : -fs * 0.20,
-                ),
-                child: Transform.rotate(
-                  angle: playfulTransforms[i % playfulTransforms.length].angle,
-                  child: Text(
-                    lines[i],
-                    textAlign: textAlign,
-                    maxLines: 1,
-                    softWrap: false,
-                    style: cfg.baseStyle.copyWith(
-                      fontSize: fs,
-                      height: 0.84,
-                      color: Colors.white,
-                      shadows: [
-                        const Shadow(
-                          color: Colors.black,
-                          offset: Offset(0, 3.5),
-                          blurRadius: 7,
-                        ),
-                        Shadow(
-                          color: Colors.black.withValues(alpha: 0.90),
-                          offset: const Offset(2.0, 4.0),
-                          blurRadius: 9,
-                        ),
-                        ...cfg.shadows,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Standard non-gradient solid title
+  // Standard non-gradient solid title with clean balanced layout
   Widget buildStandardText(double fs, int lines, double maxW) => FittedBox(
     fit: BoxFit.scaleDown,
     alignment: fittedAlign,
@@ -672,9 +600,6 @@ Widget cinioFallbackTitle({
   );
 
   Widget buildMainContent(double fs, double maxW) {
-    if (isPlayfulLong && !hasSub) {
-      return buildPlayfulStacked(fs, maxW);
-    }
     return buildStandardText(fs, maxDisplayLines, maxW);
   }
 

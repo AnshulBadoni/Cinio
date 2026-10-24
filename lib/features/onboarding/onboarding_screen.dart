@@ -35,7 +35,7 @@ class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1600),
+    duration: const Duration(milliseconds: 400),
   )..forward();
 
   // The supplied watermark fades in and settles into place while boot runs.

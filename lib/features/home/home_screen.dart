@@ -198,6 +198,9 @@ class _HomeViewState extends State<_HomeView>
     }
     _listStatus.revision.addListener(_onLibraryStatusChanged);
     _myList.revision.addListener(_onLibraryStatusChanged);
+    if (sl.isRegistered<CatalogSourcePrefs>()) {
+      sl<CatalogSourcePrefs>().addListener(_onLibraryStatusChanged);
+    }
   }
 
   void _onLibraryStatusChanged() {
@@ -206,6 +209,9 @@ class _HomeViewState extends State<_HomeView>
 
   @override
   void dispose() {
+    if (sl.isRegistered<CatalogSourcePrefs>()) {
+      sl<CatalogSourcePrefs>().removeListener(_onLibraryStatusChanged);
+    }
     _listStatus.revision.removeListener(_onLibraryStatusChanged);
     _myList.revision.removeListener(_onLibraryStatusChanged);
     _slashCtrl.dispose();
@@ -1080,7 +1086,7 @@ class _HomeViewState extends State<_HomeView>
     return ValueListenableBuilder<int>(
       valueListenable: PlaybackPrefs.hideModeCardsRevision,
       builder: (_, _, _) {
-        if (sl<PlaybackPrefs>().hideModeCards) return const SizedBox.shrink();
+        if (sl<PlaybackPrefs>().hideModeCards) return const SizedBox(height: 18);
         return BlocBuilder<ContentModeCubit, ContentMode>(
           bloc: _modeCubit,
           builder: (context, current) {
@@ -1325,7 +1331,9 @@ class _HomeScrollView extends StatelessWidget {
         final noSourceForMode = !hasSourcesFor(mode);
         final activeSourceValid =
             activeId.isNotEmpty && view._repo.hasSource(activeId);
-        final showSourceSwitcher = !noSourceForMode;
+        final showSourceSwitcher = !noSourceForMode &&
+            !(sl.isRegistered<CatalogSourcePrefs>() &&
+                sl<CatalogSourcePrefs>().hideProviderSwitcher);
         final cardStyle = view._prefs.homeCardStyle;
 
         return ScrollConfiguration(
@@ -1519,10 +1527,11 @@ class _HomeHeroSliver extends StatelessWidget {
                 height: kHeroHeight,
                 stretch: view._heroStretch,
               ),
-              Positioned(
-                top: MediaQuery.paddingOf(context).top + 10,
-                right: 16,
-                child: BlocBuilder<ActiveSourceCubit, String>(
+              if (showSourceSwitcher)
+                Positioned(
+                  top: MediaQuery.paddingOf(context).top + 10,
+                  right: 16,
+                  child: BlocBuilder<ActiveSourceCubit, String>(
                   builder: (context, id) => SourceSwitcher(
                     currentId: id,
                     compact: true,

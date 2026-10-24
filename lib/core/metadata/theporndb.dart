@@ -219,19 +219,14 @@ class ThePornDb {
     return out;
   }
 
-  static const List<String> _kTopPerformers = [
-    'Riley Reid', 'Gabbie Carter', 'Lana Rhoades', 'Mia Malkova', 'Angela White',
-    'Emily Willis', 'Autumn Falls', 'Abella Danger', 'Eva Lovia', 'Kendra Lust',
-    'Janice Griffith', 'Alina Lopez', 'Kenzie Reeves', 'Blake Blossom', 'Liya Silver',
-    'Cory Chase', 'Brandi Love', 'Alexis Texas', 'Tori Black', 'Nicole Aniston',
-    'Dillion Harper', 'Lena Paul', 'Vicki Chase', 'Maitland Ward', 'Kenna James',
-    'Gianna Michaels', 'Violet Myers', 'Skylar Vox', 'Gia Paige', 'Scarlit Scandal',
-    'Sweetie Fox', 'Little Caprice', 'Leah Gotti', 'Kelsi Monroe', 'Elsa Jean',
-    'Alex Coal', 'Adria Rae', 'Lacy Lennon', 'Vanna Bardot', 'Maya Bijou',
-    'Kira Noir', 'Jill Kassidy', 'Kylie Rocket', 'Vina Sky', 'Cherie DeVille',
-    'Natasha Nice', 'Kagney Linn Karter', 'Phoenix Marie', 'Sarah Vandella', 'Lisa Ann',
-    'Penny Pax', 'Chanel Preston', 'Alexis Fawx', 'Reagan Foxx', 'Eva Elfie',
-  ];
+  static final RegExp _seriesRegex = RegExp(
+    r'(\bpart\s*\d+|\bpt\.?\s*\d+|\bvol(ume)?\.?\s*\d+|\bseason\s*\d+|\bep(isode)?\.?\s*\d+|#\s*\d+|\b\d+\s*$)',
+    caseSensitive: false,
+  );
+
+  static bool isSeriesTitle(String title) {
+    return _seriesRegex.hasMatch(title);
+  }
 
   Future<List<MediaItem>> performers({
     int page = 1,
@@ -239,55 +234,40 @@ class ThePornDb {
     String? query,
   }) async {
     final isSearch = query != null && query.trim().isNotEmpty;
-    if (!isSearch && _shouldFilter) {
-      const pageSize = 20;
-      final offset = (page - 1) * pageSize;
-      if (offset < _kTopPerformers.length) {
-        final names = _kTopPerformers.skip(offset).take(pageSize).toList();
-        final futures = names.map((name) async {
-          try {
-            final res = await _get('/performers', queryParameters: {
-              'q': name,
-              'per_page': 1,
-            });
-            final list = res['data'] as List?;
-            if (list != null && list.isNotEmpty) {
-              final row = list.first;
-              if (row is Map && _qualifiesAsActor(row, requireRating: true)) {
-                return _performer(row);
-              }
-            }
-          } catch (_) {}
-          return null;
-        });
-        final results = (await Future.wait(futures)).whereType<MediaItem>().toList();
-        results.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-        if (results.isNotEmpty) return results;
-      }
-    }
-
-    final apiPage = page > 3 && _shouldFilter ? page - 3 : page;
     final data = await _get('/performers', queryParameters: {
-      'page': apiPage,
-      'per_page': 50,
+      'page': page,
+      'per_page': 28,
       'orderBy': orderBy,
-      if (_shouldFilter) ...{
-        'gender': 'Female',
-        'rating': 4,
-        'rating_operation': '>=',
-        'age': 50,
-        'age_operation': '<',
-      },
       if (isSearch) 'q': query.trim(),
     });
     final rows = data['data'];
     if (rows is! List) return const [];
-    final list = [
-      for (final row in rows)
-        if (row is Map && _qualifiesAsActor(row, requireRating: !isSearch && _shouldFilter)) _performer(row),
-    ];
-    list.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-    return list.take(24).toList();
+    final list = <MediaItem>[];
+    for (final row in rows) {
+      if (row is Map && _qualifiesAsActor(row, requireRating: false)) {
+        list.add(_performer(row));
+      }
+    }
+    // Replenish if filter reduced count on normal browse
+    if (list.length < 16 && !isSearch && rows.length >= 20) {
+      try {
+        final nextData = await _get('/performers', queryParameters: {
+          'page': page + 1,
+          'per_page': 28,
+          'orderBy': orderBy,
+        });
+        final nextRows = nextData['data'];
+        if (nextRows is List) {
+          for (final row in nextRows) {
+            if (row is Map && _qualifiesAsActor(row, requireRating: false)) {
+              list.add(_performer(row));
+              if (list.length >= 24) break;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    return list;
   }
 
   double? _extractPerformerRating(Map row) {
@@ -374,14 +354,13 @@ class ThePornDb {
   }
 
   /// Builds the ThePornDB Home rows in order: Recent, Trending, Actors, Popular, Top Rated.
-  /// Actors are restricted to female performers younger than 50 with a rating above 4.0,
-  /// sorted with top-rated models first. Studio row is removed from home.
+  /// Uses genuinely distinct ordering across sections so lists are fresh and don't repeat.
   Future<List<HomeSection>> home() async {
     final results = await Future.wait([
       _safe(() => movies(orderBy: 'recently_released')), // 0: Recent
       _safe(() => movies(orderBy: 'most_relevant')), // 1: Trending
       _safe(() => performers()), // 2: Actors
-      _safe(() => movies(orderBy: 'most_relevant', page: 2)), // 3: Popular
+      _safe(() => movies(orderBy: 'recently_created')), // 3: Popular
       _safe(() => _topRated(1)), // 4: Top Rated
     ]);
     return [
@@ -398,7 +377,7 @@ class ThePornDb {
       'tpdb_recent' => await movies(orderBy: 'recently_released'),
       'tpdb_trending' => await movies(orderBy: 'most_relevant'),
       'tpdb_performers' => await performers(),
-      'tpdb_popular' => await movies(orderBy: 'most_relevant', page: 2),
+      'tpdb_popular' => await movies(orderBy: 'recently_created'),
       'tpdb_top_rated' => await _topRated(1),
       'tpdb_studios' => await studios(),
       _ => const <MediaItem>[],
@@ -423,7 +402,7 @@ class ThePornDb {
   Future<List<MediaItem>> browseMore(String kind, int page) => switch (kind) {
         'tpdb_recent' => movies(page: page, orderBy: 'recently_released'),
         'tpdb_trending' => movies(page: page, orderBy: 'most_relevant'),
-        'tpdb_popular' => movies(page: page + 1, orderBy: 'most_relevant'),
+        'tpdb_popular' => movies(page: page, orderBy: 'recently_created'),
         'tpdb_top_rated' => _topRated(page),
         'tpdb_performers' => performers(page: page),
         'tpdb_studios' => studios(page: page),
@@ -523,9 +502,11 @@ class ThePornDb {
       thumbnail: cover,
       description: (row['description'] ?? row['synopsis'])?.toString(),
     );
+    final title = (row['title'] ?? item.title).toString();
+    final isSeries = isSeriesTitle(title);
     return MediaDetail(
       id: item.id,
-      title: (row['title'] ?? item.title).toString(),
+      title: title,
       description: (row['description'] ?? row['synopsis'])?.toString(),
       cover: cover,
       url: item.url,
@@ -537,17 +518,20 @@ class ThePornDb {
       cast: cast,
       castMembers: members,
       episodes: [ep],
+      isSeries: isSeries,
+      tmdbIsTv: isSeries,
     );
   }
 
   Future<List<MediaItem>> _topRated(int page) async {
-    final items = await movies(page: page, orderBy: 'recently_released');
+    final items = await movies(page: page, orderBy: 'recently_updated');
     return [...items]..sort((a, b) => _rating(b).compareTo(_rating(a)));
   }
 
   MediaItem _movie(Map row) {
     final id = (row['id'] ?? row['_id'] ?? row['uuid'] ?? row['slug']).toString();
     final title = (row['title'] ?? row['name'] ?? 'Untitled').toString();
+    final isSeries = isSeriesTitle(title);
     return MediaItem(
       id: 'tpdb:movie:$id',
       title: title,
@@ -559,6 +543,7 @@ class ThePornDb {
       genres: _names(row['tags']),
       rating: (row['rating'] as num?)?.toDouble(),
       year: _year(row['date'] ?? row['release_date']),
+      tmdbIsTv: isSeries,
     );
   }
 

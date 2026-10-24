@@ -163,14 +163,14 @@ class _BrandLoaderState extends State<BrandLoader>
                 );
               }
 
-              // Indeterminate breathing pulse
-              final pulse =
-                  0.35 + 0.65 * (0.5 + 0.5 * math.sin(_c.value * 2 * math.pi));
+              // Solid filled logo with continuous cinematic light sweep
+              final sweep = _c.value;
               return Stack(
                 alignment: Alignment.center,
                 children: [
+                  // Base Dimmed Logo Layer
                   Opacity(
-                    opacity: 0.18,
+                    opacity: 0.22,
                     child: CachedNetworkImage(
                       imageUrl: logoUrl,
                       height: 72,
@@ -179,8 +179,24 @@ class _BrandLoaderState extends State<BrandLoader>
                           _buildTitleLoader(widget.title ?? ''),
                     ),
                   ),
-                  Opacity(
-                    opacity: pulse.clamp(0.0, 1.0),
+                  // Filled Logo with radiant luminous sweep
+                  ShaderMask(
+                    blendMode: BlendMode.srcATop,
+                    shaderCallback: (bounds) {
+                      return LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: const [
+                          Colors.white,
+                          Color(0xFFE0F2FE),
+                          Colors.white,
+                          Color(0xFFBAE6FD),
+                          Colors.white,
+                        ],
+                        stops: const [0.0, 0.45, 0.5, 0.55, 1.0],
+                        transform: _GradientTranslateTransform(sweep),
+                      ).createShader(bounds);
+                    },
                     child: CachedNetworkImage(
                       imageUrl: logoUrl,
                       height: 72,
@@ -271,9 +287,8 @@ class _BrandLoaderState extends State<BrandLoader>
                 );
               }
 
-              // Indeterminate: Gentle breathing opacity pulse
-              final pulse =
-                  0.35 + 0.55 * (0.5 + 0.5 * math.sin(_c.value * 2 * math.pi));
+              // Indeterminate: Filled solid typography with radiant light sweep
+              final sweep = _c.value;
               return Stack(
                 alignment: Alignment.center,
                 children: [
@@ -283,12 +298,23 @@ class _BrandLoaderState extends State<BrandLoader>
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: cfg.baseStyle.copyWith(
-                      color: Colors.white.withValues(alpha: 0.18),
+                      color: Colors.white.withValues(alpha: 0.22),
                       shadows: cleanShadows,
                     ),
                   ),
-                  Opacity(
-                    opacity: pulse.clamp(0.0, 1.0),
+                  ShaderMask(
+                    blendMode: BlendMode.srcATop,
+                    shaderCallback: (bounds) => LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: const [
+                        Colors.white,
+                        Color(0xFFE0F2FE),
+                        Colors.white,
+                      ],
+                      stops: const [0.0, 0.5, 1.0],
+                      transform: _GradientTranslateTransform(sweep),
+                    ).createShader(bounds),
                     child: ShaderMask(
                       shaderCallback: (bounds) =>
                           cfg.gradient.createShader(bounds),
@@ -415,4 +441,18 @@ class _HorizontalFillClipper extends CustomClipper<Rect> {
   @override
   bool shouldReclip(covariant _HorizontalFillClipper oldClipper) =>
       oldClipper.factor != factor;
+}
+
+class _GradientTranslateTransform extends GradientTransform {
+  const _GradientTranslateTransform(this.progress);
+  final double progress;
+
+  @override
+  Matrix4? transform(Rect bounds, {TextDirection? textDirection}) {
+    return Matrix4.translationValues(
+      (progress * 2.2 - 0.6) * bounds.width,
+      0.0,
+      0.0,
+    );
+  }
 }

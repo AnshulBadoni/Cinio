@@ -473,6 +473,29 @@ class TmdbDiscoverService {
     }
 
     final episodes = <Episode>[];
+    final prodCompanies = row['production_companies'];
+    final studios = <String>[];
+    if (prodCompanies is List) {
+      for (final c in prodCompanies) {
+        if (c is Map) {
+          final cName = c['name']?.toString().trim();
+          if (cName != null && cName.isNotEmpty && !studios.contains(cName)) {
+            studios.add(cName);
+          }
+        }
+      }
+    }
+    if (studios.isEmpty && item.tmdbIsTv && row['networks'] is List) {
+      for (final n in row['networks'] as List) {
+        if (n is Map) {
+          final nName = n['name']?.toString().trim();
+          if (nName != null && nName.isNotEmpty && !studios.contains(nName)) {
+            studios.add(nName);
+          }
+        }
+      }
+    }
+
     if (item.tmdbIsTv) {
       final seasons = row['seasons'];
       if (seasons is List) {
@@ -514,6 +537,7 @@ class TmdbDiscoverService {
           originalLanguage: originalLanguage,
           director: director,
           writer: writer,
+          studios: studios,
         );
       }
     } else {
@@ -541,6 +565,7 @@ class TmdbDiscoverService {
       originalLanguage: originalLanguage,
       director: director,
       writer: writer,
+      studios: studios,
     );
   }
 

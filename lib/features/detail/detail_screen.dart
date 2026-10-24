@@ -56,6 +56,7 @@ import '../../core/models/person.dart';
 import '../home/search_screen.dart';
 import '../../core/ui/cinio_title_style.dart';
 import '../people/person_page.dart';
+import '../people/studio_page.dart';
 import '../../core/models/video_source.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/models/watch_status.dart';
@@ -227,17 +228,20 @@ class DetailScreen extends StatelessWidget {
     this.trailerContext,
     this.catalogDetail,
     this.heroTag,
+    this.fromDownloads = false,
   });
   final MediaItem item;
   final DetailTrailerContext? trailerContext;
   final MediaDetail? catalogDetail;
   final String? heroTag;
+  final bool fromDownloads;
 
   static Route<void> route(
     MediaItem item, {
     DetailTrailerContext? trailerContext,
     MediaDetail? catalogDetail,
     String? heroTag,
+    bool fromDownloads = false,
   }) {
     final effectiveHeroTag = sl<AppMode>().isTv ? null : heroTag;
     return PageRouteBuilder<void>(
@@ -248,6 +252,7 @@ class DetailScreen extends StatelessWidget {
         trailerContext: trailerContext,
         catalogDetail: catalogDetail,
         heroTag: effectiveHeroTag,
+        fromDownloads: fromDownloads,
       ),
       transitionsBuilder: (_, animation, _, child) {
         final curved = CurvedAnimation(
@@ -298,6 +303,7 @@ class DetailScreen extends StatelessWidget {
         trailerContext: trailerContext,
         catalogDetail: catalogDetail,
         heroTag: heroTag,
+        fromDownloads: fromDownloads,
       ),
     );
   }
@@ -314,11 +320,13 @@ class _DetailView extends StatefulWidget {
     this.trailerContext,
     this.catalogDetail,
     this.heroTag,
+    this.fromDownloads = false,
   });
   final MediaItem item;
   final DetailTrailerContext? trailerContext;
   final MediaDetail? catalogDetail;
   final String? heroTag;
+  final bool fromDownloads;
 
   @override
   State<_DetailView> createState() => _DetailViewState();
@@ -326,6 +334,8 @@ class _DetailView extends StatefulWidget {
 
 class _DetailViewState extends State<_DetailView>
     with TickerProviderStateMixin {
+  late bool _viewingOnline = !widget.fromDownloads;
+
   double _expandedHeightFor({required bool isReading, required bool hasDownload}) {
     if (isReading) return 510.0;
     return 570.0;
@@ -2444,7 +2454,7 @@ class _DetailViewState extends State<_DetailView>
                                               widget.item.sourceId == 'tmdb:catalog' ||
                                               widget.item.sourceId.startsWith('tpdb:'))
                                           ? () {
-                                              if (downloadedRec != null) {
+                                              if (!_viewingOnline && downloadedRec != null) {
                                                 launchDownloadedEpisode(context, downloadedRec);
                                               } else {
                                                 _openPlayer(eps, resumeIdx, detail, category);
@@ -2501,6 +2511,45 @@ class _DetailViewState extends State<_DetailView>
                                   ),
                                 ),
                                 const SizedBox(width: 10),
+                                if (downloadedRec != null || widget.fromDownloads) ...[
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: _viewingOnline ? AppColors.accent : Colors.white,
+                                      side: BorderSide(
+                                        color: _viewingOnline
+                                            ? AppColors.accent
+                                            : Colors.white.withValues(alpha: 0.28),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(24),
+                                      ),
+                                    ),
+                                    icon: Icon(
+                                      _viewingOnline
+                                          ? Icons.offline_pin_outlined
+                                          : Icons.cloud_outlined,
+                                      size: 18,
+                                    ),
+                                    label: Text(
+                                      _viewingOnline ? 'Downloaded' : 'View Online',
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                    ),
+                                    onPressed: () {
+                                      setState(() => _viewingOnline = !_viewingOnline);
+                                      ScaffoldMessenger.of(context).clearSnackBars();
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(_viewingOnline
+                                              ? 'Switched to Online mode'
+                                              : 'Switched to Downloaded (Offline) mode'),
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
                                 AnimatedSize(
                                   duration: const Duration(milliseconds: 300),
                                   curve: Curves.easeOutCubic,
@@ -2921,7 +2970,7 @@ class _DetailViewState extends State<_DetailView>
     final isTpdb = widget.item.sourceId.startsWith('tpdb') ||
         widget.item.id.startsWith('tpdb');
     Navigator.of(context).push(
-      PersonPage.route(
+      StudioPage.route(
         PersonRef(
           id: 0,
           source: isTpdb ? PersonSource.thePornDbStudio : PersonSource.tmdbCompany,
@@ -2980,41 +3029,29 @@ class _DetailViewState extends State<_DetailView>
             ),
           if (hasStudios)
             Padding(
-              padding: const EdgeInsets.only(top: 2, bottom: 2),
+              padding: const EdgeInsets.only(top: 3, bottom: 2),
               child: Wrap(
-                spacing: 8,
+                spacing: 4,
                 runSpacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   const Text('Studio: ', style: TextStyle(color: Colors.white60, fontSize: 13)),
-                  for (final studio in detail.studios)
+                  for (var i = 0; i < detail.studios.length; i++) ...[
+                    if (i > 0)
+                      const Text(', ', style: TextStyle(color: Colors.white60, fontSize: 13)),
                     GestureDetector(
-                      onTap: () => _openStudio(studio),
+                      onTap: () => _openStudio(detail.studios[i]),
                       behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.14), width: 0.8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.business_rounded, size: 12, color: AppColors.accent),
-                            const SizedBox(width: 4.5),
-                            Text(
-                              studio,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                      child: Text(
+                        detail.studios[i],
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -3329,6 +3366,15 @@ class _DetailViewState extends State<_DetailView>
         ? visible.sublist(slice.start, slice.end)
         : visible;
 
+    final hasDownloadedEp = widget.fromDownloads ||
+        (sl.isRegistered<DownloadManager>() &&
+            sl<DownloadManager>().findDownloadedRecord(
+                  sourceId: detail.sourceId,
+                  showId: detail.id,
+                  showTitle: detail.title,
+                ) !=
+                null);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3345,20 +3391,61 @@ class _DetailViewState extends State<_DetailView>
                   color: Colors.white,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1C1C26),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Text(
-                  'Posters',
-                  style: TextStyle(
-                    color: Colors.white60,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (hasDownloadedEp) ...[
+                    TextButton.icon(
+                      icon: Icon(
+                        _viewingOnline
+                            ? Icons.offline_pin_outlined
+                            : Icons.cloud_outlined,
+                        size: 15,
+                        color:
+                            _viewingOnline ? AppColors.accent : Colors.white70,
+                      ),
+                      label: Text(
+                        _viewingOnline ? 'Downloaded only' : 'View online',
+                        style: TextStyle(
+                          color: _viewingOnline
+                              ? AppColors.accent
+                              : Colors.white70,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: TextButton.styleFrom(
+                        backgroundColor: _viewingOnline
+                            ? AppColors.accent.withValues(alpha: 0.15)
+                            : AppColors.surface,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () {
+                        setState(() => _viewingOnline = !_viewingOnline);
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1C1C26),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Text(
+                      'Posters',
+                      style: TextStyle(
+                        color: Colors.white60,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
@@ -3449,7 +3536,37 @@ class _DetailViewState extends State<_DetailView>
           hasMultipleSeasons: hasMultipleSeasons,
           defaultCoverUrl: heroCoverUrl,
           coverHeaders: coverHeaders,
-          onOpen: (idx) => _openPlayer(eps, idx, detail, category),
+          offlineMode: !_viewingOnline && hasDownloadedEp,
+          onSwitchOnline: () => setState(() => _viewingOnline = true),
+          onOpen: (idx) {
+            final ep = eps[idx];
+            final rec = sl<DownloadManager>().findDownloadedRecord(
+              sourceId: detail.sourceId,
+              showId: detail.id,
+              showTitle: detail.title,
+              episodeId: ep.id,
+              episodeNumber: ep.number,
+            );
+            if (!_viewingOnline && rec != null) {
+              launchDownloadedEpisode(context, rec);
+            } else if (!_viewingOnline) {
+              ScaffoldMessenger.of(context).clearSnackBars();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Episode is not downloaded. Watch online?'),
+                  action: SnackBarAction(
+                    label: 'Watch Online',
+                    onPressed: () {
+                      setState(() => _viewingOnline = true);
+                      _openPlayer(eps, idx, detail, category);
+                    },
+                  ),
+                ),
+              );
+            } else {
+              _openPlayer(eps, idx, detail, category);
+            }
+          },
           onPickPlayer: (idx) => _pickPlayerFor(eps, idx, detail, category),
           onDownload: (ep) => _downloadSingle(ep, detail, category),
           fillerEps: _fillerEps,

@@ -367,6 +367,35 @@ class DownloadManager extends ChangeNotifier {
   DownloadRecord? recordFor(String sourceId, String showId, String episodeId) =>
       _records[_idFor(sourceId, showId, episodeId)];
 
+  /// Finds any completed downloaded record for this show/episode, matching by
+  /// direct ID or title/episode number fallback.
+  DownloadRecord? findDownloadedRecord({
+    String? sourceId,
+    String? showId,
+    String? showTitle,
+    String? episodeId,
+    double? episodeNumber,
+  }) {
+    if (sourceId != null && showId != null && episodeId != null) {
+      final direct = recordFor(sourceId, showId, episodeId);
+      if (direct != null && direct.status == DownloadStatus.done) return direct;
+    }
+
+    final titleLower = showTitle?.trim().toLowerCase();
+    for (final r in all) {
+      if (r.status != DownloadStatus.done) continue;
+      final showMatches = (showId != null && r.showId == showId) ||
+          (titleLower != null && titleLower.isNotEmpty && r.showTitle.trim().toLowerCase() == titleLower);
+      if (!showMatches) continue;
+
+      if (episodeId != null && r.episodeId == episodeId) return r;
+      if (episodeNumber != null && r.episodeNumber != null && r.episodeNumber == episodeNumber) {
+        return r;
+      }
+    }
+    return null;
+  }
+
   // ── Enqueue ───────────────────────────────────────────────────────────────
 
   Future<void> enqueueEpisodes({

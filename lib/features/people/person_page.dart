@@ -25,6 +25,7 @@ import '../detail/detail_screen.dart';
 import '../home/see_all_screen.dart';
 import '../trailer/trailer_screen.dart';
 import 'provider_videos_screen.dart';
+import 'studio_page.dart';
 
 /// Redesigned Actor Profile Page with natural-scrolling cinematic hero header,
 /// sticky floating back button, smooth parallax fade out, quick action trio,
@@ -49,14 +50,18 @@ class PersonPage extends StatefulWidget {
     PersonRef person, {
     String? sourceId,
     String? heroTag,
-  }) =>
-      MaterialPageRoute<void>(
-        builder: (_) => PersonPage(
-          person: person,
-          sourceId: sourceId,
-          heroTag: heroTag,
-        ),
-      );
+  }) {
+    if (person.source == PersonSource.thePornDbStudio || person.source == PersonSource.tmdbCompany) {
+      return StudioPage.route(person, sourceId: sourceId, heroTag: heroTag);
+    }
+    return MaterialPageRoute<void>(
+      builder: (_) => PersonPage(
+        person: person,
+        sourceId: sourceId,
+        heroTag: heroTag,
+      ),
+    );
+  }
 
   @override
   State<PersonPage> createState() => _PersonPageState();

@@ -242,13 +242,42 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
     }
 
     final reqId = ++_activeRequestId;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+
+    // For "All" tab, immediately display any streams that are already present in cache
+    if (currentTab.isAll) {
+      final nonAll = _tabs.where((t) => !t.isAll).toList();
+      final alreadyCached = <_StreamEntry>[];
+      final seenUrls = <String>{};
+      for (final t in nonAll) {
+        if (_cache.containsKey(t.id)) {
+          for (final entry in _cache[t.id]!) {
+            if (seenUrls.add(entry.source.url)) {
+              alreadyCached.add(entry);
+            }
+          }
+        }
+      }
+      if (alreadyCached.isNotEmpty) {
+        _cache['all'] = List.from(alreadyCached);
+        setState(() {
+          _loading = false;
+          _error = null;
+        });
+      } else {
+        setState(() {
+          _loading = true;
+          _error = null;
+        });
+      }
+    } else {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     try {
-      final results = await _fetchForTab(currentTab);
+      final results = await _fetchForTab(currentTab, reqId);
       if (!mounted || reqId != _activeRequestId) return;
       _cache[currentTab.id] = results;
       setState(() {
@@ -266,21 +295,55 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
     }
   }
 
-  Future<List<_StreamEntry>> _fetchForTab(_ProviderTab tab) async {
+  Future<List<_StreamEntry>> _fetchForTab(_ProviderTab tab, int reqId) async {
     if (tab.isAll) {
       final nonAll = _tabs.where((t) => !t.isAll).toList();
-      final futures = nonAll.map((t) async {
-        if (_cache.containsKey(t.id)) return _cache[t.id]!;
-        try {
-          final res = await _fetchSingleProvider(t);
-          _cache[t.id] = res;
-          return res;
-        } catch (_) {
-          return <_StreamEntry>[];
+      final allStreams = <_StreamEntry>[];
+      final seenUrls = <String>{};
+
+      void addEntries(List<_StreamEntry> entries) {
+        for (final entry in entries) {
+          if (seenUrls.add(entry.source.url)) {
+            allStreams.add(entry);
+          }
         }
-      });
-      final nested = await Future.wait(futures);
-      return nested.expand((x) => x).toList();
+      }
+
+      // 1. Immediately harvest whatever is already present in cache
+      for (final t in nonAll) {
+        if (_cache.containsKey(t.id)) {
+          addEntries(_cache[t.id]!);
+        }
+      }
+
+      if (allStreams.isNotEmpty && mounted && reqId == _activeRequestId) {
+        _cache['all'] = List.from(allStreams);
+        setState(() {
+          _loading = false;
+        });
+      }
+
+      // 2. Fetch remaining uncached providers in parallel, streaming results in live
+      final pending = nonAll.where((t) => !_cache.containsKey(t.id)).toList();
+      if (pending.isNotEmpty) {
+        await Future.wait(pending.map((t) async {
+          try {
+            final res = await _fetchSingleProvider(t);
+            _cache[t.id] = res;
+            if (res.isNotEmpty && mounted && reqId == _activeRequestId) {
+              addEntries(res);
+              _cache['all'] = List.from(allStreams);
+              setState(() {
+                _loading = false;
+              });
+            }
+          } catch (_) {
+            _cache[t.id] = <_StreamEntry>[];
+          }
+        }));
+      }
+
+      return allStreams;
     }
     return await _fetchSingleProvider(tab);
   }
