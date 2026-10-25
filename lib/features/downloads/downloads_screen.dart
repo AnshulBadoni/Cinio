@@ -33,6 +33,27 @@ import '../../core/ui/native_cover_provider.dart';
 import 'chapter_downloads_screen.dart';
 import 'downloads_screen_tv.dart';
 
+int _gridColumns(BuildContext context) {
+  if (sl<AppMode>().isDesktop) {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1600) return 8;
+    if (width >= 1200) return 6;
+    if (width >= 900) return 5;
+    return 4;
+  }
+  return 3;
+}
+
+int _gridColumnsFromWidth(double width) {
+  if (sl<AppMode>().isDesktop) {
+    if (width >= 1600) return 8;
+    if (width >= 1200) return 6;
+    if (width >= 900) return 5;
+    return 4;
+  }
+  return 3;
+}
+
 /// Offline library — downloads grouped by show, with per-episode progress and
 /// actions (play / pause / resume / cancel / delete). Shows collapse by default
 /// into a scannable list; a search box filters by show or episode title, and a
@@ -489,9 +510,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                       side: const BorderSide(color: Colors.white24),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     ),
-                    icon: const Icon(Icons.create_new_folder_outlined, size: 18),
-                    label: const Text('Add Folder'),
-                    onPressed: () => _pickAndAddFolder(context),
+                    icon: const Icon(Icons.folder_open_rounded, size: 18),
+                    label: const Text('Manage Folders'),
+                    onPressed: () => _showFolderManagementSheet(context),
                   ),
                 ],
               ),
@@ -542,9 +563,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                 ),
               const SizedBox(width: 12),
               IconButton(
-                icon: const Icon(Icons.create_new_folder_outlined, size: 18),
-                tooltip: 'Add folder',
-                onPressed: () => _pickAndAddFolder(context),
+                icon: const Icon(Icons.folder_open_rounded, size: 19),
+                tooltip: 'Manage folders (include / exclude)',
+                onPressed: () => _showFolderManagementSheet(context),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),
@@ -620,7 +641,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth < 600 ? 2 : (constraints.maxWidth < 900 ? 3 : 4);
+        final columns = _gridColumnsFromWidth(constraints.maxWidth);
         const gap = 12.0;
         final hideTitles = sl<PlaybackPrefs>().hideTitles;
         final ratio = hideTitles ? (2 / 3) : 0.62;
@@ -715,6 +736,229 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         );
       }
     }
+  }
+
+  Future<void> _showFolderManagementSheet(BuildContext context) async {
+    final service = sl<LocalVideoService>();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final included = service.includedFolders;
+          final excluded = service.excludedFolders;
+
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.78,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 12, 6),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Manage Folders',
+                                  style: AppText.headline,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Include custom paths or exclude folders from local videos',
+                                  style: AppText.caption,
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () => Navigator.pop(sheetCtx),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        children: [
+                          // INCLUDED FOLDERS
+                          Row(
+                            children: [
+                              Icon(Icons.folder_outlined, size: 18, color: AppColors.accent),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Included Folders (${included.length})',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const Spacer(),
+                              TextButton.icon(
+                                icon: const Icon(Icons.add_rounded, size: 16),
+                                label: const Text('Add', style: TextStyle(fontSize: 12)),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppColors.accent,
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                onPressed: () async {
+                                  try {
+                                    final dir = await FilePicker.getDirectoryPath();
+                                    if (dir != null && dir.isNotEmpty) {
+                                      await service.addIncludedFolder(dir);
+                                      setSheetState(() {});
+                                    }
+                                  } catch (_) {}
+                                },
+                              ),
+                            ],
+                          ),
+                          if (included.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                              child: Text(
+                                'No custom included folders. System media folders (Movies, Downloads, Videos) are scanned automatically.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                ),
+                              ),
+                            )
+                          else
+                            ...included.map((folder) => Container(
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surface2,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.folder, size: 18, color: Colors.white70),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          folder,
+                                          style: const TextStyle(fontSize: 12, color: Colors.white),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.redAccent),
+                                        tooltip: 'Remove folder',
+                                        onPressed: () async {
+                                          await service.removeIncludedFolder(folder);
+                                          setSheetState(() {});
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                )),
+                          const SizedBox(height: 20),
+                          // EXCLUDED FOLDERS
+                          Row(
+                            children: [
+                              const Icon(Icons.folder_off_outlined, size: 18, color: Colors.amberAccent),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Excluded Folders (${excluded.length})',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const Spacer(),
+                              TextButton.icon(
+                                icon: const Icon(Icons.add_rounded, size: 16),
+                                label: const Text('Exclude', style: TextStyle(fontSize: 12)),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.amberAccent,
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                onPressed: () async {
+                                  try {
+                                    final dir = await FilePicker.getDirectoryPath();
+                                    if (dir != null && dir.isNotEmpty) {
+                                      await service.addExcludedFolder(dir);
+                                      setSheetState(() {});
+                                    }
+                                  } catch (_) {}
+                                },
+                              ),
+                            ],
+                          ),
+                          if (excluded.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                              child: Text(
+                                'No folders excluded. Videos in all scanned directories are visible.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                ),
+                              ),
+                            )
+                          else
+                            ...excluded.map((folder) => Container(
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surface2,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.folder_off, size: 18, color: Colors.amberAccent),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          folder,
+                                          style: const TextStyle(fontSize: 12, color: Colors.white),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.redAccent),
+                                        tooltip: 'Remove exclusion',
+                                        onPressed: () async {
+                                          await service.removeExcludedFolder(folder);
+                                          setSheetState(() {});
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                )),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Widget _topHeaderBar(BuildContext context) {
@@ -884,7 +1128,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final columns = constraints.maxWidth < 600 ? 2 : (constraints.maxWidth < 900 ? 3 : 4);
+                    final columns = _gridColumnsFromWidth(constraints.maxWidth);
                     const gap = 12.0;
                     final hideTitles = sl<PlaybackPrefs>().hideTitles;
                     final ratio = hideTitles ? (2 / 3) : 0.62;
@@ -1100,6 +1344,39 @@ class _LocalVideoCard extends StatelessWidget {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.folder_off_outlined, color: Colors.amberAccent),
+              title: const Text('Exclude Folder'),
+              subtitle: Text('Hide all videos in ${File(item.path).parent.path}'),
+              onTap: () async {
+                Navigator.pop(sheetCtx);
+                final parentDir = File(item.path).parent.path;
+                final dirName = parentDir.split(Platform.pathSeparator).last;
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dctx) => AlertDialog(
+                    backgroundColor: AppColors.surface,
+                    title: const Text('Exclude folder?'),
+                    content: Text('Videos in "$dirName" will be hidden from local videos and skipped in future scans.\n\nPath: $parentDir'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(dctx, false), child: const Text('Cancel')),
+                      TextButton(
+                        onPressed: () => Navigator.pop(dctx, true),
+                        child: const Text('Exclude', style: TextStyle(color: Colors.amberAccent)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await service.addExcludedFolder(parentDir);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Excluded folder: $dirName')),
+                    );
+                  }
+                }
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
               title: const Text('Delete File', style: TextStyle(color: Colors.redAccent)),
               onTap: () async {
@@ -1276,6 +1553,39 @@ class _LocalVideoListTile extends StatelessWidget {
               onTap: () {
                 Navigator.pop(sheetCtx);
                 _showFileInfoDialog(context, item);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_off_outlined, color: Colors.amberAccent),
+              title: const Text('Exclude Folder'),
+              subtitle: Text('Hide all videos in ${File(item.path).parent.path}'),
+              onTap: () async {
+                Navigator.pop(sheetCtx);
+                final parentDir = File(item.path).parent.path;
+                final dirName = parentDir.split(Platform.pathSeparator).last;
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dctx) => AlertDialog(
+                    backgroundColor: AppColors.surface,
+                    title: const Text('Exclude folder?'),
+                    content: Text('Videos in "$dirName" will be hidden from local videos and skipped in future scans.\n\nPath: $parentDir'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(dctx, false), child: const Text('Cancel')),
+                      TextButton(
+                        onPressed: () => Navigator.pop(dctx, true),
+                        child: const Text('Exclude', style: TextStyle(color: Colors.amberAccent)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await service.addExcludedFolder(parentDir);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Excluded folder: $dirName')),
+                    );
+                  }
+                }
               },
             ),
             ListTile(
@@ -1632,7 +1942,7 @@ class _DownloadShowCard extends StatelessWidget {
             .clamp(0.0, 1.0);
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final width = MediaQuery.sizeOf(context).width;
-    final columns = width >= 520 ? 3 : 2;
+    final columns = _gridColumnsFromWidth(width);
     final gap = 12.0;
     final cellWidth = (width - 32 - gap * (columns - 1)) / columns;
     final memW = (cellWidth * dpr).round();

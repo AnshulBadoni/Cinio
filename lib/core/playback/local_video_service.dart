@@ -177,7 +177,7 @@ class LocalVideoService extends ChangeNotifier {
   bool get scanning => _scanning;
   String? get statusMessage => _statusMessage;
 
-  Box get _box => Hive.box(boxName);
+  Box? get _box => Hive.isBoxOpen(boxName) ? Hive.box(boxName) : null;
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
@@ -187,14 +187,16 @@ class LocalVideoService extends ChangeNotifier {
 
   /// Load cached items from Hive on startup for immediate UI rendering.
   Future<void> loadCached() async {
-    final cachedList = _box.get('cached_items') as List?;
+    final box = _box;
+    if (box == null) return;
+    final cachedList = box.get('cached_items') as List?;
     if (cachedList != null) {
       _items.clear();
       for (final raw in cachedList) {
         if (raw is Map) {
           final item = LocalVideoItem.fromMap(raw);
-          // verify file still exists
-          if (File(item.path).existsSync()) {
+          // verify file still exists and is not in an excluded folder
+          if (!isPathExcluded(item.path) && File(item.path).existsSync()) {
             _items.add(item);
           }
         }
@@ -209,25 +211,107 @@ class LocalVideoService extends ChangeNotifier {
   }
 
   List<String> get customFolders {
-    final raw = _box.get('custom_folders') as List?;
+    final box = _box;
+    if (box == null) return const [];
+    final raw = box.get('custom_folders') as List? ?? box.get('included_folders') as List?;
     return (raw?.cast<String>() ?? <String>[]).toList();
   }
 
-  Future<void> addCustomFolder(String path) async {
-    final folders = customFolders;
-    if (!folders.contains(path)) {
-      folders.add(path);
-      await _box.put('custom_folders', folders);
+  List<String> get includedFolders => customFolders;
+
+  List<String> get excludedFolders {
+    final box = _box;
+    if (box == null) return const [];
+    final raw = box.get('excluded_folders') as List?;
+    return (raw?.cast<String>() ?? <String>[]).toList();
+  }
+
+  bool isPathExcluded(String targetPath, [List<String>? explicitExcluded]) {
+    if (targetPath.isEmpty) return false;
+    final normalizedTarget = targetPath.replaceAll('\\', '/').toLowerCase();
+    final list = explicitExcluded ?? excludedFolders;
+    for (final excluded in list) {
+      if (excluded.trim().isEmpty) continue;
+      final normalizedExcluded = excluded.trim().replaceAll('\\', '/').toLowerCase();
+      if (normalizedTarget == normalizedExcluded ||
+          normalizedTarget.startsWith(normalizedExcluded.endsWith('/')
+              ? normalizedExcluded
+              : '$normalizedExcluded/')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<void> addCustomFolder(String path) => addIncludedFolder(path);
+  Future<void> removeCustomFolder(String path) => removeIncludedFolder(path);
+
+  Future<void> addIncludedFolder(String path) async {
+    final cleanPath = path.trim();
+    if (cleanPath.isEmpty) return;
+    final folders = includedFolders;
+    final normalized = cleanPath.replaceAll('\\', '/').toLowerCase();
+    if (!folders.any((f) => f.replaceAll('\\', '/').toLowerCase() == normalized)) {
+      folders.add(cleanPath);
+      await _box?.put('custom_folders', folders);
+      await _box?.put('included_folders', folders);
+
+      // If previously excluded, remove it from excluded
+      final excluded = excludedFolders;
+      if (excluded.any((f) => f.replaceAll('\\', '/').toLowerCase() == normalized)) {
+        excluded.removeWhere((f) => f.replaceAll('\\', '/').toLowerCase() == normalized);
+        await _box?.put('excluded_folders', excluded);
+      }
+
       await scan(forceRescan: true);
     }
   }
 
-  Future<void> removeCustomFolder(String path) async {
-    final folders = customFolders;
-    if (folders.remove(path)) {
-      await _box.put('custom_folders', folders);
+  Future<void> removeIncludedFolder(String path) async {
+    final cleanPath = path.trim();
+    final folders = includedFolders;
+    final normalized = cleanPath.replaceAll('\\', '/').toLowerCase();
+    folders.removeWhere((f) => f.replaceAll('\\', '/').toLowerCase() == normalized);
+    await _box?.put('custom_folders', folders);
+    await _box?.put('included_folders', folders);
+    notifyListeners();
+    await scan(forceRescan: true);
+  }
+
+  Future<void> addExcludedFolder(String path) async {
+    final cleanPath = path.trim();
+    if (cleanPath.isEmpty) return;
+    final folders = excludedFolders;
+    final normalized = cleanPath.replaceAll('\\', '/').toLowerCase();
+    if (!folders.any((f) => f.replaceAll('\\', '/').toLowerCase() == normalized)) {
+      folders.add(cleanPath);
+      await _box?.put('excluded_folders', folders);
+
+      // If it was in included folders, remove it
+      final included = includedFolders;
+      if (included.any((f) => f.replaceAll('\\', '/').toLowerCase() == normalized)) {
+        included.removeWhere((f) => f.replaceAll('\\', '/').toLowerCase() == normalized);
+        await _box?.put('custom_folders', included);
+        await _box?.put('included_folders', included);
+      }
+
+      // Immediately purge any items matching the excluded folder
+      _items.removeWhere((item) => isPathExcluded(item.path));
+      _persistCache();
+      notifyListeners();
+
       await scan(forceRescan: true);
     }
+  }
+
+  Future<void> removeExcludedFolder(String path) async {
+    final cleanPath = path.trim();
+    final folders = excludedFolders;
+    final normalized = cleanPath.replaceAll('\\', '/').toLowerCase();
+    folders.removeWhere((f) => f.replaceAll('\\', '/').toLowerCase() == normalized);
+    await _box?.put('excluded_folders', folders);
+    notifyListeners();
+    await scan(forceRescan: true);
   }
 
   /// Request permissions and scan storage paths.
@@ -255,6 +339,7 @@ class LocalVideoService extends ChangeNotifier {
 
       for (final file in discoveredFiles) {
         final path = file.path;
+        if (isPathExcluded(path)) continue;
         if (existingMap.containsKey(path)) {
           updatedList.add(existingMap[path]!);
         } else {
@@ -355,6 +440,9 @@ class LocalVideoService extends ChangeNotifier {
       if (downloadsDir != null) dirs.add(downloadsDir);
     } catch (_) {}
 
+    // Filter out directories that are explicitly excluded
+    dirs.removeWhere((d) => isPathExcluded(d.path));
+
     return dirs;
   }
 
@@ -366,10 +454,12 @@ class LocalVideoService extends ChangeNotifier {
     int maxDepth = 2,
   }) async {
     if (currentDepth > maxDepth) return;
+    if (isPathExcluded(dir.path)) return;
     try {
       final entries = dir.listSync(followLinks: false);
       for (final entry in entries) {
         final path = entry.path;
+        if (isPathExcluded(path)) continue;
         final name = entry.uri.pathSegments.lastWhere(
           (s) => s.isNotEmpty,
           orElse: () => '',
@@ -684,8 +774,10 @@ class LocalVideoService extends ChangeNotifier {
   }
 
   void _persistCache() {
+    final box = _box;
+    if (box == null) return;
     final serialized = _items.map((it) => it.toMap()).toList();
-    _box.put('cached_items', serialized);
+    box.put('cached_items', serialized);
   }
 
   /// Launches local playback using the app's player.

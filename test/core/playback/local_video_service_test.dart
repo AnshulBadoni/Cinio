@@ -39,5 +39,19 @@ void main() {
       expect(t7.season, equals(2));
       expect(t7.episode, equals(3));
     });
+
+    test('isPathExcluded correctly matches paths regardless of slashes or casing', () {
+      final service = LocalVideoService();
+      // Test when no folders excluded
+      expect(service.isPathExcluded('/storage/emulated/0/DCIM/video.mp4'), isFalse);
+
+      final excluded = ['/storage/emulated/0/DCIM', r'C:\Users\Videos\Private'];
+      expect(service.isPathExcluded('/storage/emulated/0/DCIM/Camera/vid1.mp4', excluded), isTrue);
+      expect(service.isPathExcluded('/storage/emulated/0/dcim/sub/vid2.mkv', excluded), isTrue);
+      expect(service.isPathExcluded('/storage/emulated/0/Movies/vid3.mp4', excluded), isFalse);
+      expect(service.isPathExcluded(r'c:\users\videos\private\clip.mp4', excluded), isTrue);
+      expect(service.isPathExcluded('C:/Users/Videos/Private/clip.mp4', excluded), isTrue);
+      expect(service.isPathExcluded('C:/Users/Videos/Public/clip.mp4', excluded), isFalse);
+    });
   });
 }

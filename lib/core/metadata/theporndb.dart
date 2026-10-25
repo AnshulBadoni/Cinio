@@ -341,38 +341,40 @@ class ThePornDb {
   }
 
   static const List<String> _curatedMainstreamPerformers = [
-    'Angela White',
-    'Riley Reid',
-    'Mia Malkova',
-    'Alexis Texas',
-    'Eva Elfie',
-    'Gabbie Carter',
+    'Gianna Michaels',
+    'Lena Paul',
+    'Sweetie Fox',
+    'Leah Gotti',
+    'Janice Griffith',
+    'Vina Sky',
     'Emily Willis',
-    'Lana Rhoades',
+    'Gabbie Carter',
+    'Mia Malkova',
+    'Eva Elfie',
+    'Alexis Texas',
+    'Lisa Ann',
+    'Riley Reid',
+    'Violet Myers',
     'Adriana Chechik',
+    'Tori Black',
+    'Lana Rhoades',
+    'Angela White',
+    'Maitland Ward',
+    'Blake Blossom',
+    'Dillion Harper',
+    'Dani Daniels',
+    'Kenzie Reeves',
+    'Alina Lopez',
+    'La Sirena 69',
+    'Lasirena69',
     'Aletta Ocean',
     'Kendra Lust',
+    'Nicole Aniston',
     'Autumn Falls',
     'Abella Danger',
     'Katrina Jade',
-    'Kenzie Reeves',
-    'Blake Blossom',
-    'Tori Black',
-    'Leah Gotti',
-    'Nicole Aniston',
-    'Brandi Love',
     'Cory Chase',
-    'Lisa Ann',
-    'Dillion Harper',
-    'Lena Paul',
-    'Alina Lopez',
-    'Sweetie Fox',
-    'Violet Myers',
-    'Gianna Michaels',
-    'Dani Daniels',
-    'Maitland Ward',
-    'Vina Sky',
-    'Janice Griffith',
+    'Brandi Love',
   ];
 
   static List<MediaItem>? _curatedPerformersCache;
@@ -385,26 +387,36 @@ class ThePornDb {
     final items = <MediaItem>[];
     final seenNames = <String>{};
 
-    await Future.wait(
-      _curatedMainstreamPerformers.map((name) async {
-        try {
-          final data = await _get('/performers', queryParameters: {
-            'q': name,
-            'per_page': 1,
-          });
-          final rows = data['data'];
-          if (rows is List && rows.isNotEmpty && rows.first is Map) {
-            final row = rows.first as Map;
-            if (_qualifiesAsActor(row, requireRating: true)) {
-              final p = _performer(row);
-              if (p.rating != null && p.rating! > 0 && seenNames.add(p.title.toLowerCase())) {
-                items.add(p);
+    const batchSize = 6;
+    for (var i = 0; i < _curatedMainstreamPerformers.length; i += batchSize) {
+      final batch = _curatedMainstreamPerformers.sublist(
+        i,
+        (i + batchSize).clamp(0, _curatedMainstreamPerformers.length),
+      );
+      await Future.wait(
+        batch.map((name) async {
+          try {
+            final data = await _get('/performers', queryParameters: {
+              'q': name,
+              'per_page': 1,
+            });
+            final rows = data['data'];
+            if (rows is List && rows.isNotEmpty && rows.first is Map) {
+              final row = rows.first as Map;
+              if (_qualifiesAsActor(row, requireRating: true)) {
+                final p = _performer(row);
+                if (p.rating != null && p.rating! > 0 && seenNames.add(p.title.toLowerCase())) {
+                  items.add(p);
+                }
               }
             }
-          }
-        } catch (_) {}
-      }),
-    );
+          } catch (_) {}
+        }),
+      );
+      if (i + batchSize < _curatedMainstreamPerformers.length) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+    }
 
     items.sort((a, b) {
       final ra = a.rating ?? 0.0;
@@ -434,7 +446,7 @@ class ThePornDb {
         if (start < curated.length) {
           final end = (start + pageSize).clamp(0, curated.length);
           final pageSlice = curated.sublist(start, end);
-          if (pageSlice.length >= 12 || page == 1) {
+          if (pageSlice.isNotEmpty) {
             return pageSlice;
           }
         }
@@ -556,7 +568,7 @@ class ThePornDb {
       double? best;
       for (final s in sps) {
         if (s is Map) {
-          final sr = double.tryParse('${s['rating'] ?? (s['site'] is Map ? s['site']['rating'] : null) ?? ''}');
+          final sr = double.tryParse('${s['rating'] ?? ''}');
           if (sr != null && sr > 0) {
             if (best == null || sr > best) best = sr;
           }
@@ -571,8 +583,8 @@ class ThePornDb {
     if (!_shouldFilter) return true;
     final rating = _extractPerformerRating(row);
 
-    // User request: remove non-rated ones
-    if (requireRating && (rating == null || rating <= 0)) {
+    // User request: remove non-rated ones; keep mainstream high-rated performers
+    if (requireRating && (rating == null || rating < 3.8)) {
       return false;
     }
 
