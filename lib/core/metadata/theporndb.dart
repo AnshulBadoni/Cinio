@@ -145,6 +145,16 @@ class ThePornDb {
       }
     }
 
+    // 4. Check release date / year (reject corrupted future dates e.g. 3024, 2027+)
+    final rawDate = (row['date'] ?? row['release_date'])?.toString();
+    if (rawDate != null && rawDate.length >= 4) {
+      final y = int.tryParse(rawDate.substring(0, 4));
+      final currentYear = DateTime.now().year;
+      if (y != null && y > currentYear) {
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -164,13 +174,18 @@ class ThePornDb {
 
   Future<List<MediaItem>> movies({
     int page = 1,
-    String orderBy = 'recently_released',
+    String orderBy = 'recently_created',
     String? query,
   }) async {
+    // When requesting recently released movies, map to recently_created because TPDB's
+    // recently_released is corrupted with static future dates (3024, 2027), causing
+    // the list to freeze indefinitely. recently_created returns authentic new releases
+    // added today and this week.
+    final effectiveOrderBy = (orderBy == 'recently_released') ? 'recently_created' : orderBy;
     final baseQuery = <String, dynamic>{
       'page': page,
       'per_page': 16,
-      'orderBy': orderBy,
+      'orderBy': effectiveOrderBy,
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
     };
 
@@ -241,6 +256,9 @@ class ThePornDb {
     'Brazzers',
     'Blacked',
     'Vixen',
+    'Tushy',
+    'Slayed',
+    'Deeper',
   ];
 
   static List<MediaItem>? _curatedTrendingMoviesCache;
@@ -249,21 +267,41 @@ class ThePornDb {
     if (_curatedTrendingMoviesCache == null || _curatedTrendingMoviesCache!.isEmpty) {
       final items = <MediaItem>[];
       final seenIds = <String>{};
+      final currentYear = DateTime.now().year;
 
       await Future.wait(
         _curatedTrendingStudios.map((studio) async {
           try {
             final data = await _get('/movies', queryParameters: {
               'q': studio,
-              'per_page': 8,
+              'per_page': 10,
             });
             final rows = data['data'];
             if (rows is List) {
+              var addedForStudio = 0;
               for (final row in rows) {
                 if (row is Map && _qualifiesMedia(row)) {
+                  // Eliminate old releases from 2008-2022 that match by keyword in title
+                  final rawDate = (row['date'] ?? row['release_date'])?.toString();
+                  if (rawDate != null && rawDate.length >= 4) {
+                    final y = int.tryParse(rawDate.substring(0, 4));
+                    if (y != null && y < currentYear - 3) continue;
+                  }
+
+                  // Verify the movie is legitimately from this studio or its network
+                  final site = row['site'];
+                  final siteName = (site is Map ? site['name']?.toString() : null) ?? '';
+                  final netName = (site is Map && site['network'] is Map ? site['network']['name']?.toString() : null) ?? '';
+                  if (!siteName.toLowerCase().contains(studio.toLowerCase()) &&
+                      !netName.toLowerCase().contains(studio.toLowerCase())) {
+                    continue;
+                  }
+
                   final movie = _movie(row);
                   if (seenIds.add(movie.id)) {
                     items.add(movie);
+                    addedForStudio++;
+                    if (addedForStudio >= 3) break;
                   }
                 }
               }
@@ -286,7 +324,40 @@ class ThePornDb {
       if (slice.isNotEmpty) return slice;
     }
 
-    return movies(page: page, orderBy: 'recently_updated');
+    return _moviesWithStudioCap(
+      page: page,
+      orderBy: 'recently_updated',
+      maxPerStudio: 2,
+      minYear: DateTime.now().year - 3,
+    );
+  }
+
+  Future<List<MediaItem>> _moviesWithStudioCap({
+    required int page,
+    required String orderBy,
+    int maxPerStudio = 2,
+    int? minYear,
+    Set<String>? excludedIds,
+  }) async {
+    final raw = await movies(page: page, orderBy: orderBy);
+    final out = <MediaItem>[];
+    final studioCounts = <String, int>{};
+
+    for (final item in raw) {
+      if (excludedIds != null && excludedIds.contains(item.id)) continue;
+      if (minYear != null && item.year != null) {
+        final y = int.tryParse(item.year!);
+        if (y != null && y < minYear) continue;
+      }
+      final studio = (item.englishTitle ?? '').toLowerCase();
+      if (studio.isNotEmpty) {
+        final count = studioCounts[studio] ?? 0;
+        if (count >= maxPerStudio) continue;
+        studioCounts[studio] = count + 1;
+      }
+      out.add(item);
+    }
+    return out;
   }
 
   static const List<String> _curatedPopularIcons = [
@@ -366,7 +437,12 @@ class ThePornDb {
       if (slice.isNotEmpty) return slice;
     }
 
-    return movies(page: page, orderBy: 'recently_created');
+    return _moviesWithStudioCap(
+      page: page,
+      orderBy: 'recently_created',
+      maxPerStudio: 2,
+      excludedIds: _curatedPopularMoviesCache?.map((m) => m.id).toSet(),
+    );
   }
 
   static const List<String> _curatedMainstreamPerformers = [
@@ -404,6 +480,33 @@ class ThePornDb {
     'Katrina Jade',
     'Cory Chase',
     'Brandi Love',
+    'Liya Silver',
+    'Little Caprice',
+    'Kendra Spade',
+    'Kenna James',
+    'Gia Paige',
+    'Avery Cristy',
+    'Elena Koshka',
+    'Jill Kassidy',
+    'Kira Noir',
+    'Elsa Jean',
+    'Cherie DeVille',
+    'Phoenix Marie',
+    'Alexis Fawx',
+    'Rachel Starr',
+    'Karma Rx',
+    'Anikka Albrite',
+    'Teanna Trump',
+    'Penny Pax',
+    'Chanel Preston',
+    'Bree Olson',
+    'Kayden Kross',
+    'Jesse Jane',
+    'Riley Steele',
+    'Jia Lissa',
+    'Agatha Vega',
+    'Krystal Boyd',
+    'Mia Khalifa',
   ];
 
   static List<MediaItem>? _curatedPerformersCache;
@@ -568,6 +671,16 @@ class ThePornDb {
       }
     }
 
+    // Sort performers with highest rating first where ratings are available
+    list.sort((a, b) {
+      final ra = a.rating;
+      final rb = b.rating;
+      if (ra != null && rb != null) return rb.compareTo(ra);
+      if (ra != null && rb == null) return -1;
+      if (ra == null && rb != null) return 1;
+      return 0;
+    });
+
     return list;
   }
 
@@ -725,7 +838,7 @@ class ThePornDb {
   /// Uses genuinely distinct ordering across sections so lists are fresh and don't repeat.
   Future<List<HomeSection>> home() async {
     final results = await Future.wait([
-      _safe(() => movies(orderBy: 'recently_released')), // 0: Recent
+      _safe(() => movies(orderBy: 'recently_created')), // 0: Recent
       _safe(() => trendingMovies()), // 1: Trending
       _safe(() => performers()), // 2: Actors
       _safe(() => popularMovies()), // 3: Popular
@@ -747,7 +860,7 @@ class ThePornDb {
 
   Future<HomeSection?> homeSection(String kind) async {
     final items = switch (kind) {
-      'tpdb_recent' => await movies(orderBy: 'recently_released'),
+      'tpdb_recent' => await movies(orderBy: 'recently_created'),
       'tpdb_trending' => await trendingMovies(),
       'tpdb_performers' => await performers(),
       'tpdb_popular' => await popularMovies(),
@@ -773,7 +886,7 @@ class ThePornDb {
   }
 
   Future<List<MediaItem>> browseMore(String kind, int page) => switch (kind) {
-        'tpdb_recent' => movies(page: page, orderBy: 'recently_released'),
+        'tpdb_recent' => movies(page: page, orderBy: 'recently_created'),
         'tpdb_trending' => trendingMovies(page: page),
         'tpdb_popular' => popularMovies(page: page),
         'tpdb_top_rated' => _topRated(page),
@@ -896,9 +1009,74 @@ class ThePornDb {
     );
   }
 
+  static List<MediaItem>? _curatedTopRatedCache;
+
   Future<List<MediaItem>> _topRated(int page) async {
-    final items = await movies(page: page, orderBy: 'recently_updated');
-    return [...items]..sort((a, b) => _rating(b).compareTo(_rating(a)));
+    if (_curatedTopRatedCache == null || _curatedTopRatedCache!.isEmpty) {
+      final items = <MediaItem>[];
+      final seenIds = <String>{};
+      const topStudios = ['Blacked', 'Vixen', 'Tushy', 'Deeper', 'Slayed', 'Brazzers'];
+
+      const batchSize = 3;
+      for (var i = 0; i < topStudios.length; i += batchSize) {
+        final batch = topStudios.sublist(i, (i + batchSize).clamp(0, topStudios.length));
+        await Future.wait(
+          batch.map((studio) async {
+            try {
+              final data = await _get('/movies', queryParameters: {
+                'q': studio,
+                'per_page': 5,
+              });
+              final rows = data['data'];
+              if (rows is List) {
+                var added = 0;
+                for (final row in rows) {
+                  if (row is Map && _qualifiesMedia(row)) {
+                    final rawDate = (row['date'] ?? row['release_date'])?.toString();
+                    if (rawDate != null && rawDate.length >= 4) {
+                      final y = int.tryParse(rawDate.substring(0, 4));
+                      if (y != null && y < DateTime.now().year - 3) continue;
+                    }
+                    final site = row['site'];
+                    final siteName = (site is Map ? site['name']?.toString() : null) ?? '';
+                    final netName = (site is Map && site['network'] is Map ? site['network']['name']?.toString() : null) ?? '';
+                    if (!siteName.toLowerCase().contains(studio.toLowerCase()) &&
+                        !netName.toLowerCase().contains(studio.toLowerCase())) {
+                      continue;
+                    }
+                    final m = _movie(row);
+                    if (seenIds.add(m.id)) {
+                      items.add(m);
+                      added++;
+                      if (added >= 2) break;
+                    }
+                  }
+                }
+              }
+            } catch (_) {}
+          }),
+        );
+      }
+      if (items.isNotEmpty) {
+        _curatedTopRatedCache = List.from(items);
+      }
+    }
+
+    final cached = _curatedTopRatedCache ?? const [];
+    final pageSize = 16;
+    final start = (page - 1) * pageSize;
+    if (start < cached.length) {
+      final end = (start + pageSize).clamp(0, cached.length);
+      final slice = cached.sublist(start, end);
+      if (slice.isNotEmpty) return slice;
+    }
+
+    return _moviesWithStudioCap(
+      page: page,
+      orderBy: 'recently_updated',
+      maxPerStudio: 2,
+      minYear: DateTime.now().year - 3,
+    );
   }
 
   MediaItem _movie(Map row) {
@@ -909,6 +1087,7 @@ class ThePornDb {
         (row['score'] as num?)?.toDouble() ??
         (row['site'] is Map ? (row['site']['rating'] as num?)?.toDouble() : null);
     final rating = (rawRating != null && rawRating > 0) ? rawRating : null;
+    final studios = _studioNames(row);
     return MediaItem(
       id: 'tpdb:movie:$id',
       title: title,
@@ -921,6 +1100,7 @@ class ThePornDb {
       rating: rating,
       year: _year(row['date'] ?? row['release_date']),
       tmdbIsTv: isSeries,
+      englishTitle: studios.isNotEmpty ? studios.first : null,
     );
   }
 
@@ -979,7 +1159,16 @@ class ThePornDb {
 
   String? _year(Object? value) {
     final s = value?.toString() ?? '';
-    return s.length >= 4 ? s.substring(0, 4) : null;
+    if (s.length >= 4) {
+      final y = int.tryParse(s.substring(0, 4));
+      final currentYear = DateTime.now().year;
+      // Cap corrupted future dates from scrapers (e.g. 3024, 2027+) to currentYear
+      if (y != null && y > currentYear) {
+        return currentYear.toString();
+      }
+      return s.substring(0, 4);
+    }
+    return null;
   }
 
   String? _extractUrl(dynamic value) {
