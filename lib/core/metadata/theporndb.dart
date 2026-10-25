@@ -291,7 +291,23 @@ class ThePornDb {
 
   static const List<String> _curatedPopularIcons = [
     'Angela White',
+    'Katrina Jade',
     'Riley Reid',
+    'Eva Elfie',
+    'Sweetie Fox',
+    'La Sirena 69',
+    'Lana Rhoades',
+    'Emily Willis',
+    'Alina Lopez',
+    'Mia Malkova',
+    'Tori Black',
+    'Gianna Michaels',
+    'Brazzers',
+    'Blacked',
+    'Vixen',
+    'Tushy',
+    'Slayed',
+    'Deeper',
   ];
 
   static List<MediaItem>? _curatedPopularMoviesCache;
@@ -301,27 +317,40 @@ class ThePornDb {
       final items = <MediaItem>[];
       final seenIds = <String>{};
 
-      await Future.wait(
-        _curatedPopularIcons.map((performer) async {
-          try {
-            final data = await _get('/movies', queryParameters: {
-              'q': performer,
-              'per_page': 8,
-            });
-            final rows = data['data'];
-            if (rows is List) {
-              for (final row in rows) {
-                if (row is Map && _qualifiesMedia(row)) {
-                  final movie = _movie(row);
-                  if (seenIds.add(movie.id)) {
-                    items.add(movie);
+      const batchSize = 6;
+      for (var i = 0; i < _curatedPopularIcons.length; i += batchSize) {
+        final batch = _curatedPopularIcons.sublist(
+          i,
+          (i + batchSize).clamp(0, _curatedPopularIcons.length),
+        );
+        await Future.wait(
+          batch.map((icon) async {
+            try {
+              final data = await _get('/movies', queryParameters: {
+                'q': icon,
+                'per_page': 3,
+              });
+              final rows = data['data'];
+              if (rows is List) {
+                var addedForIcon = 0;
+                for (final row in rows) {
+                  if (row is Map && _qualifiesMedia(row)) {
+                    final movie = _movie(row);
+                    if (seenIds.add(movie.id)) {
+                      items.add(movie);
+                      addedForIcon++;
+                      if (addedForIcon >= 1) break;
+                    }
                   }
                 }
               }
-            }
-          } catch (_) {}
-        }),
-      );
+            } catch (_) {}
+          }),
+        );
+        if (i + batchSize < _curatedPopularIcons.length) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      }
 
       if (items.isNotEmpty) {
         _curatedPopularMoviesCache = List.from(items);
@@ -440,63 +469,104 @@ class ThePornDb {
     // Normal browse: return mainstream rated performers sorted descending by rating
     if (!isSearch) {
       final curated = await _fetchCuratedPerformers();
-      if (curated.isNotEmpty) {
-        final pageSize = 24;
-        final start = (page - 1) * pageSize;
-        if (start < curated.length) {
-          final end = (start + pageSize).clamp(0, curated.length);
-          final pageSlice = curated.sublist(start, end);
-          if (pageSlice.isNotEmpty) {
-            return pageSlice;
-          }
+      final curatedNames = curated.map((p) => p.title.trim().toLowerCase()).toSet();
+      const pageSize = 24;
+      final start = (page - 1) * pageSize;
+
+      if (start < curated.length) {
+        final end = (start + pageSize).clamp(0, curated.length);
+        final pageSlice = List<MediaItem>.from(curated.sublist(start, end));
+        if (pageSlice.length >= pageSize) {
+          return pageSlice;
         }
+        // Backfill remaining slots from general API so page 2 has a full 24 items
+        final needed = pageSize - pageSlice.length;
+        final backfill = await _fetchGeneralPerformers(
+          page: 1,
+          orderBy: orderBy,
+          isSearch: false,
+          excludedNames: curatedNames,
+          limit: needed,
+        );
+        pageSlice.addAll(backfill);
+        return pageSlice;
       }
+
+      // Beyond curated list (Page 3+): seamlessly page through general catalog
+      final curatedPages = (curated.length / pageSize).ceil();
+      final apiPage = (page - curatedPages) + 1;
+      return await _fetchGeneralPerformers(
+        page: apiPage > 0 ? apiPage : page,
+        orderBy: orderBy,
+        isSearch: false,
+        excludedNames: curatedNames,
+        limit: pageSize,
+      );
     }
 
+    return await _fetchGeneralPerformers(
+      page: page,
+      orderBy: orderBy,
+      query: query,
+      isSearch: true,
+      limit: 24,
+    );
+  }
+
+  Future<List<MediaItem>> _fetchGeneralPerformers({
+    required int page,
+    required String orderBy,
+    String? query,
+    required bool isSearch,
+    Set<String>? excludedNames,
+    int limit = 24,
+  }) async {
     final data = await _get('/performers', queryParameters: {
       'page': page,
       'per_page': 50,
       'orderBy': orderBy,
-      if (isSearch) 'q': query.trim(),
+      if (isSearch && query != null) 'q': query.trim(),
     });
     final rows = data['data'];
     if (rows is! List) return const [];
     final list = <MediaItem>[];
     for (final row in rows) {
-      if (row is Map && _qualifiesAsActor(row, requireRating: !isSearch)) {
-        list.add(_performer(row));
+      if (row is Map && _qualifiesAsActor(row, requireRating: false)) {
+        final p = _performer(row);
+        if (excludedNames != null && excludedNames.contains(p.title.trim().toLowerCase())) {
+          continue;
+        }
+        list.add(p);
+        if (list.length >= limit) return list;
       }
     }
-    // Replenish if filter reduced count on normal browse so row is full of mainstream rated actors
-    if (list.length < 24 && !isSearch && rows.isNotEmpty) {
-      for (var p = page + 1; p <= page + 3 && list.length < 24; p++) {
+
+    // Replenish from next pages if filters reduced count
+    if (list.length < limit && rows.isNotEmpty) {
+      for (var p = page + 1; p <= page + 3 && list.length < limit; p++) {
         try {
           final nextData = await _get('/performers', queryParameters: {
             'page': p,
             'per_page': 50,
             'orderBy': orderBy,
+            if (isSearch && query != null) 'q': query.trim(),
           });
           final nextRows = nextData['data'];
           if (nextRows is List) {
             for (final row in nextRows) {
-              if (row is Map && _qualifiesAsActor(row, requireRating: !isSearch)) {
-                list.add(_performer(row));
-                if (list.length >= 28) break;
+              if (row is Map && _qualifiesAsActor(row, requireRating: false)) {
+                final perf = _performer(row);
+                if (excludedNames != null && excludedNames.contains(perf.title.trim().toLowerCase())) {
+                  continue;
+                }
+                list.add(perf);
+                if (list.length >= limit) break;
               }
             }
           }
         } catch (_) {}
       }
     }
-    // Sort performers with highest rating first, decreasing from the start
-    list.sort((a, b) {
-      final ra = a.rating;
-      final rb = b.rating;
-      if (ra != null && rb != null) return rb.compareTo(ra);
-      if (ra != null && rb == null) return -1;
-      if (ra == null && rb != null) return 1;
-      return 0;
-    });
 
     return list;
   }

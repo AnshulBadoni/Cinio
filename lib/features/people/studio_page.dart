@@ -382,6 +382,134 @@ class _StudioPageState extends State<StudioPage> {
     );
   }
 
+  Widget _buildBrandedStudioTitle(String name, {double fontSize = 24}) {
+    final clean = name.trim().toLowerCase();
+
+    // Select the studio's intended brand typography matching their official logo wordmark
+    String fontFamily = 'Circular';
+    FontWeight fontWeight = FontWeight.w900;
+    FontStyle fontStyle = FontStyle.normal;
+    double letterSpacing = 0.5;
+    String displayText = name;
+
+    if (clean.contains('brazzer')) {
+      // Brazzers: Heavy athletic bold italic wordmark
+      fontFamily = 'Arena';
+      fontWeight = FontWeight.w900;
+      fontStyle = FontStyle.italic;
+      letterSpacing = 0.8;
+      displayText = name.toUpperCase();
+    } else if (clean == 'blacked' || clean == 'blacked raw') {
+      // Blacked: Distinctive stark, ultra-bold geometric uppercase with wide tracking
+      fontFamily = 'Montserrat';
+      fontWeight = FontWeight.w900;
+      letterSpacing = 4.0;
+      displayText = name.toUpperCase();
+    } else if (clean == 'vixen') {
+      // Vixen: Luxury fashion editorial wordmark with wide tracking
+      fontFamily = 'Lato';
+      fontWeight = FontWeight.w400;
+      letterSpacing = 6.0;
+      displayText = name.toUpperCase();
+    } else if (clean.contains('tushy')) {
+      // Tushy: Minimalist modern spaced clean caps
+      fontFamily = 'Lato';
+      fontWeight = FontWeight.w300;
+      letterSpacing = 5.0;
+      displayText = name.toUpperCase();
+    } else if (clean == 'deeper') {
+      // Deeper: Modern lowercase artistic typography
+      fontFamily = 'Montserrat';
+      fontWeight = FontWeight.w600;
+      letterSpacing = 3.5;
+      displayText = name.toLowerCase();
+    } else if (clean == 'slayed') {
+      // Slayed: Bold modern geometric uppercase
+      fontFamily = 'Poppins';
+      fontWeight = FontWeight.w800;
+      letterSpacing = 2.0;
+      displayText = name.toUpperCase();
+    } else if (clean.contains('bangbros') || clean.contains('bang bros')) {
+      // BangBros: Chunky punchy blocky lettering
+      fontFamily = 'Rubik';
+      fontWeight = FontWeight.w900;
+      letterSpacing = 0.8;
+      displayText = name.toUpperCase();
+    } else if (clean.contains('naughty america')) {
+      // Naughty America: Heavy impactful sans
+      fontFamily = 'Montserrat';
+      fontWeight = FontWeight.w800;
+      letterSpacing = 1.2;
+      displayText = name.toUpperCase();
+    } else if (clean.contains('evil angel')) {
+      // Evil Angel: Dark heavy display font
+      fontFamily = 'Arena';
+      fontWeight = FontWeight.w900;
+      letterSpacing = 1.0;
+      displayText = name.toUpperCase();
+    } else if (clean.contains('reality king')) {
+      // Reality Kings: Heavy geometric sans
+      fontFamily = 'Circular';
+      fontWeight = FontWeight.w900;
+      letterSpacing = 1.0;
+      displayText = name.toUpperCase();
+    } else if (clean == 'netflix') {
+      // Netflix: Iconic bold uppercase with tracking
+      fontFamily = 'Montserrat';
+      fontWeight = FontWeight.w900;
+      letterSpacing = 2.5;
+      displayText = name.toUpperCase();
+    } else if (clean == 'hbo' || clean.contains('hbo max')) {
+      // HBO: Bold geometric display uppercase
+      fontFamily = 'Circular';
+      fontWeight = FontWeight.w900;
+      letterSpacing = 3.0;
+      displayText = name.toUpperCase();
+    } else if (clean == 'marvel' || clean.contains('marvel studios')) {
+      // Marvel: Heavy condensed uppercase block
+      fontFamily = 'Arena';
+      fontWeight = FontWeight.w900;
+      letterSpacing = 1.5;
+      displayText = name.toUpperCase();
+    } else if (clean == 'a24') {
+      // A24: Minimalist geometric uppercase
+      fontFamily = 'Montserrat';
+      fontWeight = FontWeight.w800;
+      letterSpacing = 5.0;
+      displayText = name.toUpperCase();
+    } else if (clean.contains('warner')) {
+      // Warner Bros: Classic cinematic bold
+      fontFamily = 'Circular';
+      fontWeight = FontWeight.w800;
+      letterSpacing = 1.0;
+    } else if (clean.contains('disney')) {
+      // Disney: Fluid distinctive styling
+      fontFamily = 'Circular';
+      fontWeight = FontWeight.w700;
+      letterSpacing = 0.8;
+    } else {
+      // Default Studio: Premium branded wordmark styling using Circular
+      fontFamily = 'Circular';
+      fontWeight = FontWeight.w800;
+      letterSpacing = 0.5;
+    }
+
+    return Text(
+      displayText,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontFamily: fontFamily,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        fontStyle: fontStyle,
+        color: Colors.white,
+        letterSpacing: letterSpacing,
+        height: 1.15,
+      ),
+    );
+  }
+
   Widget _buildSliverHeader(String backdropUrl, String? logoUrl, int totalCount, bool isTpdb) {
     final topPadding = MediaQuery.paddingOf(context).top;
     final expandedHeight = 310.0 + topPadding;
@@ -391,6 +519,17 @@ class _StudioPageState extends State<StudioPage> {
       elevation: 0,
       backgroundColor: AppColors.bg,
       expandedHeight: expandedHeight,
+      title: ValueListenableBuilder<double>(
+        valueListenable: _scrollOffset,
+        builder: (context, offset, _) {
+          final show = offset > 180;
+          return AnimatedOpacity(
+            opacity: show ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            child: _buildBrandedStudioTitle(widget.studio.name, fontSize: 18),
+          );
+        },
+      ),
       leading: Padding(
         padding: const EdgeInsets.only(left: 12),
         child: Center(
@@ -506,18 +645,7 @@ class _StudioPageState extends State<StudioPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  widget.studio.name,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
-                                    letterSpacing: 0.3,
-                                    height: 1.15,
-                                  ),
-                                ),
+                                _buildBrandedStudioTitle(widget.studio.name, fontSize: 24),
                                 const SizedBox(height: 4),
                                 Text(
                                   _profile?.subtitle ??

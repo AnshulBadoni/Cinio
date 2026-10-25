@@ -364,6 +364,7 @@ class HomeCubit extends Cubit<HomeState> {
 
   String _resolveTpdbKind(String kind) => switch (kind) {
         'mixed_recent' => 'tpdb_recent',
+        'mixed_new_releases' => 'tpdb_recent',
         'mixed_trending_movies' => 'tpdb_trending',
         'mixed_popular_movies' => 'tpdb_popular',
         'mixed_top_rated_movies' => 'tpdb_top_rated',

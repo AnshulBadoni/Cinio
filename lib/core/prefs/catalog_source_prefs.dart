@@ -42,7 +42,7 @@ class CatalogSourcePrefs extends ChangeNotifier {
   static const List<String> defaultMixedKinds = [
     'mixed_recent',
     'tmdb_upcoming',
-    'tmdb_new_releases',
+    'mixed_new_releases',
     'mixed_trending_movies',
     'tmdb_trending_series',
     'mixed_popular_movies',
@@ -78,6 +78,7 @@ class CatalogSourcePrefs extends ChangeNotifier {
         'tmdb_top_rated_movies' => 'Top Rated Movies',
         'tmdb_top_rated_series' => 'Top Rated Series',
         'mixed_recent' => 'Recent',
+        'mixed_new_releases' => 'New Releases',
         'mixed_trending_movies' => 'Trending Movies',
         'mixed_popular_movies' => 'Popular Movies',
         'mixed_top_rated_movies' => 'Top Rated Movies',
