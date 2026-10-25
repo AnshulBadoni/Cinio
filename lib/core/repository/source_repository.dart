@@ -466,7 +466,7 @@ class SourceRepository {
         case 'tmdb_top_rated_series':
           return sl<TmdbDiscoverService>().browseMore(more.kind, page);
         case 'mixed_recent':
-          return _mixedBrowse('tmdb_recent', 'tpdb_trending', page);
+          return _mixedBrowse('tmdb_recent', 'tpdb_recent', page);
         case 'mixed_trending_movies':
           return _mixedBrowse('tmdb_trending_movies', 'tpdb_trending', page);
         case 'mixed_trending_series':

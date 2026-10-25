@@ -798,15 +798,42 @@ class _PersonPageState extends State<PersonPage> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  metaText,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white.withValues(alpha: 0.75),
-                    letterSpacing: 0.2,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if ((_profile?.rating ?? widget.person.rating) != null &&
+                        (_profile?.rating ?? widget.person.rating)! > 0) ...[
+                      const Icon(Icons.star_rounded, size: 16, color: Color(0xFFFFB800)),
+                      const SizedBox(width: 3),
+                      Text(
+                        (_profile?.rating ?? widget.person.rating)!.toStringAsFixed(1),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFFFB800),
+                        ),
+                      ),
+                      Text(
+                        ' · ',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
+                    Text(
+                      metaText,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.75),
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 18),
 
@@ -1294,7 +1321,7 @@ class _PersonPageState extends State<PersonPage> {
         return false;
       },
       child: SizedBox(
-        height: 256,
+        height: 282,
         child: ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 18),
           scrollDirection: Axis.horizontal,
@@ -1304,15 +1331,15 @@ class _PersonPageState extends State<PersonPage> {
           itemBuilder: (context, idx) {
             if (idx >= list.length) {
               return SizedBox(
-                width: 134,
+                width: 148,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
-                        width: 134,
-                        height: 194,
+                        width: 148,
+                        height: 216,
                         color: AppColors.surface2,
                         child: const Center(
                           child: SizedBox(
@@ -1337,7 +1364,7 @@ class _PersonPageState extends State<PersonPage> {
               onLongPress: () => _showWorkQuickActions(w, heroTag),
               behavior: HitTestBehavior.opaque,
               child: SizedBox(
-                width: 134,
+                width: 148,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1348,8 +1375,8 @@ class _PersonPageState extends State<PersonPage> {
                         createRectTween: (begin, end) =>
                             MaterialRectArcTween(begin: begin, end: end),
                         child: Container(
-                          width: 134,
-                          height: 194,
+                          width: 148,
+                          height: 216,
                           color: AppColors.surface2,
                           child: (w.cover != null && w.cover!.isNotEmpty)
                               ? Image(
@@ -1515,7 +1542,7 @@ class _PersonPageState extends State<PersonPage> {
 
   Widget _buildRelatedActorsRow(List<PersonRef> list) {
     return SizedBox(
-      height: 200,
+      height: 220,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 18),
         scrollDirection: Axis.horizontal,
@@ -1576,6 +1603,26 @@ class _PersonPageState extends State<PersonPage> {
                       height: 1.15,
                     ),
                   ),
+                  if (ref.rating != null && ref.rating! > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFB800)),
+                          const SizedBox(width: 2),
+                          Text(
+                            ref.rating!.toStringAsFixed(1),
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFFFB800),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),

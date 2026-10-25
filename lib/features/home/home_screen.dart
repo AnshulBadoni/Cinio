@@ -732,6 +732,7 @@ class _HomeViewState extends State<_HomeView>
           source: PersonSource.thePornDbPerformer,
           name: performer.title,
           photo: performer.cover,
+          rating: performer.rating,
         ),
         sourceId: performer.sourceId,
       ),

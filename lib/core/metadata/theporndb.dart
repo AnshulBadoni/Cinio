@@ -28,20 +28,29 @@ class ThePornDb {
   Future<Map<String, dynamic>> _get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    int retryCount = 0,
   }) async {
-    final response = await _dio.get<dynamic>(
-      '$base$path',
-      queryParameters: queryParameters,
-      options: Options(
-        headers: {'Authorization': 'Bearer $apiKey'},
-        listFormat: ListFormat.multi,
-        receiveTimeout: const Duration(seconds: 10),
-        sendTimeout: const Duration(seconds: 10),
-        connectTimeout: const Duration(seconds: 8),
-      ),
-    );
-    if (response.data is! Map) return const {};
-    return Map<String, dynamic>.from(response.data as Map);
+    try {
+      final response = await _dio.get<dynamic>(
+        '$base$path',
+        queryParameters: queryParameters,
+        options: Options(
+          headers: {'Authorization': 'Bearer $apiKey'},
+          listFormat: ListFormat.multi,
+          receiveTimeout: const Duration(seconds: 10),
+          sendTimeout: const Duration(seconds: 10),
+          connectTimeout: const Duration(seconds: 8),
+        ),
+      );
+      if (response.data is! Map) return const {};
+      return Map<String, dynamic>.from(response.data as Map);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 429 && retryCount < 3) {
+        await Future.delayed(Duration(milliseconds: 1500 * (retryCount + 1)));
+        return _get(path, queryParameters: queryParameters, retryCount: retryCount + 1);
+      }
+      rethrow;
+    }
   }
 
   static final RegExp _excludedTitleRegex = RegExp(
@@ -228,12 +237,210 @@ class ThePornDb {
     return _seriesRegex.hasMatch(title);
   }
 
+  static const List<String> _curatedTrendingStudios = [
+    'Brazzers',
+    'Blacked',
+    'Vixen',
+  ];
+
+  static List<MediaItem>? _curatedTrendingMoviesCache;
+
+  Future<List<MediaItem>> trendingMovies({int page = 1}) async {
+    if (_curatedTrendingMoviesCache == null || _curatedTrendingMoviesCache!.isEmpty) {
+      final items = <MediaItem>[];
+      final seenIds = <String>{};
+
+      await Future.wait(
+        _curatedTrendingStudios.map((studio) async {
+          try {
+            final data = await _get('/movies', queryParameters: {
+              'q': studio,
+              'per_page': 8,
+            });
+            final rows = data['data'];
+            if (rows is List) {
+              for (final row in rows) {
+                if (row is Map && _qualifiesMedia(row)) {
+                  final movie = _movie(row);
+                  if (seenIds.add(movie.id)) {
+                    items.add(movie);
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+        }),
+      );
+
+      if (items.isNotEmpty) {
+        _curatedTrendingMoviesCache = List.from(items);
+      }
+    }
+
+    final cached = _curatedTrendingMoviesCache ?? const [];
+    final pageSize = 16;
+    final start = (page - 1) * pageSize;
+    if (start < cached.length) {
+      final end = (start + pageSize).clamp(0, cached.length);
+      final slice = cached.sublist(start, end);
+      if (slice.isNotEmpty) return slice;
+    }
+
+    return movies(page: page, orderBy: 'recently_updated');
+  }
+
+  static const List<String> _curatedPopularIcons = [
+    'Angela White',
+    'Riley Reid',
+  ];
+
+  static List<MediaItem>? _curatedPopularMoviesCache;
+
+  Future<List<MediaItem>> popularMovies({int page = 1}) async {
+    if (_curatedPopularMoviesCache == null || _curatedPopularMoviesCache!.isEmpty) {
+      final items = <MediaItem>[];
+      final seenIds = <String>{};
+
+      await Future.wait(
+        _curatedPopularIcons.map((performer) async {
+          try {
+            final data = await _get('/movies', queryParameters: {
+              'q': performer,
+              'per_page': 8,
+            });
+            final rows = data['data'];
+            if (rows is List) {
+              for (final row in rows) {
+                if (row is Map && _qualifiesMedia(row)) {
+                  final movie = _movie(row);
+                  if (seenIds.add(movie.id)) {
+                    items.add(movie);
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+        }),
+      );
+
+      if (items.isNotEmpty) {
+        _curatedPopularMoviesCache = List.from(items);
+      }
+    }
+
+    final cached = _curatedPopularMoviesCache ?? const [];
+    final pageSize = 16;
+    final start = (page - 1) * pageSize;
+    if (start < cached.length) {
+      final end = (start + pageSize).clamp(0, cached.length);
+      final slice = cached.sublist(start, end);
+      if (slice.isNotEmpty) return slice;
+    }
+
+    return movies(page: page, orderBy: 'recently_created');
+  }
+
+  static const List<String> _curatedMainstreamPerformers = [
+    'Angela White',
+    'Riley Reid',
+    'Mia Malkova',
+    'Alexis Texas',
+    'Eva Elfie',
+    'Gabbie Carter',
+    'Emily Willis',
+    'Lana Rhoades',
+    'Adriana Chechik',
+    'Aletta Ocean',
+    'Kendra Lust',
+    'Autumn Falls',
+    'Abella Danger',
+    'Katrina Jade',
+    'Kenzie Reeves',
+    'Blake Blossom',
+    'Tori Black',
+    'Leah Gotti',
+    'Nicole Aniston',
+    'Brandi Love',
+    'Cory Chase',
+    'Lisa Ann',
+    'Dillion Harper',
+    'Lena Paul',
+    'Alina Lopez',
+    'Sweetie Fox',
+    'Violet Myers',
+    'Gianna Michaels',
+    'Dani Daniels',
+    'Maitland Ward',
+    'Vina Sky',
+    'Janice Griffith',
+  ];
+
+  static List<MediaItem>? _curatedPerformersCache;
+
+  Future<List<MediaItem>> _fetchCuratedPerformers() async {
+    if (_curatedPerformersCache != null && _curatedPerformersCache!.isNotEmpty) {
+      return List<MediaItem>.from(_curatedPerformersCache!);
+    }
+
+    final items = <MediaItem>[];
+    final seenNames = <String>{};
+
+    await Future.wait(
+      _curatedMainstreamPerformers.map((name) async {
+        try {
+          final data = await _get('/performers', queryParameters: {
+            'q': name,
+            'per_page': 1,
+          });
+          final rows = data['data'];
+          if (rows is List && rows.isNotEmpty && rows.first is Map) {
+            final row = rows.first as Map;
+            if (_qualifiesAsActor(row, requireRating: true)) {
+              final p = _performer(row);
+              if (p.rating != null && p.rating! > 0 && seenNames.add(p.title.toLowerCase())) {
+                items.add(p);
+              }
+            }
+          }
+        } catch (_) {}
+      }),
+    );
+
+    items.sort((a, b) {
+      final ra = a.rating ?? 0.0;
+      final rb = b.rating ?? 0.0;
+      return rb.compareTo(ra);
+    });
+
+    if (items.isNotEmpty) {
+      _curatedPerformersCache = List.from(items);
+    }
+    return items;
+  }
+
   Future<List<MediaItem>> performers({
     int page = 1,
     String orderBy = 'most_relevant',
     String? query,
   }) async {
     final isSearch = query != null && query.trim().isNotEmpty;
+
+    // Normal browse: return mainstream rated performers sorted descending by rating
+    if (!isSearch) {
+      final curated = await _fetchCuratedPerformers();
+      if (curated.isNotEmpty) {
+        final pageSize = 24;
+        final start = (page - 1) * pageSize;
+        if (start < curated.length) {
+          final end = (start + pageSize).clamp(0, curated.length);
+          final pageSlice = curated.sublist(start, end);
+          if (pageSlice.length >= 12 || page == 1) {
+            return pageSlice;
+          }
+        }
+      }
+    }
+
     final data = await _get('/performers', queryParameters: {
       'page': page,
       'per_page': 50,
@@ -437,14 +644,19 @@ class ThePornDb {
   Future<List<HomeSection>> home() async {
     final results = await Future.wait([
       _safe(() => movies(orderBy: 'recently_released')), // 0: Recent
-      _safe(() => movies(orderBy: 'most_relevant')), // 1: Trending
+      _safe(() => trendingMovies()), // 1: Trending
       _safe(() => performers()), // 2: Actors
-      _safe(() => movies(orderBy: 'recently_created')), // 3: Popular
+      _safe(() => popularMovies()), // 3: Popular
       _safe(() => _topRated(1)), // 4: Top Rated
     ]);
+
+    final recentItems = results[0];
+    final recentIds = recentItems.map((m) => m.id).toSet();
+    final trendingItems = results[1].where((m) => !recentIds.contains(m.id)).toList();
+
     return [
-      HomeSection(title: 'Recent', items: results[0], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_recent')),
-      HomeSection(title: 'Trending', items: results[1], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_trending')),
+      HomeSection(title: 'Recent', items: recentItems, more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_recent')),
+      HomeSection(title: 'Trending', items: trendingItems.isNotEmpty ? trendingItems : results[1], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_trending')),
       HomeSection(title: 'Actors', items: results[2], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_performers')),
       HomeSection(title: 'Popular', items: results[3], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_popular')),
       HomeSection(title: 'Top Rated', items: results[4], more: const BrowseMore(sourceId: 'tpdb:catalog', kind: 'tpdb_top_rated')),
@@ -454,9 +666,9 @@ class ThePornDb {
   Future<HomeSection?> homeSection(String kind) async {
     final items = switch (kind) {
       'tpdb_recent' => await movies(orderBy: 'recently_released'),
-      'tpdb_trending' => await movies(orderBy: 'most_relevant'),
+      'tpdb_trending' => await trendingMovies(),
       'tpdb_performers' => await performers(),
-      'tpdb_popular' => await movies(orderBy: 'recently_created'),
+      'tpdb_popular' => await popularMovies(),
       'tpdb_top_rated' => await _topRated(1),
       'tpdb_studios' => await studios(),
       _ => const <MediaItem>[],
@@ -480,8 +692,8 @@ class ThePornDb {
 
   Future<List<MediaItem>> browseMore(String kind, int page) => switch (kind) {
         'tpdb_recent' => movies(page: page, orderBy: 'recently_released'),
-        'tpdb_trending' => movies(page: page, orderBy: 'most_relevant'),
-        'tpdb_popular' => movies(page: page, orderBy: 'recently_created'),
+        'tpdb_trending' => trendingMovies(page: page),
+        'tpdb_popular' => popularMovies(page: page),
         'tpdb_top_rated' => _topRated(page),
         'tpdb_performers' => performers(page: page),
         'tpdb_studios' => studios(page: page),
@@ -611,6 +823,10 @@ class ThePornDb {
     final id = (row['id'] ?? row['_id'] ?? row['uuid'] ?? row['slug']).toString();
     final title = (row['title'] ?? row['name'] ?? 'Untitled').toString();
     final isSeries = isSeriesTitle(title);
+    final rawRating = (row['rating'] as num?)?.toDouble() ??
+        (row['score'] as num?)?.toDouble() ??
+        (row['site'] is Map ? (row['site']['rating'] as num?)?.toDouble() : null);
+    final rating = (rawRating != null && rawRating > 0) ? rawRating : null;
     return MediaItem(
       id: 'tpdb:movie:$id',
       title: title,
@@ -620,7 +836,7 @@ class ThePornDb {
       type: ProviderType.movie,
       sourceId: 'tpdb:catalog',
       genres: _names(row['tags']),
-      rating: (row['rating'] as num?)?.toDouble(),
+      rating: rating,
       year: _year(row['date'] ?? row['release_date']),
       tmdbIsTv: isSeries,
     );

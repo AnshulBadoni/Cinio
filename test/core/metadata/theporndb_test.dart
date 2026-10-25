@@ -38,7 +38,7 @@ void main() {
       expect(items.first.sourceId, 'tpdb:studio');
     });
 
-    test('home returns all expected sections', () async {
+    test('home returns all expected sections and distinct Trending vs Recent', () async {
       final sections = await tpdb.home();
       expect(sections, isNotEmpty);
       final titles = sections.map((s) => s.title).toList();
@@ -48,6 +48,12 @@ void main() {
       expect(titles, contains('Popular'));
       expect(titles, contains('Top Rated'));
       expect(titles, isNot(contains('Studio')));
+
+      final recent = sections.firstWhere((s) => s.title == 'Recent').items;
+      final trending = sections.firstWhere((s) => s.title == 'Trending').items;
+      final recentIds = recent.map((i) => i.id).toSet();
+      final overlap = trending.where((i) => recentIds.contains(i.id)).toList();
+      expect(overlap, isEmpty);
     });
 
     test('movieDetail resolves cast with valid canonical person refs', () async {

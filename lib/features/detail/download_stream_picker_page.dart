@@ -78,6 +78,7 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
   int _selectedTabIndex = 0;
   final Map<String, List<_StreamEntry>> _cache = {};
   bool _loading = false;
+  bool _fetchingMoreProviders = false;
   String? _error;
   int _activeRequestId = 0;
 
@@ -135,8 +136,11 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
   void _initTabs() {
     _tabs.clear();
 
-    final isTpdb = widget.item.sourceId.startsWith('tpdb:');
     final repo = sl<SourceRepository>();
+    final isTpdb = widget.item.sourceId.startsWith('tpdb:') ||
+        repo.isAdultSource(widget.item.sourceId) ||
+        (widget.detail.sourceId.startsWith('tpdb:')) ||
+        repo.isAdultSource(widget.detail.sourceId);
     final downloadPrefs = sl<DownloadPrefs>();
     final playbackPrefs = sl<PlaybackPrefs>();
 
@@ -220,12 +224,25 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
     // Prepend "All" tab at the very beginning
     _tabs.insert(0, const _ProviderTab(id: 'all', name: 'All', isAll: true));
 
-    // Determine default selected tab
-    final defaultTabChoice = downloadPrefs.defaultDownloadSourceTab;
-    if (defaultTabChoice == 'first_source' && _tabs.length > 1) {
-      _selectedTabIndex = 1;
+    // Determine default selected tab:
+    // If video was opened directly from a provider (e.g. Himeros), select that provider tab directly
+    final originSource = widget.item.sourceId;
+    if (originSource != 'tmdb:catalog' && !originSource.startsWith('tpdb:')) {
+      final originIndex = _tabs.indexWhere((t) =>
+          t.id == originSource ||
+          t.id.toLowerCase() == originSource.toLowerCase());
+      if (originIndex != -1) {
+        _selectedTabIndex = originIndex;
+      } else {
+        _selectedTabIndex = 0;
+      }
     } else {
-      _selectedTabIndex = 0;
+      final defaultTabChoice = downloadPrefs.defaultDownloadSourceTab;
+      if (defaultTabChoice == 'first_source' && _tabs.length > 1) {
+        _selectedTabIndex = 1;
+      } else {
+        _selectedTabIndex = 0;
+      }
     }
   }
 
@@ -323,24 +340,56 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
         });
       }
 
-      // 2. Fetch remaining uncached providers in parallel, streaming results in live
+      // 2. Fetch primary provider FIRST for instant zero-latency results
       final pending = nonAll.where((t) => !_cache.containsKey(t.id)).toList();
       if (pending.isNotEmpty) {
-        await Future.wait(pending.map((t) async {
-          try {
-            final res = await _fetchSingleProvider(t);
-            _cache[t.id] = res;
-            if (res.isNotEmpty && mounted && reqId == _activeRequestId) {
-              addEntries(res);
-              _cache['all'] = List.from(allStreams);
-              setState(() {
-                _loading = false;
-              });
-            }
-          } catch (_) {
-            _cache[t.id] = <_StreamEntry>[];
+        final primaryTab = pending.first;
+        try {
+          final res = await _fetchSingleProvider(primaryTab);
+          _cache[primaryTab.id] = res;
+          if (res.isNotEmpty && mounted && reqId == _activeRequestId) {
+            addEntries(res);
+            _cache['all'] = List.from(allStreams);
+            setState(() {
+              _loading = false;
+            });
           }
-        }));
+        } catch (_) {
+          _cache[primaryTab.id] = <_StreamEntry>[];
+        }
+
+        // 3. Fetch remaining providers in controlled batches
+        final remaining = pending.where((t) => t.id != primaryTab.id).toList();
+        if (remaining.isNotEmpty) {
+          if (mounted && reqId == _activeRequestId) {
+            setState(() {
+              _fetchingMoreProviders = true;
+            });
+          }
+          for (var i = 0; i < remaining.length; i += 4) {
+            final batch = remaining.sublist(i, (i + 4).clamp(0, remaining.length));
+            await Future.wait(batch.map((t) async {
+              try {
+                final res = await _fetchSingleProvider(t);
+                _cache[t.id] = res;
+                if (res.isNotEmpty && mounted && reqId == _activeRequestId) {
+                  addEntries(res);
+                  _cache['all'] = List.from(allStreams);
+                  setState(() {
+                    _loading = false;
+                  });
+                }
+              } catch (_) {
+                _cache[t.id] = <_StreamEntry>[];
+              }
+            }));
+          }
+          if (mounted && reqId == _activeRequestId) {
+            setState(() {
+              _fetchingMoreProviders = false;
+            });
+          }
+        }
       }
 
       return allStreams;
@@ -437,6 +486,26 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
       var sources = await repo
           .sources(epUrl, sourceId: tab.id, fast: true)
           .timeout(const Duration(seconds: 10), onTimeout: () => <VideoSource>[]);
+
+      if (sources.isEmpty) {
+        sources = await repo
+            .sources(epUrl, sourceId: tab.id, fast: false)
+            .timeout(const Duration(seconds: 14), onTimeout: () => <VideoSource>[]);
+      }
+
+      if (sources.isEmpty && (epUrl.isEmpty || epUrl == widget.item.url || epUrl == widget.detail.id)) {
+        try {
+          final detail = await repo.detail(widget.item.url, sourceId: tab.id);
+          if (detail != null && detail.episodes.isNotEmpty) {
+            final realEp = detail.episodes.first;
+            if (realEp.url.isNotEmpty && realEp.url != epUrl) {
+              sources = await repo
+                  .sources(realEp.url, sourceId: tab.id, fast: false)
+                  .timeout(const Duration(seconds: 14), onTimeout: () => <VideoSource>[]);
+            }
+          }
+        } catch (_) {}
+      }
 
       final isCloudStream =
           tab.id.startsWith('cs:') || tab.id.startsWith('cloudstream:');
@@ -1296,7 +1365,32 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
       );
     }
 
+    final currentTab = _tabs[_selectedTabIndex];
+    final showLoadingMore = currentTab.isAll && _fetchingMoreProviders;
+
     if (streams.isEmpty) {
+      if (_fetchingMoreProviders) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  color: Colors.white54,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Searching download sources...',
+                style: TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+            ],
+          ),
+        );
+      }
       return const Center(
         child: Text(
           'No streams available for this provider',
@@ -1310,8 +1404,34 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
         bottom: MediaQuery.paddingOf(context).bottom + 24,
         top: 4,
       ),
-      itemCount: streams.length,
+      itemCount: streams.length + (showLoadingMore ? 1 : 0),
       itemBuilder: (context, index) {
+        if (index >= streams.length) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.8,
+                    color: Colors.white54,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Searching remaining sources...',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white.withValues(alpha: 0.5),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
         final entry = streams[index];
         return _buildStreamCard(entry);
       },

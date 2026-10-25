@@ -304,6 +304,9 @@ class PeopleService {
       }
 
       final bestPhoto = photoList.isNotEmpty ? photoList.first : null;
+      final rating = (row['rating'] as num?)?.toDouble() ??
+          double.tryParse('${row['rating']}') ??
+          (row['extras'] is Map ? (row['extras']['rating'] as num?)?.toDouble() : null);
 
       return PersonProfile(
         name: name,
@@ -311,6 +314,7 @@ class PeopleService {
         photos: photoList,
         description: (row['description'] ?? row['bio'])?.toString(),
         subtitle: 'Performer',
+        rating: rating,
         works: works,
         providerVideos: providerVideos,
         related: relatedMap.values.take(16).toList(),
@@ -370,6 +374,7 @@ class PeopleService {
       // Load studio movies and scenes in parallel
       final providerVideos = <PersonWork>[];
       final relatedMap = <String, PersonRef>{};
+      final appearances = <String, int>{};
 
       final futureWorks = _tpdbStudioWorks(resolvedId, studioName: name, page: 1);
 
@@ -377,13 +382,13 @@ class PeopleService {
         '$_tpdbBase/scenes',
         queryParameters: {
           'q': name,
-          'per_page': 24,
+          'per_page': 50,
           'orderBy': 'most_relevant',
         },
         options: Options(
           headers: {'Authorization': 'Bearer $_tpdbKey'},
-          receiveTimeout: const Duration(seconds: 6),
-          sendTimeout: const Duration(seconds: 6),
+          receiveTimeout: const Duration(seconds: 8),
+          sendTimeout: const Duration(seconds: 8),
         ),
       ).then<void>((scenesRes) {
         final sceneRows = scenesRes.data is Map ? scenesRes.data['data'] : null;
@@ -415,6 +420,9 @@ class PeopleService {
                 final pName = (p['name'] ?? p['full_name'])?.toString();
                 final pId = (p['id'] ?? p['_id'] ?? p['slug'])?.toString();
                 if (pName != null && pName.isNotEmpty && pId != null) {
+                  appearances[pId] = (appearances[pId] ?? 0) + 1;
+                  final pRating = (p['rating'] as num?)?.toDouble() ??
+                      double.tryParse('${p['rating']}');
                   relatedMap.putIfAbsent(
                     pId,
                     () => PersonRef(
@@ -423,6 +431,7 @@ class PeopleService {
                       name: pName,
                       photo: (p['image'] ?? p['thumbnail'] ?? p['face'])?.toString(),
                       externalId: pId,
+                      rating: pRating,
                     ),
                   );
                 }
@@ -449,16 +458,30 @@ class PeopleService {
       }
 
       final studioLogo = photoList.isNotEmpty ? photoList.first : null;
+      final sortedRelated = relatedMap.values.toList()
+        ..sort((a, b) {
+          final ca = appearances[a.externalId ?? a.id.toString()] ?? 0;
+          final cb = appearances[b.externalId ?? b.id.toString()] ?? 0;
+          return cb.compareTo(ca);
+        });
+
+      String? description = (row?['description'] ?? row?['about'])?.toString();
+      if (description == null || description.trim().isEmpty) {
+        final net = row?['network'];
+        if (net is Map && net['description'] != null) {
+          description = net['description'].toString();
+        }
+      }
 
       return PersonProfile(
         name: name,
         photo: studioLogo,
         photos: photoList,
-        description: (row?['description'] ?? row?['about'])?.toString(),
+        description: (description != null && description.trim().isNotEmpty) ? description.trim() : null,
         subtitle: subtitle,
         works: works,
         providerVideos: providerVideos,
-        related: relatedMap.values.take(16).toList(),
+        related: sortedRelated.take(30).toList(),
       );
     } catch (_) {
       return null;
@@ -574,28 +597,41 @@ class PeopleService {
       }
 
       if (works.isNotEmpty) {
-        try {
-          final top = works.first;
-          final topType = top.isTv ? 'tv' : 'movie';
-          final topCredits = await _get('$_tmdbBase/$topType/${top.catalogId}/credits');
-          final topCast = topCredits?['cast'];
-          if (topCast is List) {
-            for (final personRow in topCast.whereType<Map>()) {
-              final pId = (personRow['id'] as num?)?.toInt();
-              final pName = personRow['name'] as String?;
-              final pPic = personRow['profile_path'] as String?;
-              if (pId != null && pName != null && pName.isNotEmpty) {
-                related.add(PersonRef(
-                  id: pId,
-                  source: PersonSource.tmdb,
-                  name: pName,
-                  photo: (pPic != null && pPic.isNotEmpty) ? '$_img/w185$pPic' : null,
-                ));
-                if (related.length >= 14) break;
+        final topWorks = works.take(6).toList();
+        final castCount = <int, int>{};
+        final castMap = <int, PersonRef>{};
+
+        await Future.wait(topWorks.map((w) async {
+          if (w.catalogId == null) return;
+          try {
+            final topType = w.isTv ? 'tv' : 'movie';
+            final topCredits = await _get('$_tmdbBase/$topType/${w.catalogId}/credits');
+            final topCast = topCredits?['cast'];
+            if (topCast is List) {
+              for (final personRow in topCast.whereType<Map>()) {
+                final pId = (personRow['id'] as num?)?.toInt();
+                final pName = personRow['name'] as String?;
+                final pPic = personRow['profile_path'] as String?;
+                if (pId != null && pName != null && pName.isNotEmpty) {
+                  castCount[pId] = (castCount[pId] ?? 0) + 1;
+                  castMap.putIfAbsent(
+                    pId,
+                    () => PersonRef(
+                      id: pId,
+                      source: PersonSource.tmdb,
+                      name: pName,
+                      photo: (pPic != null && pPic.isNotEmpty) ? '$_img/w185$pPic' : null,
+                    ),
+                  );
+                }
               }
             }
-          }
-        } catch (_) {}
+          } catch (_) {}
+        }));
+
+        final sortedCast = castMap.values.toList()
+          ..sort((a, b) => (castCount[b.id] ?? 0).compareTo(castCount[a.id] ?? 0));
+        related.addAll(sortedCast.take(24));
       }
 
       return PersonProfile(

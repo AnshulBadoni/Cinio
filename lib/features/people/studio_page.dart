@@ -291,9 +291,29 @@ class _StudioPageState extends State<StudioPage> {
     final totalCount = _works.length;
 
     final logo = p?.photo ?? widget.studio.photo;
-    final backdrop = (p?.photos.isNotEmpty == true)
-        ? p!.photos.first
-        : (logo ?? '');
+
+    // Use latest movie or scene backdrop/cover for the studio hero background
+    String? heroBackdrop;
+    for (final w in _works) {
+      if (w.backdrop != null && w.backdrop!.isNotEmpty && w.backdrop != logo) {
+        heroBackdrop = w.backdrop;
+        break;
+      }
+    }
+    if (heroBackdrop == null) {
+      for (final w in _works) {
+        if (w.cover != null && w.cover!.isNotEmpty && w.cover != logo) {
+          heroBackdrop = w.cover;
+          break;
+        }
+      }
+    }
+    final candidateBackdrop = heroBackdrop ??
+        (p?.photos.firstWhere(
+          (ph) => ph != logo && ph.isNotEmpty,
+          orElse: () => '',
+        ) ?? '');
+    final backdrop = candidateBackdrop.isNotEmpty ? candidateBackdrop : (logo ?? '');
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -438,81 +458,113 @@ class _StudioPageState extends State<StudioPage> {
                   bottom: 16,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Studio Logo / Icon
-                      if (logoUrl != null && logoUrl.isNotEmpty)
-                        Container(
-                          height: 58,
-                          constraints: const BoxConstraints(maxWidth: 180),
-                          margin: const EdgeInsets.only(bottom: 10),
-                          child: CachedNetworkImage(
-                            imageUrl: logoUrl,
-                            fit: BoxFit.contain,
-                            errorWidget: (_, __, ___) => const Icon(Icons.business_rounded, size: 40, color: Colors.white70),
+                      // Studio Brand Flex Row (Logo and Title Side-by-Side)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (logoUrl != null && logoUrl.isNotEmpty)
+                            Container(
+                              width: 62,
+                              height: 62,
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.40),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.15),
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: CachedNetworkImage(
+                                imageUrl: logoUrl,
+                                fit: BoxFit.contain,
+                                errorWidget: (_, __, ___) => const Icon(
+                                  Icons.business_rounded,
+                                  size: 32,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            )
+                          else
+                            Container(
+                              width: 54,
+                              height: 54,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.business_rounded,
+                                size: 28,
+                                color: Colors.white,
+                              ),
+                            ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  widget.studio.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    letterSpacing: 0.3,
+                                    height: 1.15,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _profile?.subtitle ??
+                                      (isTpdb
+                                          ? 'Adult Production Studio'
+                                          : 'Production Studio'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white.withValues(alpha: 0.72),
+                                    letterSpacing: 0.1,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        )
-                      else
-                        Container(
-                          width: 52,
-                          height: 52,
-                          margin: const EdgeInsets.only(bottom: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.12),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.business_rounded, size: 28, color: Colors.white),
-                        ),
-
-                      // Studio Name
-                      Text(
-                        widget.studio.name,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.4,
-                          height: 1.15,
-                        ),
+                        ],
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 16),
 
-                      // Subtitle / Headquarters metadata
-                      Text(
-                        _profile?.subtitle ?? (isTpdb ? 'Adult Production Studio' : 'Production Studio'),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white.withValues(alpha: 0.72),
-                          letterSpacing: 0.1,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Quick Action Trio (Shuffle / Trailer / Favorite)
+                      // Quick Action Trio (Round Icon-Only Buttons: Shuffle / Trailer / Favorite)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          _buildStudioActionBtn(
+                          _buildStudioRoundActionBtn(
                             icon: Icons.shuffle_rounded,
-                            label: 'Random',
+                            size: 48,
+                            iconSize: 22,
                             onTap: _playRandom,
                           ),
-                          const SizedBox(width: 14),
-                          _buildStudioActionBtn(
+                          const SizedBox(width: 18),
+                          _buildStudioRoundActionBtn(
                             icon: Icons.play_arrow_rounded,
-                            label: 'Trailer',
                             primary: true,
+                            size: 58,
+                            iconSize: 34,
                             onTap: _playTrailer,
                           ),
-                          const SizedBox(width: 14),
-                          _buildStudioActionBtn(
-                            icon: _isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                            label: 'Favorite',
+                          const SizedBox(width: 18),
+                          _buildStudioRoundActionBtn(
+                            icon: _isFav
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            size: 48,
+                            iconSize: 22,
                             iconColor: _isFav ? const Color(0xFFFF2D55) : Colors.white,
                             onTap: _toggleFavorite,
                           ),
@@ -529,50 +581,37 @@ class _StudioPageState extends State<StudioPage> {
     );
   }
 
-  Widget _buildStudioActionBtn({
+  Widget _buildStudioRoundActionBtn({
     required IconData icon,
-    required String label,
     required VoidCallback onTap,
     bool primary = false,
+    double size = 48,
+    double iconSize = 22,
     Color? iconColor,
   }) {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        width: size,
+        height: size,
         decoration: BoxDecoration(
-          color: primary
-              ? Colors.white
-              : Colors.white.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(20),
+          color: primary ? Colors.white : Colors.white.withValues(alpha: 0.14),
+          shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.20),
-              blurRadius: 6,
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 8,
               offset: const Offset(0, 2),
             ),
           ],
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: primary ? Colors.black : (iconColor ?? Colors.white),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: primary ? Colors.black : Colors.white,
-              ),
-            ),
-          ],
+        child: Center(
+          child: Icon(
+            icon,
+            size: iconSize,
+            color: iconColor ?? (primary ? Colors.black : Colors.white),
+          ),
         ),
       ),
     );
@@ -614,12 +653,12 @@ class _StudioPageState extends State<StudioPage> {
             ),
           ),
           SizedBox(
-            height: 200,
+            height: 252,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: works.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              separatorBuilder: (_, __) => const SizedBox(width: 14),
               itemBuilder: (context, idx) {
                 final work = works[idx];
                 final item = _mediaItemForWork(work);
@@ -627,22 +666,29 @@ class _StudioPageState extends State<StudioPage> {
                   onTap: () => _openWork(work),
                   onLongPress: () => _showMediaItemQuickActions(item),
                   child: SizedBox(
-                    width: 120,
+                    width: 148,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: work.cover != null && work.cover!.isNotEmpty
-                                ? CachedNetworkImage(
-                                    imageUrl: work.cover!,
-                                    fit: BoxFit.cover,
-                                    width: 120,
-                                    errorWidget: (_, __, ___) => Container(color: AppColors.surface2),
-                                  )
-                                : Container(color: AppColors.surface2),
-                          ),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: work.cover != null && work.cover!.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: work.cover!,
+                                  fit: BoxFit.cover,
+                                  width: 148,
+                                  height: 214,
+                                  errorWidget: (_, __, ___) => Container(
+                                    width: 148,
+                                    height: 214,
+                                    color: AppColors.surface2,
+                                  ),
+                                )
+                              : Container(
+                                  width: 148,
+                                  height: 214,
+                                  color: AppColors.surface2,
+                                ),
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -803,12 +849,12 @@ class _StudioPageState extends State<StudioPage> {
             ),
           ),
           SizedBox(
-            height: 120,
+            height: 165,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: performers.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 14),
+              separatorBuilder: (_, __) => const SizedBox(width: 16),
               itemBuilder: (context, idx) {
                 final p = performers[idx];
                 return GestureDetector(
@@ -816,31 +862,51 @@ class _StudioPageState extends State<StudioPage> {
                     Navigator.of(context).push(PersonPage.route(p));
                   },
                   child: SizedBox(
-                    width: 78,
+                    width: 104,
                     child: Column(
                       children: [
                         CircleAvatar(
-                          radius: 34,
+                          radius: 46,
                           backgroundColor: AppColors.surface2,
                           backgroundImage: p.photo != null && p.photo!.isNotEmpty
                               ? CachedNetworkImageProvider(p.photo!)
                               : null,
                           child: p.photo == null || p.photo!.isEmpty
-                              ? const Icon(Icons.person, color: Colors.white38)
+                              ? const Icon(Icons.person, color: Colors.white38, size: 36)
                               : null,
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 8),
                         Text(
                           p.name,
                           maxLines: 1,
                           textAlign: TextAlign.center,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
                             color: Colors.white,
                           ),
                         ),
+                        if (p.rating != null && p.rating! > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.star_rounded, size: 13, color: Color(0xFFFFB800)),
+                                const SizedBox(width: 2),
+                                Text(
+                                  p.rating!.toStringAsFixed(1),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFFFFB800),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                   ),

@@ -15,6 +15,7 @@ class PersonRef extends Equatable {
     this.photo,
     this.externalId,
     this.department,
+    this.rating,
   });
 
   final int id;
@@ -33,8 +34,11 @@ class PersonRef extends Equatable {
   /// Department / primary role hint (e.g. 'Directing', 'Director', 'Acting').
   final String? department;
 
+  /// User / critic rating score (e.g. 4.6).
+  final double? rating;
+
   @override
-  List<Object?> get props => [id, source, name, photo, externalId, department];
+  List<Object?> get props => [id, source, name, photo, externalId, department, rating];
 
   PersonRef copyWith({
     int? id,
@@ -43,6 +47,7 @@ class PersonRef extends Equatable {
     String? photo,
     String? externalId,
     String? department,
+    double? rating,
   }) =>
       PersonRef(
         id: id ?? this.id,
@@ -51,6 +56,7 @@ class PersonRef extends Equatable {
         photo: photo ?? this.photo,
         externalId: externalId ?? this.externalId,
         department: department ?? this.department,
+        rating: rating ?? this.rating,
       );
 }
 
@@ -63,6 +69,7 @@ class PersonProfile extends Equatable {
     this.photos = const [],
     this.description,
     this.subtitle,
+    this.rating,
     this.works = const [],
     this.providerVideos = const [],
     this.related = const [],
@@ -82,6 +89,9 @@ class PersonProfile extends Equatable {
   /// Small line under the name, e.g. "Voice Actor" / "Acting".
   final String? subtitle;
 
+  /// User / critic rating score (e.g. 4.6).
+  final double? rating;
+
   /// Media this person appears in / worked on.
   final List<PersonWork> works;
 
@@ -99,6 +109,7 @@ class PersonProfile extends Equatable {
     photos,
     description,
     subtitle,
+    rating,
     works,
     providerVideos,
     related,
