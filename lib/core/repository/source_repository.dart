@@ -535,6 +535,8 @@ class SourceRepository {
         lower.contains('sora') ||
         lower.contains('adult') ||
         lower.contains('porn') ||
+        lower.contains('tpdb') ||
+        lower.contains('theporndb') ||
         lower.contains('nsfw') ||
         lower.contains('hentai') ||
         lower.contains('jav') ||
@@ -555,6 +557,8 @@ class SourceRepository {
           name.contains('sora') ||
           name.contains('adult') ||
           name.contains('porn') ||
+          name.contains('tpdb') ||
+          name.contains('theporndb') ||
           name.contains('nsfw') ||
           name.contains('hentai') ||
           name.contains('jav') ||
@@ -834,7 +838,7 @@ class SourceRepository {
 
       // Instant synthesis for TPDB items on TPDB Discovery provider
       final pIdLower = providerId.toLowerCase();
-      if (isTpdb && (pIdLower.contains('tpdbdiscovery') || pIdLower.contains('tpdb_discovery'))) {
+      if (isTpdb && (pIdLower.contains('tpdb') || pIdLower.contains('theporndb'))) {
         final rawId = catalog.id.replaceFirst(RegExp(r'^tpdb:(?:movie:)?'), '');
         final encodedTitle = Uri.encodeComponent(catalog.title);
         final tpdbUrl = 'tpdb://movie/$rawId?title=$encodedTitle';
@@ -874,7 +878,7 @@ class SourceRepository {
         cleanTitle,
         category: effectiveCategory,
         sourceId: providerId,
-      ).timeout(const Duration(milliseconds: 3000), onTimeout: () => const []);
+      ).timeout(const Duration(milliseconds: 10000), onTimeout: () => const []);
 
       if (fastResults.isNotEmpty) {
         final hit = await _findValidCatalogMatch(fastResults, catalog, effectiveCategory);
