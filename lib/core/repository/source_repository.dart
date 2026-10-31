@@ -832,6 +832,42 @@ class SourceRepository {
       final isTpdb = catalog.sourceId.startsWith('tpdb:');
       final effectiveCategory = (isTpdb || !catalog.tmdbIsTv) ? '' : category;
 
+      // Instant synthesis for TPDB items on TPDB Discovery provider
+      final pIdLower = providerId.toLowerCase();
+      if (isTpdb && (pIdLower.contains('tpdbdiscovery') || pIdLower.contains('tpdb_discovery'))) {
+        final rawId = catalog.id.replaceFirst(RegExp(r'^tpdb:(?:movie:)?'), '');
+        final encodedTitle = Uri.encodeComponent(catalog.title);
+        final tpdbUrl = 'tpdb://movie/$rawId?title=$encodedTitle';
+        final synthesizedDetail = MediaDetail(
+          id: catalog.id,
+          title: catalog.title,
+          cover: catalog.cover,
+          url: tpdbUrl,
+          type: ProviderType.movie,
+          sourceId: providerId,
+          year: catalog.year,
+          isSeries: false,
+          episodes: [
+            Episode(
+              id: tpdbUrl,
+              number: 1,
+              title: catalog.title,
+              url: tpdbUrl,
+            ),
+          ],
+        );
+        final synthesizedItem = MediaItem(
+          id: catalog.id,
+          title: catalog.title,
+          cover: catalog.cover,
+          url: tpdbUrl,
+          type: ProviderType.movie,
+          sourceId: providerId,
+          year: catalog.year,
+        );
+        return (item: synthesizedItem, detail: synthesizedDetail);
+      }
+
       // 1. Fast Path: Exact cleaned title first
       final cleanTitle = catalog.title.trim();
       final fastResults = await search(
