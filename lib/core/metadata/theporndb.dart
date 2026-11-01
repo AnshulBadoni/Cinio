@@ -261,86 +261,12 @@ class ThePornDb {
     'Deeper',
   ];
 
-  static List<MediaItem>? _curatedTrendingMoviesCache;
-
   Future<List<MediaItem>> trendingMovies({int page = 1}) async {
-    if (_curatedTrendingMoviesCache == null || _curatedTrendingMoviesCache!.isEmpty) {
-      final items = <MediaItem>[];
-      final seenIds = <String>{};
-      final currentYear = DateTime.now().year;
-
-      await Future.wait(
-        _curatedTrendingStudios.map((studio) async {
-          try {
-            final data = await _get('/movies', queryParameters: {
-              'q': studio,
-              'per_page': 10,
-            });
-            final rows = data['data'];
-            if (rows is List) {
-              var addedForStudio = 0;
-              for (final row in rows) {
-                if (row is Map && _qualifiesMedia(row)) {
-                  // Eliminate old releases from 2008-2022 that match by keyword in title
-                  final rawDate = (row['date'] ?? row['release_date'])?.toString();
-                  if (rawDate != null && rawDate.length >= 4) {
-                    final y = int.tryParse(rawDate.substring(0, 4));
-                    if (y != null && y < currentYear - 3) continue;
-                  }
-
-                  // Verify the movie is legitimately from this studio or its network
-                  final site = row['site'];
-                  final siteName = (site is Map ? site['name']?.toString() : null) ?? '';
-                  final netName = (site is Map && site['network'] is Map ? site['network']['name']?.toString() : null) ?? '';
-                  if (!siteName.toLowerCase().contains(studio.toLowerCase()) &&
-                      !netName.toLowerCase().contains(studio.toLowerCase())) {
-                    continue;
-                  }
-
-                  final movie = _movie(row);
-                  if (seenIds.add(movie.id)) {
-                    items.add(movie);
-                    addedForStudio++;
-                    if (addedForStudio >= 3) break;
-                  }
-                }
-              }
-            }
-          } catch (_) {}
-        }),
-      );
-
-      if (items.isNotEmpty) {
-        _curatedTrendingMoviesCache = List.from(items);
-      }
-    }
-
-    final cached = _curatedTrendingMoviesCache ?? const [];
-    final pageSize = 16;
-    final start = (page - 1) * pageSize;
-    final results = <MediaItem>[];
-    if (start < cached.length) {
-      final end = (start + pageSize).clamp(0, cached.length);
-      results.addAll(cached.sublist(start, end));
-    }
-    if (results.length < pageSize) {
-      final more = await _moviesWithStudioCap(
-        page: page,
-        orderBy: 'recently_updated',
-        maxPerStudio: 2,
-        minYear: DateTime.now().year - 3,
-        excludedIds: results.map((m) => m.id).toSet(),
-      );
-      results.addAll(more.take(pageSize - results.length));
-    }
-    if (results.isNotEmpty) return results;
-
-    return _moviesWithStudioCap(
-      page: page,
-      orderBy: 'recently_updated',
-      maxPerStudio: 2,
-      minYear: DateTime.now().year - 3,
-    );
+    try {
+      final list = await movies(page: page, orderBy: 'recently_created');
+      if (list.isNotEmpty) return list;
+    } catch (_) {}
+    return movies(page: page);
   }
 
   Future<List<MediaItem>> _moviesWithStudioCap({
@@ -392,78 +318,12 @@ class ThePornDb {
     'Deeper',
   ];
 
-  static List<MediaItem>? _curatedPopularMoviesCache;
-
   Future<List<MediaItem>> popularMovies({int page = 1}) async {
-    if (_curatedPopularMoviesCache == null || _curatedPopularMoviesCache!.isEmpty) {
-      final items = <MediaItem>[];
-      final seenIds = <String>{};
-
-      const batchSize = 6;
-      for (var i = 0; i < _curatedPopularIcons.length; i += batchSize) {
-        final batch = _curatedPopularIcons.sublist(
-          i,
-          (i + batchSize).clamp(0, _curatedPopularIcons.length),
-        );
-        await Future.wait(
-          batch.map((icon) async {
-            try {
-              final data = await _get('/movies', queryParameters: {
-                'q': icon,
-                'per_page': 3,
-              });
-              final rows = data['data'];
-              if (rows is List) {
-                var addedForIcon = 0;
-                for (final row in rows) {
-                  if (row is Map && _qualifiesMedia(row)) {
-                    final movie = _movie(row);
-                    if (seenIds.add(movie.id)) {
-                      items.add(movie);
-                      addedForIcon++;
-                      if (addedForIcon >= 1) break;
-                    }
-                  }
-                }
-              }
-            } catch (_) {}
-          }),
-        );
-        if (i + batchSize < _curatedPopularIcons.length) {
-          await Future.delayed(const Duration(milliseconds: 100));
-        }
-      }
-
-      if (items.isNotEmpty) {
-        _curatedPopularMoviesCache = List.from(items);
-      }
-    }
-
-    final cached = _curatedPopularMoviesCache ?? const [];
-    final pageSize = 16;
-    final start = (page - 1) * pageSize;
-    final results = <MediaItem>[];
-    if (start < cached.length) {
-      final end = (start + pageSize).clamp(0, cached.length);
-      results.addAll(cached.sublist(start, end));
-    }
-    if (results.length < pageSize) {
-      final more = await _moviesWithStudioCap(
-        page: page,
-        orderBy: 'recently_created',
-        maxPerStudio: 2,
-        excludedIds: results.map((m) => m.id).toSet(),
-      );
-      results.addAll(more.take(pageSize - results.length));
-    }
-    if (results.isNotEmpty) return results;
-
-    return _moviesWithStudioCap(
-      page: page,
-      orderBy: 'recently_created',
-      maxPerStudio: 2,
-      excludedIds: _curatedPopularMoviesCache?.map((m) => m.id).toSet(),
-    );
+    try {
+      final list = await movies(page: page, orderBy: 'views');
+      if (list.isNotEmpty) return list;
+    } catch (_) {}
+    return movies(page: page, orderBy: 'recently_created');
   }
 
   static const List<String> _curatedMainstreamPerformers = [
@@ -1029,93 +889,19 @@ class ThePornDb {
     );
   }
 
-  static List<MediaItem>? _curatedTopRatedCache;
-
-  Future<List<MediaItem>> topRatedMovies({int page = 1}) => _topRated(page);
-
-  Future<List<MediaItem>> _topRated(int page) async {
-    if (_curatedTopRatedCache == null || _curatedTopRatedCache!.isEmpty) {
-      final items = <MediaItem>[];
-      final seenIds = <String>{};
-      const topStudios = ['Blacked', 'Vixen', 'Tushy', 'Deeper', 'Slayed', 'Brazzers'];
-
-      const batchSize = 3;
-      for (var i = 0; i < topStudios.length; i += batchSize) {
-        final batch = topStudios.sublist(i, (i + batchSize).clamp(0, topStudios.length));
-        await Future.wait(
-          batch.map((studio) async {
-            try {
-              final data = await _get('/movies', queryParameters: {
-                'q': studio,
-                'per_page': 5,
-              });
-              final rows = data['data'];
-              if (rows is List) {
-                var added = 0;
-                for (final row in rows) {
-                  if (row is Map && _qualifiesMedia(row)) {
-                    final rawDate = (row['date'] ?? row['release_date'])?.toString();
-                    if (rawDate != null && rawDate.length >= 4) {
-                      final y = int.tryParse(rawDate.substring(0, 4));
-                      if (y != null && y < DateTime.now().year - 3) continue;
-                    }
-                    final site = row['site'];
-                    final siteName = (site is Map ? site['name']?.toString() : null) ?? '';
-                    final netName = (site is Map && site['network'] is Map ? site['network']['name']?.toString() : null) ?? '';
-                    if (!siteName.toLowerCase().contains(studio.toLowerCase()) &&
-                        !netName.toLowerCase().contains(studio.toLowerCase())) {
-                      continue;
-                    }
-                    final m = _movie(row);
-                    if (seenIds.add(m.id)) {
-                      items.add(m);
-                      added++;
-                      if (added >= 2) break;
-                    }
-                  }
-                }
-              }
-            } catch (_) {}
-          }),
-        );
-      }
-      if (items.isNotEmpty) {
-        _curatedTopRatedCache = List.from(items);
-      }
-    }
-
-    final cached = _curatedTopRatedCache ?? const [];
-    final pageSize = 16;
-    final start = (page - 1) * pageSize;
-    final results = <MediaItem>[];
-    if (start < cached.length) {
-      final end = (start + pageSize).clamp(0, cached.length);
-      results.addAll(cached.sublist(start, end));
-    }
-    if (results.length < pageSize) {
-      final more = await _moviesWithStudioCap(
-        page: page,
-        orderBy: 'recently_updated',
-        maxPerStudio: 2,
-        minYear: DateTime.now().year - 3,
-        excludedIds: results.map((m) => m.id).toSet(),
-      );
-      results.addAll(more.take(pageSize - results.length));
-    }
-    if (results.isNotEmpty) return results;
-
-    return _moviesWithStudioCap(
-      page: page,
-      orderBy: 'recently_updated',
-      maxPerStudio: 2,
-      minYear: DateTime.now().year - 3,
-    );
+  Future<List<MediaItem>> topRatedMovies({int page = 1}) async {
+    try {
+      final list = await movies(page: page, orderBy: 'rating');
+      if (list.isNotEmpty) return list;
+    } catch (_) {}
+    return movies(page: page, orderBy: 'recently_created');
   }
+
+  Future<List<MediaItem>> _topRated(int page) => topRatedMovies(page: page);
 
   MediaItem _movie(Map row) {
     final id = (row['id'] ?? row['_id'] ?? row['uuid'] ?? row['slug']).toString();
     final title = (row['title'] ?? row['name'] ?? 'Untitled').toString();
-    final isSeries = isSeriesTitle(title);
     final rawRating = (row['rating'] as num?)?.toDouble() ??
         (row['score'] as num?)?.toDouble() ??
         (row['site'] is Map ? (row['site']['rating'] as num?)?.toDouble() : null);
@@ -1132,7 +918,7 @@ class ThePornDb {
       genres: _names(row['tags']),
       rating: rating,
       year: _year(row['date'] ?? row['release_date']),
-      tmdbIsTv: isSeries,
+      tmdbIsTv: false,
       englishTitle: studios.isNotEmpty ? studios.first : null,
     );
   }

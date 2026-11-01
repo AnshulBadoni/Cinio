@@ -9,6 +9,7 @@ import 'package:palette_generator/palette_generator.dart';
 import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/metadata/theporndb.dart';
+import '../../core/metadata/title_logo_service.dart';
 import '../../core/metadata/tmdb_discover_service.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/person.dart';
@@ -106,10 +107,31 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
   List<MediaItem> _bannerItems = [];
 
   // Provider section
-  String _selectedProviderId = 'theporndb';
+  String _selectedProviderId = '';
   List<({String id, String label, String? repo})> _availableProviders = [];
   List<MediaItem> _providerItems = [];
   bool _loadingProvider = false;
+
+  static const List<Color> _curatedVibrantColors = [
+    Color(0xFF8B5CF6), // Vibrant Purple
+    Color(0xFFEF4444), // Crimson Red
+    Color(0xFF10B981), // Emerald Green
+    Color(0xFF3B82F6), // Royal Blue
+    Color(0xFFF59E0B), // Vibrant Amber
+    Color(0xFFEC4899), // Pink
+  ];
+
+  Color _sanitizeProminentColor(Color c, [int hash = 0]) {
+    final hsl = HSLColor.fromColor(c);
+    // Reject black / near-black (lightness < 0.22), white (lightness > 0.82), or gray/desaturated
+    if (hsl.saturation < 0.28 || hsl.lightness < 0.22 || hsl.lightness > 0.82) {
+      return _curatedVibrantColors[hash.abs() % _curatedVibrantColors.length];
+    }
+    return hsl
+        .withSaturation((hsl.saturation * 1.3).clamp(0.55, 1.0))
+        .withLightness(hsl.lightness.clamp(0.38, 0.56))
+        .toColor();
+  }
 
   @override
   void initState() {
@@ -119,7 +141,6 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
     _loadAvailableProviders();
     _loadAllCategories();
 
-    // Listen to SearchBloc filter emissions so Discover updates in real time
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         final bloc = context.read<SearchBloc>();
@@ -152,18 +173,27 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
   bool get _isMixed => _source == CatalogSource.mixed;
 
   void _loadAvailableProviders() {
-    final nsfw = categorizedSources().nsfw;
-    final list = <({String id, String label, String? repo})>[
-      (id: 'theporndb', label: 'ThePornDB Discovery', repo: null),
-    ];
-    for (final s in nsfw) {
-      if (s.id != 'theporndb' && s.id != 'tpdb') {
-        list.add(s);
+    if (_isTpdb) {
+      final nsfw = categorizedSources().nsfw;
+      final list = <({String id, String label, String? repo})>[
+        if (_tpdb != null) (id: 'theporndb', label: 'ThePornDB Discovery', repo: null),
+      ];
+      for (final s in nsfw) {
+        if (s.id != 'theporndb' && s.id != 'tpdb') {
+          list.add(s);
+        }
       }
+      _availableProviders = list;
+    } else {
+      final buckets = categorizedSources();
+      final list = <({String id, String label, String? repo})>[
+        ...buckets.movies,
+        ...buckets.anime,
+      ];
+      _availableProviders = list;
     }
-    _availableProviders = list;
-    if (!_availableProviders.any((p) => p.id == _selectedProviderId)) {
-      _selectedProviderId = _availableProviders.first.id;
+    if (_selectedProviderId.isEmpty || !_availableProviders.any((p) => p.id == _selectedProviderId)) {
+      _selectedProviderId = _availableProviders.isNotEmpty ? _availableProviders.first.id : '';
     }
   }
 
@@ -176,20 +206,45 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
       final pal = await PaletteGenerator.fromImageProvider(
         ResizeImage(imageProvider, width: 120),
         size: const Size(120, 180),
-        maximumColorCount: 6,
+        maximumColorCount: 10,
       );
-      final color = pal.vibrantColor?.color ??
-          pal.dominantColor?.color ??
-          pal.darkVibrantColor?.color ??
-          pal.mutedColor?.color;
-      if (color != null && mounted) {
-        setState(() => _prominentColor = color);
+
+      final candidates = [
+        pal.vibrantColor,
+        pal.lightVibrantColor,
+        pal.darkVibrantColor,
+        ...pal.paletteColors,
+      ].whereType<PaletteColor>().toList();
+
+      candidates.sort((a, b) {
+        final hslA = HSLColor.fromColor(a.color);
+        final hslB = HSLColor.fromColor(b.color);
+        final validA = hslA.lightness >= 0.22 && hslA.lightness <= 0.82 && hslA.saturation >= 0.28;
+        final validB = hslB.lightness >= 0.22 && hslB.lightness <= 0.82 && hslB.saturation >= 0.28;
+        if (validA && !validB) return -1;
+        if (!validA && validB) return 1;
+        return hslB.saturation.compareTo(hslA.saturation);
+      });
+
+      Color? chosen;
+      for (final cand in candidates) {
+        final hsl = HSLColor.fromColor(cand.color);
+        if (hsl.saturation >= 0.28 && hsl.lightness >= 0.22 && hsl.lightness <= 0.82) {
+          chosen = _sanitizeProminentColor(cand.color, coverUrl.hashCode);
+          break;
+        }
+      }
+
+      chosen ??= _curatedVibrantColors[coverUrl.hashCode.abs() % _curatedVibrantColors.length];
+      if (mounted) {
+        setState(() => _prominentColor = chosen!);
       }
     } catch (_) {}
   }
 
   void _loadAllCategories() {
     if (!mounted) return;
+    _loadAvailableProviders();
 
     if (_isTpdb && _tpdb != null) {
       _loadTpdbContent();
@@ -198,11 +253,13 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
     } else {
       _loadTmdbContent();
     }
-    _fetchProviderItems(_selectedProviderId);
+    if (_selectedProviderId.isNotEmpty) {
+      _fetchProviderItems(_selectedProviderId);
+    }
   }
 
   Future<void> _fetchProviderItems(String providerId) async {
-    if (!mounted) return;
+    if (!mounted || providerId.isEmpty) return;
     setState(() => _loadingProvider = true);
     try {
       List<MediaItem> items;
@@ -259,6 +316,9 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
       if (!mounted) return;
       if (items.isNotEmpty) {
         setState(() => _bannerItems = items.take(6).toList());
+        if (sl.isRegistered<TitleLogoService>()) {
+          sl<TitleLogoService>().prefetch(_bannerItems);
+        }
       }
     }).catchError((_) {});
   }
@@ -283,7 +343,12 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
       if (!mounted) return;
       setState(() {
         _trendingScenes = items;
-        if (_bannerItems.isEmpty) _bannerItems = items.take(6).toList();
+        if (_bannerItems.isEmpty) {
+          _bannerItems = items.take(6).toList();
+          if (sl.isRegistered<TitleLogoService>()) {
+            sl<TitleLogoService>().prefetch(_bannerItems);
+          }
+        }
       });
       if (_popularScenes.isEmpty && items.isNotEmpty) {
         _extractProminentColor(items.first.cover, items.first.coverHeaders);
@@ -326,7 +391,12 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
       final mixed = _interleaveItems(tmdbMovies, tpdbMovies);
       setState(() {
         _movies = mixed;
-        if (mixed.isNotEmpty) _bannerItems = mixed.take(6).toList();
+        if (mixed.isNotEmpty) {
+          _bannerItems = mixed.take(6).toList();
+          if (sl.isRegistered<TitleLogoService>()) {
+            sl<TitleLogoService>().prefetch(_bannerItems);
+          }
+        }
       });
       if (mixed.isNotEmpty) {
         _extractProminentColor(mixed.first.cover, mixed.first.coverHeaders);
@@ -517,33 +587,28 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
         return Stack(
           children: [
             // Top moving ambient radial gradient from prominent color of top movie
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 540,
+            Positioned.fill(
               child: IgnorePointer(
                 child: AnimatedBuilder(
                   animation: _gradientAnimCtrl,
                   builder: (context, _) {
                     final t = _gradientAnimCtrl.value;
                     final center = Alignment(
-                      -0.85 + 0.6 * t,
+                      -1.0 + 0.35 * t,
                       -1.0 + 0.25 * math.sin(t * math.pi),
                     );
-                    final radius = 1.5 + 0.3 * math.sin(t * math.pi);
                     return Container(
                       decoration: BoxDecoration(
                         gradient: RadialGradient(
                           center: center,
-                          radius: radius,
+                          radius: 1.45,
                           colors: [
-                            _prominentColor.withValues(alpha: 0.70),
-                            _prominentColor.withValues(alpha: 0.38),
-                            _prominentColor.withValues(alpha: 0.14),
+                            _prominentColor.withValues(alpha: 0.50),
+                            _prominentColor.withValues(alpha: 0.25),
+                            _prominentColor.withValues(alpha: 0.08),
                             Colors.transparent,
                           ],
-                          stops: const [0.0, 0.45, 0.75, 1.0],
+                          stops: const [0.0, 0.32, 0.65, 1.0],
                         ),
                       ),
                     );
@@ -627,12 +692,23 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: _NewReleasesCarousel(
-                        items: _bannerItems,
-                        onTap: (item, {heroTag}) => widget.onTapItem(item, heroTag: heroTag),
-                        onLongPress: widget.onLongPressItem,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                      child: Text(
+                        'New Releases',
+                        style: AppText.headline.copyWith(
+                          color: const Color(0xFFEDE8E4),
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.1,
+                        ),
                       ),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: _NewReleasesCarousel(
+                      items: _bannerItems,
+                      onTap: (item, {heroTag}) => widget.onTapItem(item, heroTag: heroTag),
+                      onLongPress: widget.onLongPressItem,
                     ),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
@@ -710,12 +786,23 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: _NewReleasesCarousel(
-                        items: _bannerItems,
-                        onTap: (item, {heroTag}) => widget.onTapItem(item, heroTag: heroTag),
-                        onLongPress: widget.onLongPressItem,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                      child: Text(
+                        'New Releases',
+                        style: AppText.headline.copyWith(
+                          color: const Color(0xFFEDE8E4),
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.1,
+                        ),
                       ),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: _NewReleasesCarousel(
+                      items: _bannerItems,
+                      onTap: (item, {heroTag}) => widget.onTapItem(item, heroTag: heroTag),
+                      onLongPress: widget.onLongPressItem,
                     ),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
@@ -872,21 +959,29 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
       mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+          padding: const EdgeInsets.fromLTRB(16, 8, 12, 10),
           child: Row(
             children: [
               Expanded(
                 child: Text(
-                  'Provider',
+                  currentProvider.label,
                   style: AppText.headline.copyWith(
                     color: const Color(0xFFEDE8E4),
                     fontSize: 16.5,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.1,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               PopupMenuButton<String>(
+                tooltip: 'Switch provider',
+                icon: const Icon(
+                  Icons.layers_rounded,
+                  color: Color(0xFFB5B0AA),
+                  size: 22,
+                ),
                 color: Color.lerp(
                   ThemeController.materialYou
                       ? Color.lerp(AppColors.bg, AppColors.surface, 0.40)!
@@ -925,42 +1020,6 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
                       ),
                     ),
                 ],
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Color.lerp(
-                      ThemeController.materialYou
-                          ? Color.lerp(AppColors.bg, AppColors.surface, 0.40)!
-                          : const Color(0xFF161211),
-                      AppColors.accent,
-                      0.05,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      width: 0.8,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        currentProvider.label,
-                        style: TextStyle(
-                          color: AppColors.accent,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: AppColors.accent,
-                        size: 18,
-                      ),
-                    ],
-                  ),
-                ),
               ),
             ],
           ),
@@ -1285,7 +1344,7 @@ class _DiscoverActorCardState extends State<_DiscoverActorCard> {
   }
 }
 
-/// Auto-sliding Widescreen New Releases Banner Carousel
+/// Auto-sliding Widescreen New Releases Banner Carousel with Full Card Swiping
 class _NewReleasesCarousel extends StatefulWidget {
   const _NewReleasesCarousel({
     required this.items,
@@ -1305,12 +1364,11 @@ class _NewReleasesCarouselState extends State<_NewReleasesCarousel> {
   late final PageController _pageController;
   Timer? _timer;
   int _currentPage = 0;
-  bool _pressed = false;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
+    _pageController = PageController(viewportFraction: 0.92);
     _startTimer();
   }
 
@@ -1351,6 +1409,7 @@ class _NewReleasesCarouselState extends State<_NewReleasesCarousel> {
     if (widget.items.isEmpty) {
       return Container(
         height: carouselHeight,
+        margin: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
           color: AppColors.surface2,
           borderRadius: BorderRadius.circular(18),
@@ -1358,133 +1417,218 @@ class _NewReleasesCarouselState extends State<_NewReleasesCarousel> {
       );
     }
 
+    return SizedBox(
+      height: carouselHeight,
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: widget.items.length,
+            onPageChanged: (idx) {
+              setState(() => _currentPage = idx);
+            },
+            itemBuilder: (context, index) {
+              final item = widget.items[index];
+              final heroTag = 'discover:banner:$index:${item.id}';
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                child: _CarouselSlide(
+                  key: ValueKey('carousel-slide-${item.id}-$index'),
+                  item: item,
+                  heroTag: heroTag,
+                  onTap: () => widget.onTap(item, heroTag: heroTag),
+                  onLongPress: widget.onLongPress,
+                ),
+              );
+            },
+          ),
+
+          // Animated Pagination Dots
+          if (widget.items.length > 1)
+            Positioned(
+              right: 24,
+              bottom: 12,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(
+                  widget.items.length.clamp(0, 6),
+                  (i) {
+                    final isActive = i == _currentPage % widget.items.length;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      margin: const EdgeInsets.symmetric(horizontal: 2.5),
+                      width: isActive ? 16 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CarouselSlide extends StatefulWidget {
+  const _CarouselSlide({
+    super.key,
+    required this.item,
+    required this.heroTag,
+    required this.onTap,
+    this.onLongPress,
+  });
+
+  final MediaItem item;
+  final String heroTag;
+  final VoidCallback onTap;
+  final void Function(MediaItem, String)? onLongPress;
+
+  @override
+  State<_CarouselSlide> createState() => _CarouselSlideState();
+}
+
+class _CarouselSlideState extends State<_CarouselSlide> {
+  String? _logoUrl;
+  bool _pressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLogo();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CarouselSlide oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.id != widget.item.id) {
+      _logoUrl = null;
+      _loadLogo();
+    }
+  }
+
+  Future<void> _loadLogo() async {
+    if (!sl.isRegistered<TitleLogoService>()) return;
+    try {
+      final url = await sl<TitleLogoService>().logoFor(widget.item);
+      if (mounted && url != null && url.isNotEmpty) {
+        setState(() => _logoUrl = url);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = widget.item.heroImage ?? widget.item.cover;
+
     return AnimatedScale(
       scale: _pressed ? 0.96 : 1.0,
       duration: const Duration(milliseconds: 140),
       curve: Curves.easeOutCubic,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          height: carouselHeight,
-          decoration: BoxDecoration(
-            color: const Color(0xFF16161D),
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Stack(
-            children: [
-              PageView.builder(
-                controller: _pageController,
-                itemCount: widget.items.length,
-                onPageChanged: (idx) {
-                  setState(() => _currentPage = idx);
-                },
-                itemBuilder: (context, index) {
-                  final item = widget.items[index];
-                  final imageUrl = item.heroImage ?? item.cover;
-                  final heroTag = 'discover:banner:$index:${item.id}';
-
-                  return GestureDetector(
-                    onTap: () => widget.onTap(item, heroTag: heroTag),
-                    onLongPress: () => widget.onLongPress?.call(item, heroTag),
-                    onTapDown: (_) => setState(() => _pressed = true),
-                    onTapUp: (_) => setState(() => _pressed = false),
-                    onTapCancel: () => setState(() => _pressed = false),
-                    behavior: HitTestBehavior.opaque,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        if (imageUrl != null && imageUrl.isNotEmpty)
-                          Hero(
-                            tag: heroTag,
-                            child: CachedNetworkImage(
-                              imageUrl: imageUrl,
-                              fit: BoxFit.cover,
-                              cacheManager: AppImageCache.cacheManagerOrDefault,
-                              errorWidget: (_, _, _) => Container(
-                                color: const Color(0xFF1E1E26),
-                              ),
-                            ),
-                          )
-                        else
-                          Container(color: const Color(0xFF1E1E26)),
-                        // Bottom subtle gradient overlay for title legibility
-                        const Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          height: 75,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.transparent,
-                                  Color(0xD9000000),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        // Movie title in bottom-left with special display font
-                        Positioned(
-                          left: 14,
-                          bottom: 12,
-                          right: widget.items.length > 1 ? 84 : 14,
-                          child: Text(
-                            item.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppText.display.copyWith(
-                              fontSize: 16.5,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              shadows: const [
-                                Shadow(
-                                  color: Color(0xCC000000),
-                                  blurRadius: 8,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onLongPress: () => widget.onLongPress?.call(widget.item, widget.heroTag),
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        behavior: HitTestBehavior.opaque,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF16161D),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+                width: 0.8,
               ),
-
-              // Animated Pagination Dots
-              if (widget.items.length > 1)
-                Positioned(
-                  right: 14,
-                  bottom: 14,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: List.generate(
-                      widget.items.length.clamp(0, 6),
-                      (i) {
-                        final isActive = i == _currentPage % widget.items.length;
-                        return AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
-                          margin: const EdgeInsets.symmetric(horizontal: 2.5),
-                          width: isActive ? 16 : 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: isActive
-                                ? Colors.white
-                                : Colors.white.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        );
-                      },
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (imageUrl != null && imageUrl.isNotEmpty)
+                  Hero(
+                    tag: widget.heroTag,
+                    child: CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      fit: BoxFit.cover,
+                      cacheManager: AppImageCache.cacheManagerOrDefault,
+                      errorWidget: (_, _, _) => Container(
+                        color: const Color(0xFF1E1E26),
+                      ),
+                    ),
+                  )
+                else
+                  Container(color: const Color(0xFF1E1E26)),
+                // Bottom subtle gradient overlay for title legibility
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 80,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Color(0xE6000000),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-            ],
+                // Title logo or stylized display font in bottom-left
+                Positioned(
+                  left: 14,
+                  bottom: 12,
+                  right: 76,
+                  child: (_logoUrl != null && _logoUrl!.isNotEmpty)
+                      ? SizedBox(
+                          height: 38,
+                          child: Align(
+                            alignment: Alignment.bottomLeft,
+                            child: CachedNetworkImage(
+                              imageUrl: _logoUrl!,
+                              fit: BoxFit.contain,
+                              alignment: Alignment.bottomLeft,
+                              errorWidget: (_, __, ___) => _titleText(widget.item.title),
+                            ),
+                          ),
+                        )
+                      : _titleText(widget.item.title),
+                ),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _titleText(String title) {
+    return Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: AppText.display.copyWith(
+        fontSize: 16.5,
+        fontWeight: FontWeight.w800,
+        color: Colors.white,
+        shadows: const [
+          Shadow(
+            color: Color(0xCC000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
     );
   }
