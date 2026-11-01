@@ -12,6 +12,7 @@ import '../../core/metadata/theporndb.dart';
 import '../../core/metadata/tmdb_discover_service.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/person.dart';
+import '../../core/models/provider_info.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/repository/source_repository.dart';
@@ -1469,25 +1470,6 @@ class _NewReleasesCarouselState extends State<_NewReleasesCarousel> {
                           duration: const Duration(milliseconds: 250),
                           margin: const EdgeInsets.symmetric(horizontal: 2.5),
                           width: isActive ? 16 : 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: isActive
-                                ? Colors.white
-                                : Colors.white.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
                           height: 6,
                           decoration: BoxDecoration(
                             color: isActive

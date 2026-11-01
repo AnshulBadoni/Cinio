@@ -1221,6 +1221,11 @@ class _SearchViewState extends State<_SearchView>
               itemCount: recentHistory.length,
               itemBuilder: (context, index) {
                 final entry = recentHistory[index];
+                final isTv = entry.category == 'tv' ||
+                    entry.category == 'series' ||
+                    (entry.sourceId == 'tmdb:catalog' &&
+                        entry.showUrl.contains('/tv/'));
+                final isAnime = entry.category == 'anime';
                 final item = MediaItem(
                   id: entry.showId,
                   sourceId: entry.sourceId,
@@ -1228,7 +1233,9 @@ class _SearchViewState extends State<_SearchView>
                   url: entry.showUrl,
                   cover: entry.cover,
                   coverHeaders: entry.coverHeaders,
-                  type: entry.type,
+                  type: isAnime ? ProviderType.anime : ProviderType.movie,
+                  tmdbIsTv: isTv,
+                  malId: entry.malId,
                 );
                 final heroTag = 'search:recent:$index:${entry.showId}';
 
