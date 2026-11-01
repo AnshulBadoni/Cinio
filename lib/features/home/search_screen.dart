@@ -32,6 +32,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/poster_quick_actions.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
+import '../../core/ui/dock_visibility.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/reveal_item.dart';
 import '../../core/ui/states.dart';
@@ -193,7 +194,17 @@ class _SearchViewState extends State<_SearchView>
   /// ready. Defers a frame so it runs after the IndexedStack reveals the tab.
   void _onFocusSignal() {
     if (!mounted) return;
-    if (!sl<CatalogSourcePrefs>().newDiscoverPage || _isSearching) {
+    if (sl<CatalogSourcePrefs>().newDiscoverPage) {
+      if (_isSearching) {
+        setState(() {
+          _isSearching = false;
+          _controller.clear();
+        });
+        dockHiddenBySearch.value = false;
+        _focusNode.unfocus();
+        context.read<SearchBloc>().add(const SearchQueryChanged(''));
+      }
+    } else {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _focusNode.requestFocus();
       });
@@ -225,6 +236,7 @@ class _SearchViewState extends State<_SearchView>
 
   @override
   void dispose() {
+    dockHiddenBySearch.value = false;
     sl<CatalogSourcePrefs>().removeListener(_onPrefsChanged);
     widget.focusSignal?.removeListener(_onFocusSignal);
     _discoverScrollController.dispose();
@@ -655,6 +667,7 @@ class _SearchViewState extends State<_SearchView>
                 setState(() {
                   _isSearching = true;
                 });
+                dockHiddenBySearch.value = true;
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (mounted) _focusNode.requestFocus();
                 });
@@ -683,6 +696,7 @@ class _SearchViewState extends State<_SearchView>
             _isSearching = false;
             _controller.clear();
           });
+          dockHiddenBySearch.value = false;
           _focusNode.unfocus();
           context.read<SearchBloc>().add(const SearchQueryChanged(''));
           return;
@@ -726,6 +740,7 @@ class _SearchViewState extends State<_SearchView>
                                   _isSearching = false;
                                   _controller.clear();
                                 });
+                                dockHiddenBySearch.value = false;
                                 _focusNode.unfocus();
                                 context
                                     .read<SearchBloc>()

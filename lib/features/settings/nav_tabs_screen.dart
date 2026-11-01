@@ -134,6 +134,16 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
           SettingsCard(
             children: [
               _switchTile(
+                icon: Icons.auto_awesome_mosaic_rounded,
+                title: 'Pixel navbar',
+                subtitle: 'Google Apps style navbar with active tab pill and detached circle',
+                value: _prefs.pixelNavbar,
+                onChanged: (v) async {
+                  await _prefs.setPixelNavbar(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _switchTile(
                 icon: Icons.account_circle_outlined,
                 title: 'Separate Profile circle',
                 subtitle: 'Detach Profile as a floating circle (Material You)',

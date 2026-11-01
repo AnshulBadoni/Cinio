@@ -93,6 +93,14 @@ class NavPrefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// When true, renders Google Apps / Pixel-style bottom navbar with active pill tab.
+  bool get pixelNavbar =>
+      _box?.get('pixelNavbar', defaultValue: false) as bool? ?? false;
+  Future<void> setPixelNavbar(bool value) async {
+    await _box?.put('pixelNavbar', value);
+    notifyListeners();
+  }
+
   List<DockTab> get tabs {
     final raw = _box?.get(_tabsKey);
     if (raw is! List || raw.isEmpty) return defaultTabs;

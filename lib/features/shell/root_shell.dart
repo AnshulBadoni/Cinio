@@ -313,12 +313,13 @@ class _RootShellState extends State<RootShell>
               ),
             );
           }),
-          bottomNavigationBar: ValueListenableBuilder<bool>(
-            valueListenable: dockHiddenBySection,
-            builder: (context, sectionOpen, _) {
-              // Slide the dock away when a Settings section is open OR while on
-              // the Search tab (so the floating search bar/results are never blocked).
-              final hide = (sectionOpen && _tab == DockTab.profile) || (_tab == DockTab.search);
+          bottomNavigationBar: AnimatedBuilder(
+            animation: Listenable.merge([dockHiddenBySection, dockHiddenBySearch]),
+            builder: (context, _) {
+              // Slide the dock away when a Settings section is open OR while
+              // actively searching (so the search results / keyboard are never blocked).
+              final hide = (dockHiddenBySection.value && _tab == DockTab.profile) ||
+                  (dockHiddenBySearch.value && _tab == DockTab.search);
               return AnimatedSlide(
                 offset: hide ? const Offset(0, 1.6) : Offset.zero,
                 duration: const Duration(milliseconds: 240),
@@ -389,7 +390,8 @@ class _FloatingDock extends StatelessWidget {
           collapse.value.clamp(0.0, 1.0),
         );
         final navPrefs = sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : null;
-        final separateProfile = navPrefs?.separateProfile ?? true;
+        final isPixel = navPrefs?.pixelNavbar ?? false;
+        final separateProfile = isPixel || (navPrefs?.separateProfile ?? true);
         final hasProfile = tabs.contains(DockTab.profile);
         final isSplit = separateProfile && hasProfile;
 
@@ -402,6 +404,20 @@ class _FloatingDock extends StatelessWidget {
         final totalWidth = expandedWidth + (compactWidth - expandedWidth) * t;
 
         Widget buildCapsuleContent(List<DockTab> pillTabs) {
+          if (isPixel) {
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                for (final tab in pillTabs)
+                  _PixelDockItem(
+                    tab: tab,
+                    selected: active == tab,
+                    onTap: () => onSelected(tab),
+                  ),
+              ],
+            );
+          }
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -708,6 +724,70 @@ class _DockItem extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _PixelDockItem extends StatelessWidget {
+  const _PixelDockItem({
+    required this.tab,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final DockTab tab;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeAccent = AppColors.accent;
+    final iconWidget = HugeIcon(
+      icon: _hugeIconFor(tab),
+      color: selected ? Colors.white : const Color(0xFFC7C5C8),
+      size: 19.5,
+      strokeWidth: selected ? 2.2 : 1.7,
+    );
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.symmetric(
+            horizontal: selected ? 14.0 : 10.0,
+            vertical: 6.5,
+          ),
+          decoration: BoxDecoration(
+            color: selected
+                ? activeAccent.withValues(alpha: 0.35)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              iconWidget,
+              if (selected) ...[
+                const SizedBox(width: 6.5),
+                Text(
+                  tab.label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13.0,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

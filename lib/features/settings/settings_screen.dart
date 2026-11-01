@@ -56,6 +56,7 @@ import '../update/update_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/dock_visibility.dart';
+import '../../core/ui/nav_prefs.dart';
 import '../../core/ui/team_section.dart';
 import 'donate_screen.dart';
 import '../auth/auth_cubit.dart';
@@ -914,6 +915,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
         keywords: 'navigation bar tabs dock bottom reorder hide downloads '
             'history customise customize interface',
         onTap: () => _push(const NavTabsScreen()),
+      ),
+      _SettingsEntry(
+        section: 'Interface',
+        icon: Icons.auto_awesome_mosaic_rounded,
+        title: 'Pixel navbar',
+        subtitle: 'Google Apps style bottom navigation with active pill tab',
+        keywords: 'pixel navbar navigation bottom bar google apps pill dock tabs interface',
+        trailing: Switch.adaptive(
+          value: sl.isRegistered<NavPrefs>()
+              ? sl<NavPrefs>().pixelNavbar
+              : false,
+          activeThumbColor: AppColors.accent,
+          onChanged: (v) async {
+            if (sl.isRegistered<NavPrefs>()) {
+              await sl<NavPrefs>().setPixelNavbar(v);
+            }
+            if (mounted) setState(() {});
+          },
+        ),
+        onTap: () async {
+          if (sl.isRegistered<NavPrefs>()) {
+            final current = sl<NavPrefs>().pixelNavbar;
+            await sl<NavPrefs>().setPixelNavbar(!current);
+          }
+          if (mounted) setState(() {});
+        },
       ),
       _SettingsEntry(
         section: 'Interface',

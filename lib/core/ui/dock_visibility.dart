@@ -5,6 +5,10 @@ import 'package:flutter/foundation.dart';
 /// on the active tab, so this only hides the dock while that tab is showing.
 final ValueNotifier<bool> dockHiddenBySection = ValueNotifier<bool>(false);
 
+/// True while the search screen is actively searching (querying or viewing search results)
+/// so the floating dock slides away and never blocks search results or the keyboard.
+final ValueNotifier<bool> dockHiddenBySearch = ValueNotifier<bool>(false);
+
 /// True while an in-tab handler owns the next Back press — e.g. an open Settings
 /// section (backs out to the categories) or an active Settings search (clears).
 /// Those handlers live in the SAME route as the shell's double-back PopScope, so
