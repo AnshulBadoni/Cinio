@@ -1,5 +1,4 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -686,6 +685,142 @@ class _SearchViewState extends State<_SearchView>
     // (each fires on every search state emission during a live fan-out).
     final modeSources = _modeSources;
 
+    if (useNewDiscover) {
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          if (_isSearching) {
+            setState(() {
+              _isSearching = false;
+              _controller.clear();
+            });
+            dockHiddenBySearch.value = false;
+            _focusNode.unfocus();
+            context.read<SearchBloc>().add(const SearchQueryChanged(''));
+            return;
+          }
+          if (widget.onBackToPrevTab != null) {
+            widget.onBackToPrevTab!();
+          } else if (widget.showBack) {
+            Navigator.maybePop(context);
+          }
+        },
+        child: Scaffold(
+          backgroundColor: AppColors.bg,
+          resizeToAvoidBottomInset: false,
+          body: SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 84),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        BlocBuilder<SearchBloc, SearchState>(
+                          buildWhen: (p, c) =>
+                              p.query.trim().isEmpty != c.query.trim().isEmpty,
+                          builder: (context, state) {
+                            final discover = state.query.trim().isEmpty;
+                            if (discover) {
+                              return const SizedBox.shrink();
+                            }
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 12),
+                                _controlRow(modeSources),
+                                _sourcePillsRow(),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  child: Divider(
+                                    height: 1,
+                                    thickness: 1,
+                                    color: AppColors.hairline,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                        Expanded(
+                          child: BlocBuilder<SearchBloc, SearchState>(
+                            builder: (context, state) {
+                              final discover = state.query.trim().isEmpty;
+                              if (discover) {
+                                return _newDiscoverSearchIdle();
+                              }
+                              if (state.status != SearchStatus.success &&
+                                  state.suggestions.isNotEmpty) {
+                                return _suggestionList(state.suggestions);
+                              }
+                              switch (state.status) {
+                                case SearchStatus.idle:
+                                  return _idleView(state);
+                                case SearchStatus.loading:
+                                  return const Padding(
+                                    padding: EdgeInsets.all(20),
+                                    child: SkeletonGrid(),
+                                  );
+                                case SearchStatus.error:
+                                  return _errorView(state);
+                                case SearchStatus.success:
+                                  return _resultsBody(state, cellW, modeSources);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Floating bottom search input bar + back + filter
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: MediaQuery.viewInsetsOf(context).bottom +
+                      (MediaQuery.paddingOf(context).bottom > 0
+                          ? MediaQuery.paddingOf(context).bottom + 8
+                          : 16),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isSearching = false;
+                            _controller.clear();
+                          });
+                          dockHiddenBySearch.value = false;
+                          _focusNode.unfocus();
+                          context.read<SearchBloc>().add(const SearchQueryChanged(''));
+                        },
+                        tooltip: 'Back',
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: _buildBottomSearchInputField(),
+                      ),
+                      const SizedBox(width: 8),
+                      _discoverFilterButton(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -851,6 +986,83 @@ class _SearchViewState extends State<_SearchView>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBottomSearchInputField() {
+    return Container(
+      height: 50,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E24),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x88000000),
+            blurRadius: 18,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.search_rounded,
+            color: AppColors.textTertiary,
+            size: 22,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              onChanged: (text) {
+                context.read<SearchBloc>().add(SearchQueryChanged(text));
+              },
+              onSubmitted: (text) {
+                FocusScope.of(context).unfocus();
+                context.read<SearchBloc>().add(SearchRunRequested(text));
+              },
+              style: AppText.body.copyWith(
+                color: AppColors.textPrimary,
+                fontSize: 15,
+              ),
+              cursorColor: AppColors.accent,
+              decoration: const InputDecoration(
+                hintText: 'Search movies, series, anime...',
+                hintStyle: TextStyle(
+                  color: AppColors.textTertiary,
+                  fontSize: 14.5,
+                ),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _controller,
+            builder: (context, value, _) => value.text.isEmpty
+                ? const SizedBox.shrink()
+                : IconButton(
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      size: 20,
+                      color: AppColors.textTertiary,
+                    ),
+                    tooltip: 'Clear',
+                    onPressed: _clear,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
+                  ),
+          ),
+        ],
       ),
     );
   }

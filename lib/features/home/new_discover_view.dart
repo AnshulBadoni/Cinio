@@ -59,7 +59,6 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
   final _tmdb = sl<TmdbDiscoverService>();
   final _prefs = sl<CatalogSourcePrefs>();
   ThePornDb? get _tpdb => sl.isRegistered<ThePornDb>() ? sl<ThePornDb>() : null;
-  SourceRepository get _repo => sl<SourceRepository>();
 
   StreamSubscription<SearchState>? _searchSub;
 
@@ -99,8 +98,6 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
   // Provider section (TPDB mode)
   String _selectedProviderId = 'theporndb';
   List<({String id, String label, String? repo})> _availableProviders = [];
-  List<MediaItem> _providerItems = [];
-  bool _loadingProvider = false;
 
   @override
   void initState() {
@@ -203,26 +200,26 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
       if (items.isNotEmpty) {
         _extractProminentColor(items.first.cover, items.first.coverHeaders);
       }
-    }).catchError((_) => <MediaItem>[]);
+    }).catchError((_) {});
 
     _tmdb.getPopularSeries(page: 1).then((items) {
       if (mounted) setState(() => _series = items);
-    }).catchError((_) => <MediaItem>[]);
+    }).catchError((_) {});
 
     _tmdb.getPopularAnime(page: 1).then((items) {
       if (mounted) setState(() => _anime = items);
-    }).catchError((_) => <MediaItem>[]);
+    }).catchError((_) {});
 
     _tmdb.getPopularPeople().then((people) {
       if (mounted) setState(() => _actors = people);
-    }).catchError((_) => <PersonRef>[]);
+    }).catchError((_) {});
 
     _tmdb.getLatestMovies().then((items) {
       if (!mounted) return;
       if (items.isNotEmpty) {
         setState(() => _bannerItems = items.take(6).toList());
       }
-    }).catchError((_) => <MediaItem>[]);
+    }).catchError((_) {});
   }
 
   void _loadTpdbContent() {
@@ -239,7 +236,7 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
       if (items.isNotEmpty) {
         _extractProminentColor(items.first.cover, items.first.coverHeaders);
       }
-    }).catchError((_) => <MediaItem>[]);
+    }).catchError((_) {});
 
     tpdb.trendingMovies(page: 1).then((items) {
       if (!mounted) return;
@@ -250,12 +247,12 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
       if (_popularScenes.isEmpty && items.isNotEmpty) {
         _extractProminentColor(items.first.cover, items.first.coverHeaders);
       }
-    }).catchError((_) => <MediaItem>[]);
+    }).catchError((_) {});
 
     tpdb.topRatedMovies(page: 1).then((items) {
       if (!mounted) return;
       setState(() => _topRatedScenes = items);
-    }).catchError((_) => <MediaItem>[]);
+    }).catchError((_) {});
 
     tpdb.performers().then((performers) {
       if (!mounted) return;
@@ -269,7 +266,7 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
               ))
           .toList();
       setState(() => _actors = actors);
-    }).catchError((_) => <PersonRef>[]);
+    }).catchError((_) {});
   }
 
   void _loadMixedContent() {
@@ -305,26 +302,26 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
     _tmdb.getTrendingMovies(page: 1).then((items) {
       tmdbMovies = items;
       updateMovies();
-    }).catchError((_) => <MediaItem>[]);
+    }).catchError((_) {});
 
     _tmdb.getPopularSeries(page: 1).then((items) {
       if (mounted) setState(() => _series = items);
-    }).catchError((_) => <MediaItem>[]);
+    }).catchError((_) {});
 
     _tmdb.getPopularAnime(page: 1).then((items) {
       if (mounted) setState(() => _anime = items);
-    }).catchError((_) => <MediaItem>[]);
+    }).catchError((_) {});
 
     _tmdb.getPopularPeople().then((people) {
       tmdbPeople = people;
       updatePeople();
-    }).catchError((_) => <PersonRef>[]);
+    }).catchError((_) {});
 
     if (tpdb != null) {
       tpdb.trendingMovies(page: 1).then((items) {
         tpdbMovies = items;
         updateMovies();
-      }).catchError((_) => <MediaItem>[]);
+      }).catchError((_) {});
 
       tpdb.performers().then((performers) {
         tpdbPeople = performers
@@ -337,41 +334,8 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
                 ))
             .toList();
         updatePeople();
-      }).catchError((_) => <MediaItem>[]);
+      }).catchError((_) {});
     }
-  }
-
-  Future<void> _fetchProviderItems(String providerId) async {
-    setState(() => _loadingProvider = true);
-    try {
-      List<MediaItem> items;
-      if (providerId == 'theporndb' || providerId == 'tpdb') {
-        items = _trendingScenes.isNotEmpty
-            ? _trendingScenes
-            : await (_tpdb?.trendingMovies() ?? Future.value(<MediaItem>[]));
-      } else {
-        final sections = await _repo.home(sourceId: providerId);
-        final out = <MediaItem>[];
-        for (final sec in sections) {
-          out.addAll(sec.items);
-        }
-        items = out;
-      }
-      if (mounted) {
-        setState(() {
-          _providerItems = items;
-          _loadingProvider = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _loadingProvider = false);
-    }
-  }
-
-  Future<void> _onSelectProvider(String providerId) async {
-    if (_selectedProviderId == providerId) return;
-    setState(() => _selectedProviderId = providerId);
-    await _fetchProviderItems(providerId);
   }
 
   // ── Pagination helpers ───────────────────────────────────────────────────────

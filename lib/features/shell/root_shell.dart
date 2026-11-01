@@ -324,24 +324,19 @@ class _RootShellState extends State<RootShell>
             builder: (context, _) {
               final isNewDiscover = sl.isRegistered<CatalogSourcePrefs>() &&
                   sl<CatalogSourcePrefs>().newDiscoverPage;
-              // Slide the dock away when a Settings section is open, while
-              // actively searching, OR while on Discover page (so the bottom search bar has the spotlight).
+              // Hide dock when a Settings section is open, while actively searching,
+              // OR while on Discover page (so the bottom search bar has the spotlight).
               final hide = (dockHiddenBySection.value && _tab == DockTab.profile) ||
                   (dockHiddenBySearch.value && _tab == DockTab.search) ||
                   (_tab == DockTab.search && isNewDiscover);
-              return AnimatedSlide(
-                offset: hide ? const Offset(0, 1.6) : Offset.zero,
-                duration: const Duration(milliseconds: 240),
-                curve: Curves.easeOutCubic,
-                child: IgnorePointer(
-                  ignoring: hide,
-                  child: _FloatingDock(
-                    tabs: _visibleTabs(),
-                    active: _tab,
-                    collapse: _dockCtrl,
-                    onSelected: _onTabSelected,
-                  ),
-                ),
+              if (hide) {
+                return const SizedBox.shrink();
+              }
+              return _FloatingDock(
+                tabs: _visibleTabs(),
+                active: _tab,
+                collapse: _dockCtrl,
+                onSelected: _onTabSelected,
               );
             },
           ),
@@ -450,9 +445,11 @@ class _FloatingDock extends StatelessWidget {
           required List<DockTab> pillTabs,
         }) {
           if (isPixel) {
-            final containerBg = ThemeController.materialYou
-                ? Color.lerp(AppColors.surface2, AppColors.accent, 0.09)!
-                : Color.lerp(const Color(0xFF201A18), AppColors.accent, 0.08)!;
+            final containerBg = Color.lerp(
+              ThemeController.materialYou ? AppColors.surface : AppColors.defaultSurface,
+              AppColors.accent,
+              0.14,
+            )!;
             return Container(
               width: pillWidth,
               height: height,
@@ -553,9 +550,13 @@ class _ProfileCircle extends StatelessWidget {
     final avatarSize = (size * 0.82).roundToDouble();
 
     if (isPixel) {
-      final containerBg = ThemeController.materialYou
-          ? Color.lerp(AppColors.surface2, AppColors.accent, 0.09)!
-          : Color.lerp(const Color(0xFF201A18), AppColors.accent, 0.08)!;
+      final containerBg = Color.lerp(
+        ThemeController.materialYou ? AppColors.surface : AppColors.defaultSurface,
+        AppColors.accent,
+        0.14,
+      )!;
+      final selectedColor = Color.lerp(Colors.white, AppColors.accent, 0.35)!;
+      final unselectedColor = Color.lerp(const Color(0xFFDDD0CB), AppColors.accent, 0.18)!.withValues(alpha: 0.85);
       return Container(
         width: size,
         height: size,
@@ -596,7 +597,7 @@ class _ProfileCircle extends StatelessWidget {
                     return Center(
                       child: HugeIcon(
                         icon: HugeIcons.strokeRoundedUserCircle02,
-                        color: selected ? Colors.white : const Color(0xFFDDD0CB),
+                        color: selected ? selectedColor : unselectedColor,
                         size: avatarSize * 0.65,
                         strokeWidth: selected ? 2.2 : 1.8,
                       ),
@@ -835,16 +836,24 @@ class _PixelDockItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final containerBg = Color.lerp(
+      ThemeController.materialYou ? AppColors.surface : AppColors.defaultSurface,
+      AppColors.accent,
+      0.14,
+    )!;
     final activeColor = ThemeController.materialYou
-        ? Color.lerp(AppColors.surface2, AppColors.accent, 0.38)!
-        : Color.lerp(const Color(0xFF553B34), AppColors.accent, 0.25)!;
+        ? Color.lerp(containerBg, AppColors.accent, 0.36)!
+        : Color.lerp(const Color(0xFF553B34), AppColors.accent, 0.28)!;
+    final selectedTextColor = ThemeController.materialYou
+        ? Color.lerp(Colors.white, AppColors.accent, 0.35)!
+        : Color.lerp(Colors.white, AppColors.accent, 0.25)!;
     final unselectedColor = ThemeController.materialYou
-        ? Color.lerp(const Color(0xFFDDD0CB), AppColors.accent, 0.18)!
-        : Color.lerp(const Color(0xFFDDD0CB), AppColors.accent, 0.12)!;
+        ? Color.lerp(const Color(0xFFDDD0CB), AppColors.accent, 0.18)!.withValues(alpha: 0.85)
+        : Color.lerp(const Color(0xFFDDD0CB), AppColors.accent, 0.12)!.withValues(alpha: 0.85);
 
     final iconWidget = HugeIcon(
       icon: _hugeIconFor(tab),
-      color: Colors.white,
+      color: selectedTextColor,
       size: 19.5,
       strokeWidth: 2.2,
     );
@@ -876,7 +885,7 @@ class _PixelDockItem extends StatelessWidget {
               Text(
                 tab.label,
                 style: TextStyle(
-                  color: selected ? Colors.white : unselectedColor,
+                  color: selected ? selectedTextColor : unselectedColor,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   fontSize: 14.0,
                   letterSpacing: 0.1,
