@@ -58,6 +58,7 @@ class SearchScreen extends StatelessWidget {
     this.initialQuery,
     this.showBack = true,
     this.focusSignal,
+    this.onBackToPrevTab,
   });
 
   final String? initialQuery;
@@ -70,6 +71,7 @@ class SearchScreen extends StatelessWidget {
   /// tab can auto-focus its field without stealing focus while it sits idle in
   /// the IndexedStack. Null for the pushed (showBack) variant.
   final ValueListenable<int>? focusSignal;
+  final VoidCallback? onBackToPrevTab;
 
   @override
   Widget build(BuildContext context) {
@@ -97,6 +99,7 @@ class SearchScreen extends StatelessWidget {
               initialQuery: initialQuery,
               showBack: showBack,
               focusSignal: focusSignal,
+              onBackToPrevTab: onBackToPrevTab,
             ),
     );
   }
@@ -107,11 +110,13 @@ class _SearchView extends StatefulWidget {
     this.initialQuery,
     required this.showBack,
     this.focusSignal,
+    this.onBackToPrevTab,
   });
 
   final String? initialQuery;
   final bool showBack;
   final ValueListenable<int>? focusSignal;
+  final VoidCallback? onBackToPrevTab;
 
   @override
   State<_SearchView> createState() => _SearchViewState();
@@ -582,43 +587,80 @@ class _SearchViewState extends State<_SearchView>
   @override
   Widget build(BuildContext context) {
     final query = context.select<SearchBloc, String>((b) => b.state.query);
-    final isNewDiscover = sl<CatalogSourcePrefs>().newDiscoverPage && !_isSearching && query.trim().isEmpty;
+    final useNewDiscover = sl<CatalogSourcePrefs>().newDiscoverPage;
+    final isNewDiscover = useNewDiscover && !_isSearching && query.trim().isEmpty;
 
     if (isNewDiscover) {
-      return Scaffold(
-        backgroundColor: AppColors.bg,
-        body: SafeArea(
-          bottom: false,
-          child: NewDiscoverView(
-            showBack: widget.showBack,
-            onTapItem: _openDetail,
-            onTapPerson: (person) => Navigator.of(context).push(PersonPage.route(person)),
-            onOpenSeeAll: (title, items, {onLoadMore}) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SeeAllScreen(
-                    title: title,
-                    items: items,
-                    tagsFor: _tagsFor,
-                    onTap: _openDetail,
-                    onLongPress: (item) => _showQuickActions(item),
-                    onLoadMore: onLoadMore,
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          if (widget.onBackToPrevTab != null) {
+            widget.onBackToPrevTab!();
+          } else if (widget.showBack) {
+            Navigator.maybePop(context);
+          }
+        },
+        child: Scaffold(
+          backgroundColor: AppColors.bg,
+          body: SafeArea(
+            bottom: false,
+            child: NewDiscoverView(
+              showBack: widget.showBack || widget.onBackToPrevTab != null,
+              onBack: () {
+                if (widget.onBackToPrevTab != null) {
+                  widget.onBackToPrevTab!();
+                } else if (widget.showBack) {
+                  Navigator.maybePop(context);
+                }
+              },
+              onTapItem: _openDetail,
+              onLongPressItem: (item, heroTag) =>
+                  _showQuickActions(item, heroTag: heroTag),
+              onTapPerson: (person) =>
+                  Navigator.of(context).push(PersonPage.route(person)),
+              onLongPressPerson: (person, heroTag) {
+                final mediaItem = MediaItem(
+                  id: person.id != 0
+                      ? person.id.toString()
+                      : (person.externalId ?? person.name),
+                  sourceId: person.source == PersonSource.thePornDbPerformer
+                      ? 'tpdb:performer'
+                      : 'person',
+                  title: person.name,
+                  url: person.externalId ?? person.id.toString(),
+                  cover: person.photo,
+                  type: ProviderType.movie,
+                );
+                _showQuickActions(mediaItem, heroTag: heroTag);
+              },
+              onOpenSeeAll: (title, items, {onLoadMore}) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SeeAllScreen(
+                      title: title,
+                      items: items,
+                      tagsFor: _tagsFor,
+                      onTap: _openDetail,
+                      onLongPress: (item) => _showQuickActions(item),
+                      onLoadMore: onLoadMore,
+                    ),
                   ),
-                ),
-              ).then((_) {
-                if (mounted) setState(() {});
-              });
-            },
-            onTapSearch: () {
-              setState(() {
-                _isSearching = true;
-              });
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) _focusNode.requestFocus();
-              });
-            },
-            onOpenFilters: () => _openFilterSheet(context),
+                ).then((_) {
+                  if (mounted) setState(() {});
+                });
+              },
+              onTapSearch: () {
+                setState(() {
+                  _isSearching = true;
+                });
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _focusNode.requestFocus();
+                });
+              },
+              onOpenFilters: () => _openFilterSheet(context),
+            ),
           ),
         ),
       );
@@ -632,90 +674,152 @@ class _SearchViewState extends State<_SearchView>
     // (each fires on every search state emission during a live fan-out).
     final modeSources = _modeSources;
 
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            BlocBuilder<SearchBloc, SearchState>(
-              buildWhen: (p, c) =>
-                  p.query.trim().isEmpty != c.query.trim().isEmpty,
-              builder: (context, state) {
-                final isDiscover = state.query.trim().isEmpty;
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      if (widget.showBack)
-                        IconButton(
-                          icon: const Icon(
-                            CupertinoIcons.chevron_back,
-                            color: Colors.white,
-                            size: 19.5,
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                          tooltip: 'Back',
-                        ),
-                      Expanded(
-                        child: Text(
-                          isDiscover ? 'Discover' : 'Search',
-                          style: AppText.display.copyWith(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            height: 1.05,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      _discoverFilterButton(),
-                    ],
-                  ),
-                );
-              },
-            ),
-            _searchBar(),
-            BlocBuilder<SearchBloc, SearchState>(
-              buildWhen: (p, c) =>
-                  p.query.trim().isEmpty != c.query.trim().isEmpty,
-              builder: (context, state) {
-                final discover = state.query.trim().isEmpty;
-                if (discover) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_isSearching && useNewDiscover) {
+          setState(() {
+            _isSearching = false;
+            _controller.clear();
+          });
+          _focusNode.unfocus();
+          context.read<SearchBloc>().add(const SearchQueryChanged(''));
+          return;
+        }
+        if (widget.onBackToPrevTab != null) {
+          widget.onBackToPrevTab!();
+        } else if (widget.showBack) {
+          Navigator.maybePop(context);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              BlocBuilder<SearchBloc, SearchState>(
+                buildWhen: (p, c) =>
+                    p.query.trim().isEmpty != c.query.trim().isEmpty,
+                builder: (context, state) {
+                  final isDiscover = state.query.trim().isEmpty;
+                  final showBackButton = widget.showBack ||
+                      widget.onBackToPrevTab != null ||
+                      (_isSearching && useNewDiscover);
                   return Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _discoverFilterChips(),
-                  );
-                }
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 12),
-                    _controlRow(modeSources),
-                    _sourcePillsRow(),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Divider(
-                        height: 1,
-                        thickness: 1,
-                        color: AppColors.hairline,
-                      ),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        if (showBackButton)
+                          IconButton(
+                            icon: const Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              color: Colors.white,
+                              size: 19.5,
+                            ),
+                            onPressed: () {
+                              if (_isSearching && useNewDiscover) {
+                                setState(() {
+                                  _isSearching = false;
+                                  _controller.clear();
+                                });
+                                _focusNode.unfocus();
+                                context
+                                    .read<SearchBloc>()
+                                    .add(const SearchQueryChanged(''));
+                              } else if (widget.onBackToPrevTab != null) {
+                                widget.onBackToPrevTab!();
+                              } else if (widget.showBack) {
+                                Navigator.pop(context);
+                              }
+                            },
+                            tooltip: 'Back',
+                          ),
+                        Expanded(
+                          child: Text(
+                            (_isSearching && useNewDiscover)
+                                ? 'Search'
+                                : (isDiscover ? 'Discover' : 'Search'),
+                            style: AppText.display.copyWith(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              height: 1.05,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        _discoverFilterButton(),
+                      ],
                     ),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 6),
-            Expanded(
-              child: BlocBuilder<SearchBloc, SearchState>(
+                  );
+                },
+              ),
+              _searchBar(),
+              BlocBuilder<SearchBloc, SearchState>(
+                buildWhen: (p, c) =>
+                    p.query.trim().isEmpty != c.query.trim().isEmpty,
                 builder: (context, state) {
                   final discover = state.query.trim().isEmpty;
                   if (discover) {
+                    if (useNewDiscover) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: _discoverFilterChips(),
+                    );
+                  }
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 12),
+                      _controlRow(modeSources),
+                      _sourcePillsRow(),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: AppColors.hairline,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 6),
+              Expanded(
+                child: BlocBuilder<SearchBloc, SearchState>(
+                  builder: (context, state) {
+                    final discover = state.query.trim().isEmpty;
+                    if (discover) {
+                      if (useNewDiscover) {
+                        return _newDiscoverSearchIdle();
+                      }
+                      switch (state.status) {
+                        case SearchStatus.idle:
+                        case SearchStatus.success:
+                          return _idleView(state);
+                        case SearchStatus.loading:
+                          return const Padding(
+                            padding: EdgeInsets.all(20),
+                            child: SkeletonGrid(),
+                          );
+                        case SearchStatus.error:
+                          return _errorView(state);
+                      }
+                    }
+
+                    if (state.status != SearchStatus.success &&
+                        state.suggestions.isNotEmpty) {
+                      return _suggestionList(state.suggestions);
+                    }
                     switch (state.status) {
                       case SearchStatus.idle:
-                      case SearchStatus.success:
                         return _idleView(state);
                       case SearchStatus.loading:
                         return const Padding(
@@ -724,31 +828,121 @@ class _SearchViewState extends State<_SearchView>
                         );
                       case SearchStatus.error:
                         return _errorView(state);
+                      case SearchStatus.success:
+                        return _resultsBody(state, cellW, modeSources);
                     }
-                  }
-
-                  if (state.status != SearchStatus.success &&
-                      state.suggestions.isNotEmpty) {
-                    return _suggestionList(state.suggestions);
-                  }
-                  switch (state.status) {
-                    case SearchStatus.idle:
-                      return _idleView(state);
-                    case SearchStatus.loading:
-                      return const Padding(
-                        padding: EdgeInsets.all(20),
-                        child: SkeletonGrid(),
-                      );
-                    case SearchStatus.error:
-                      return _errorView(state);
-                    case SearchStatus.success:
-                      return _resultsBody(state, cellW, modeSources);
-                  }
-                },
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _newDiscoverSearchIdle() {
+    final recent = _history.recent();
+    if (recent.isNotEmpty) {
+      return ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Recent searches',
+                style: AppText.caption.copyWith(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              GestureDetector(
+                onTap: () async {
+                  await _history.clear();
+                  if (mounted) setState(() {});
+                },
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                  child: Text(
+                    'Clear all',
+                    style: AppText.caption.copyWith(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: recent.map((query) {
+              return ActionChip(
+                backgroundColor: const Color(0xFF18181E),
+                side: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  width: 0.8,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                avatar: const Icon(
+                  Icons.history_rounded,
+                  size: 16,
+                  color: AppColors.textSecondary,
+                ),
+                label: Text(
+                  query,
+                  style: AppText.body.copyWith(
+                    color: Colors.white,
+                    fontSize: 13,
+                  ),
+                ),
+                onPressed: () {
+                  _controller.text = query;
+                  _controller.selection =
+                      TextSelection.collapsed(offset: query.length);
+                  context.read<SearchBloc>().add(SearchRunRequested(query));
+                },
+              );
+            }).toList(),
+          ),
+        ],
+      );
+    }
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.search_rounded,
+            size: 48,
+            color: Colors.white.withValues(alpha: 0.25),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Search movies, series, actors...',
+            style: AppText.headline.copyWith(
+              color: Colors.white70,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Type above to start searching',
+            style: AppText.caption.copyWith(
+              color: Colors.white38,
+              fontSize: 13,
+            ),
+          ),
+        ],
       ),
     );
   }

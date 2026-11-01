@@ -31,9 +31,16 @@ import 'root_shell_tv.dart';
 ///
 /// [searchFocusSignal] is bumped each time the Search tab/rail-item is
 /// (re)selected so the embedded search screen can auto-focus its field.
-List<Widget> buildShellPages(ValueNotifier<int>? searchFocusSignal) => [
+List<Widget> buildShellPages(
+  ValueNotifier<int>? searchFocusSignal, {
+  VoidCallback? onBackToPrevTab,
+}) => [
   const HomeScreen(),
-  SearchScreen(showBack: false, focusSignal: searchFocusSignal),
+  SearchScreen(
+    showBack: false,
+    focusSignal: searchFocusSignal,
+    onBackToPrevTab: onBackToPrevTab,
+  ),
   const MyListScreen(),
   const SettingsScreen(),
 ];
@@ -55,6 +62,7 @@ class _RootShellState extends State<RootShell>
   /// The tab showing, by identity. Was an int index into a hardcoded five —
   /// which stopped meaning anything once the dock became reorderable.
   DockTab _tab = DockTab.home;
+  DockTab _prevTab = DockTab.home;
 
   /// Falls back to an unregistered instance rather than throwing.
   ///
@@ -135,6 +143,7 @@ class _RootShellState extends State<RootShell>
       if (tab == DockTab.search) _searchFocusSignal.value++;
       return;
     }
+    _prevTab = _tab;
     setState(() => _tab = tab);
     if (tab == DockTab.search) _searchFocusSignal.value++;
     _switchCtrl.forward(from: 0);
@@ -149,6 +158,11 @@ class _RootShellState extends State<RootShell>
     // Both PopScopes share this route, so Flutter fires ours too; bail so we
     // don't flash the exit toast over a normal in-tab back-out.
     if (shellBackIntercepted.value) return;
+    if (_tab == DockTab.search) {
+      setState(() => _tab = _prevTab);
+      _switchCtrl.forward(from: 0);
+      return;
+    }
     final now = DateTime.now();
     if (_lastBackPress != null &&
         now.difference(_lastBackPress!) < const Duration(seconds: 2)) {
@@ -182,7 +196,13 @@ class _RootShellState extends State<RootShell>
   /// [buildShellPages] stays the shared Home/Search/My List/Settings set that
   /// the TV rail also builds from — untouched, so TV is unaffected.
   List<Widget> _pagesFor(List<DockTab> tabs) {
-    final shared = buildShellPages(_searchFocusSignal);
+    final shared = buildShellPages(
+      _searchFocusSignal,
+      onBackToPrevTab: () {
+        setState(() => _tab = _prevTab);
+        _switchCtrl.forward(from: 0);
+      },
+    );
     return [
       for (final t in tabs)
         switch (t) {
@@ -296,10 +316,9 @@ class _RootShellState extends State<RootShell>
           bottomNavigationBar: ValueListenableBuilder<bool>(
             valueListenable: dockHiddenBySection,
             builder: (context, sectionOpen, _) {
-              // Slide the dock away only when a Settings section is open AND the
-              // Settings (Profile, last) tab is the one showing — every other tab
-              // keeps its dock.
-              final hide = sectionOpen && _tab == DockTab.profile;
+              // Slide the dock away when a Settings section is open OR while on
+              // the Search tab (so the floating search bar/results are never blocked).
+              final hide = (sectionOpen && _tab == DockTab.profile) || (_tab == DockTab.search);
               return AnimatedSlide(
                 offset: hide ? const Offset(0, 1.6) : Offset.zero,
                 duration: const Duration(milliseconds: 240),

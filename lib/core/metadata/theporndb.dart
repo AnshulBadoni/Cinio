@@ -1011,6 +1011,8 @@ class ThePornDb {
 
   static List<MediaItem>? _curatedTopRatedCache;
 
+  Future<List<MediaItem>> topRatedMovies({int page = 1}) => _topRated(page);
+
   Future<List<MediaItem>> _topRated(int page) async {
     if (_curatedTopRatedCache == null || _curatedTopRatedCache!.isEmpty) {
       final items = <MediaItem>[];
