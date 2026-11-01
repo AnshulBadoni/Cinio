@@ -11,7 +11,10 @@ import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
+import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme_controller.dart';
+import '../../core/ui/dock_visibility.dart';
 import '../../core/ui/nav_prefs.dart';
 import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
@@ -21,7 +24,6 @@ import '../home/my_list_screen.dart';
 import '../home/search_screen.dart';
 import '../schedule/schedule_screen.dart';
 import '../settings/settings_screen.dart';
-import '../../core/ui/dock_visibility.dart';
 import 'desktop_shell.dart';
 import 'root_shell_tv.dart';
 
