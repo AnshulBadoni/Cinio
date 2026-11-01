@@ -824,10 +824,6 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
     required List<MediaItem> items,
     required VoidCallback onSeeAll,
   }) {
-    required String title,
-    required List<MediaItem> items,
-    required VoidCallback onSeeAll,
-  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -835,7 +831,17 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
           child: Row(
             children: [
-              Expanded(child: Text(title, style: AppText.headline)),
+              Expanded(
+                child: Text(
+                  title,
+                  style: AppText.headline.copyWith(
+                    color: const Color(0xFFEDE8E4),
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.1,
+                  ),
+                ),
+              ),
               _GlassChevronButton(onTap: onSeeAll),
             ],
           ),
