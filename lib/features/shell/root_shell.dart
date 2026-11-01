@@ -395,15 +395,28 @@ class _FloatingDock extends StatelessWidget {
         );
         final navPrefs = sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : null;
         final isPixel = navPrefs?.pixelNavbar ?? false;
-        final separateProfile = isPixel || (navPrefs?.separateProfile ?? true);
-        final hasProfile = tabs.contains(DockTab.profile);
-        final isSplit = separateProfile && hasProfile;
+
+        final DockTab? detachedTab;
+        if (isPixel) {
+          if (tabs.contains(DockTab.search)) {
+            detachedTab = DockTab.search;
+          } else if (tabs.contains(DockTab.profile)) {
+            detachedTab = DockTab.profile;
+          } else {
+            detachedTab = null;
+          }
+        } else {
+          final separateProfile = navPrefs?.separateProfile ?? true;
+          detachedTab = (separateProfile && tabs.contains(DockTab.profile))
+              ? DockTab.profile
+              : null;
+        }
 
         // Proportions: in Pixel mode height does not shrink on scroll
-        final height = isPixel ? 54.0 : (58.0 - (14.0 * t));
+        final height = isPixel ? 56.0 : (58.0 - (14.0 * t));
         final radius = height / 2;
 
-        final expandedWidth = (screenWidth * 0.90).clamp(290.0, 480.0);
+        final expandedWidth = (screenWidth * 0.92).clamp(290.0, 520.0);
         final compactWidth = (screenWidth * 0.66).clamp(230.0, 360.0);
         final totalWidth = isPixel
             ? expandedWidth
@@ -446,14 +459,14 @@ class _FloatingDock extends StatelessWidget {
         }) {
           if (isPixel) {
             final containerBg = Color.lerp(
-              ThemeController.materialYou ? AppColors.surface : AppColors.defaultSurface,
+              ThemeController.materialYou ? AppColors.surface2 : const Color(0xFF221C1A),
               AppColors.accent,
-              0.14,
+              0.08,
             )!;
             return Container(
               width: pillWidth,
               height: height,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(radius),
                 color: containerBg,
@@ -484,8 +497,9 @@ class _FloatingDock extends StatelessWidget {
         }
 
         Widget content;
-        if (isSplit) {
-          final mainTabs = tabs.where((t) => t != DockTab.profile).toList();
+        if (detachedTab != null) {
+          final targetTab = detachedTab;
+          final mainTabs = tabs.where((t) => t != targetTab).toList();
           final circleSize = height;
           const gap = 10.0;
           final mainWidth = totalWidth - circleSize - gap;
@@ -499,11 +513,12 @@ class _FloatingDock extends StatelessWidget {
                 pillTabs: mainTabs,
               ),
               const SizedBox(width: gap),
-              _ProfileCircle(
+              _DetachedCircle(
+                tab: targetTab,
                 size: circleSize,
                 radius: radius,
-                selected: active == DockTab.profile,
-                onTap: () => onSelected(DockTab.profile),
+                selected: active == targetTab,
+                onTap: () => onSelected(targetTab),
                 isPixel: isPixel,
               ),
             ],
@@ -529,8 +544,9 @@ class _FloatingDock extends StatelessWidget {
   }
 }
 
-class _ProfileCircle extends StatelessWidget {
-  const _ProfileCircle({
+class _DetachedCircle extends StatelessWidget {
+  const _DetachedCircle({
+    required this.tab,
     required this.size,
     required this.radius,
     required this.selected,
@@ -538,6 +554,7 @@ class _ProfileCircle extends StatelessWidget {
     this.isPixel = false,
   });
 
+  final DockTab tab;
   final double size;
   final double radius;
   final bool selected;
@@ -551,18 +568,62 @@ class _ProfileCircle extends StatelessWidget {
 
     if (isPixel) {
       final containerBg = Color.lerp(
-        ThemeController.materialYou ? AppColors.surface : AppColors.defaultSurface,
+        ThemeController.materialYou ? AppColors.surface2 : const Color(0xFF221C1A),
         AppColors.accent,
-        0.14,
+        0.08,
       )!;
       final selectedColor = Color.lerp(Colors.white, AppColors.accent, 0.35)!;
-      final unselectedColor = Color.lerp(const Color(0xFFDDD0CB), AppColors.accent, 0.18)!.withValues(alpha: 0.85);
+      final unselectedColor = Color.lerp(
+        const Color(0xFFDEC5BF),
+        AppColors.accent,
+        0.12,
+      )!;
+      final activeIndicatorBg = Color.lerp(containerBg, AppColors.accent, 0.38)!;
+
+      Widget circleChild;
+      if (tab == DockTab.profile) {
+        circleChild = BlocBuilder<AuthCubit, AuthState>(
+          builder: (context, auth) {
+            if (auth.isLoggedIn && auth.avatarUrl != null) {
+              return Container(
+                width: avatarSize,
+                height: avatarSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  image: DecorationImage(
+                    image: NetworkImage(auth.avatarUrl!),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              );
+            }
+            return Center(
+              child: HugeIcon(
+                icon: HugeIcons.strokeRoundedUserCircle02,
+                color: selected ? selectedColor : unselectedColor,
+                size: avatarSize * 0.65,
+                strokeWidth: selected ? 2.2 : 1.8,
+              ),
+            );
+          },
+        );
+      } else {
+        circleChild = Center(
+          child: HugeIcon(
+            icon: _hugeIconFor(tab),
+            color: selected ? selectedColor : unselectedColor,
+            size: 22.0,
+            strokeWidth: selected ? 2.3 : 1.9,
+          ),
+        );
+      }
+
       return Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: containerBg,
+          color: selected ? activeIndicatorBg : containerBg,
           boxShadow: const [
             BoxShadow(
               color: Color(0x66000000),
@@ -574,36 +635,12 @@ class _ProfileCircle extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            borderRadius: BorderRadius.circular(radius),
+            customBorder: const CircleBorder(),
             onTap: onTap,
             child: Center(
               child: _DockPop(
                 selected: selected,
-                child: BlocBuilder<AuthCubit, AuthState>(
-                  builder: (context, auth) {
-                    if (auth.isLoggedIn && auth.avatarUrl != null) {
-                      return Container(
-                        width: avatarSize,
-                        height: avatarSize,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          image: DecorationImage(
-                            image: NetworkImage(auth.avatarUrl!),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      );
-                    }
-                    return Center(
-                      child: HugeIcon(
-                        icon: HugeIcons.strokeRoundedUserCircle02,
-                        color: selected ? selectedColor : unselectedColor,
-                        size: avatarSize * 0.65,
-                        strokeWidth: selected ? 2.2 : 1.8,
-                      ),
-                    );
-                  },
-                ),
+                child: circleChild,
               ),
             ),
           ),
@@ -627,56 +664,67 @@ class _ProfileCircle extends StatelessWidget {
               child: Center(
                 child: _DockPop(
                   selected: selected,
-                  child: BlocBuilder<AuthCubit, AuthState>(
-                    builder: (context, auth) {
-                      if (auth.isLoggedIn && auth.avatarUrl != null) {
-                        return Container(
-                          width: avatarSize,
-                          height: avatarSize,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: selected
-                                  ? Colors.white
-                                  : Colors.white.withValues(alpha: 0.20),
-                              width: selected ? 1.5 : 0.8,
-                            ),
-                            image: DecorationImage(
-                              image: NetworkImage(auth.avatarUrl!),
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        );
-                      }
-                      final activeAccent = AppColors.accent;
-                      return Container(
-                        width: avatarSize,
-                        height: avatarSize,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: selected
-                              ? activeAccent.withValues(alpha: 0.18)
-                              : Colors.white.withValues(alpha: 0.06),
-                          border: Border.all(
-                            color: selected
-                                ? activeAccent
-                                : Colors.white.withValues(alpha: 0.20),
-                            width: selected ? 1.4 : 0.8,
-                          ),
-                        ),
-                        child: Center(
+                  child: tab == DockTab.profile
+                      ? BlocBuilder<AuthCubit, AuthState>(
+                          builder: (context, auth) {
+                            if (auth.isLoggedIn && auth.avatarUrl != null) {
+                              return Container(
+                                width: avatarSize,
+                                height: avatarSize,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: selected
+                                        ? Colors.white
+                                        : Colors.white.withValues(alpha: 0.20),
+                                    width: selected ? 1.5 : 0.8,
+                                  ),
+                                  image: DecorationImage(
+                                    image: NetworkImage(auth.avatarUrl!),
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              );
+                            }
+                            final activeAccent = AppColors.accent;
+                            return Container(
+                              width: avatarSize,
+                              height: avatarSize,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: selected
+                                    ? activeAccent.withValues(alpha: 0.18)
+                                    : Colors.white.withValues(alpha: 0.06),
+                                border: Border.all(
+                                  color: selected
+                                      ? activeAccent
+                                      : Colors.white.withValues(alpha: 0.20),
+                                  width: selected ? 1.4 : 0.8,
+                                ),
+                              ),
+                              child: Center(
+                                child: HugeIcon(
+                                  icon: HugeIcons.strokeRoundedUserCircle02,
+                                  color: selected
+                                      ? Color.lerp(Colors.white, activeAccent, 0.28)!
+                                      : const Color(0xFF9E9EA6),
+                                  size: avatarSize * 0.58,
+                                  strokeWidth: selected ? 2.0 : 1.6,
+                                ),
+                              ),
+                            );
+                          },
+                        )
+                      : Center(
                           child: HugeIcon(
-                            icon: HugeIcons.strokeRoundedUserCircle02,
+                            icon: _hugeIconFor(tab),
                             color: selected
-                                ? Color.lerp(Colors.white, activeAccent, 0.28)!
+                                ? Color.lerp(Colors.white, AppColors.accent, 0.28)!
                                 : const Color(0xFF9E9EA6),
-                            size: avatarSize * 0.58,
-                            strokeWidth: selected ? 2.0 : 1.6,
+                            size: 21.2,
+                            strokeWidth: selected ? 2.1 : 1.6,
                           ),
                         ),
-                      );
-                    },
-                  ),
                 ),
               ),
             ),
@@ -837,24 +885,22 @@ class _PixelDockItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final containerBg = Color.lerp(
-      ThemeController.materialYou ? AppColors.surface : AppColors.defaultSurface,
+      ThemeController.materialYou ? AppColors.surface2 : const Color(0xFF221C1A),
       AppColors.accent,
-      0.14,
+      0.08,
     )!;
-    final activeColor = ThemeController.materialYou
-        ? Color.lerp(containerBg, AppColors.accent, 0.36)!
-        : Color.lerp(const Color(0xFF553B34), AppColors.accent, 0.28)!;
-    final selectedTextColor = ThemeController.materialYou
-        ? Color.lerp(Colors.white, AppColors.accent, 0.35)!
-        : Color.lerp(Colors.white, AppColors.accent, 0.25)!;
-    final unselectedColor = ThemeController.materialYou
-        ? Color.lerp(const Color(0xFFDDD0CB), AppColors.accent, 0.18)!.withValues(alpha: 0.85)
-        : Color.lerp(const Color(0xFFDDD0CB), AppColors.accent, 0.12)!.withValues(alpha: 0.85);
+    final activeColor = Color.lerp(containerBg, AppColors.accent, 0.38)!;
+    final selectedTextColor = Color.lerp(Colors.white, AppColors.accent, 0.35)!;
+    final unselectedColor = Color.lerp(
+      const Color(0xFFDEC5BF),
+      AppColors.accent,
+      0.12,
+    )!;
 
     final iconWidget = HugeIcon(
       icon: _hugeIconFor(tab),
       color: selectedTextColor,
-      size: 19.5,
+      size: 19.0,
       strokeWidth: 2.2,
     );
 
@@ -867,7 +913,7 @@ class _PixelDockItem extends StatelessWidget {
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
           padding: EdgeInsets.symmetric(
-            horizontal: selected ? 18.0 : 14.0,
+            horizontal: selected ? 16.0 : 12.0,
             vertical: 8.0,
           ),
           decoration: BoxDecoration(
@@ -880,11 +926,14 @@ class _PixelDockItem extends StatelessWidget {
             children: [
               if (selected) ...[
                 iconWidget,
-                const SizedBox(width: 8),
+                const SizedBox(width: 7),
               ],
               Text(
                 tab.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
+                  fontFamily: 'Inter',
                   color: selected ? selectedTextColor : unselectedColor,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   fontSize: 14.0,

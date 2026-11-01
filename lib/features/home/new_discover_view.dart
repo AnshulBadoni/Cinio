@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
@@ -16,6 +17,7 @@ import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/theme/theme_controller.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/native_cover_provider.dart';
 import '../../core/ui/poster_card.dart';
@@ -55,10 +57,16 @@ class NewDiscoverView extends StatefulWidget {
   State<NewDiscoverView> createState() => _NewDiscoverViewState();
 }
 
-class _NewDiscoverViewState extends State<NewDiscoverView> {
+class _NewDiscoverViewState extends State<NewDiscoverView>
+    with TickerProviderStateMixin {
   final _tmdb = sl<TmdbDiscoverService>();
   final _prefs = sl<CatalogSourcePrefs>();
   ThePornDb? get _tpdb => sl.isRegistered<ThePornDb>() ? sl<ThePornDb>() : null;
+
+  late final AnimationController _gradientAnimCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 8),
+  )..repeat(reverse: true);
 
   StreamSubscription<SearchState>? _searchSub;
 
@@ -121,6 +129,7 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
 
   @override
   void dispose() {
+    _gradientAnimCtrl.dispose();
     _searchSub?.cancel();
     _prefs.removeListener(_onPrefsChanged);
     super.dispose();
@@ -475,27 +484,38 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
 
         return Stack(
           children: [
-            // Top-left ambient radial gradient from prominent color of top movie
+            // Top moving ambient radial gradient from prominent color of top movie
             Positioned(
-              top: -120,
-              left: -120,
-              width: 540,
-              height: 540,
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 480,
               child: IgnorePointer(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 700),
-                  curve: Curves.easeOutCubic,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        _prominentColor.withValues(alpha: 0.45),
-                        _prominentColor.withValues(alpha: 0.18),
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.50, 1.0],
-                    ),
-                  ),
+                child: AnimatedBuilder(
+                  animation: _gradientAnimCtrl,
+                  builder: (context, _) {
+                    final t = _gradientAnimCtrl.value;
+                    final center = Alignment(
+                      -0.7 + 0.9 * t,
+                      -1.0 + 0.35 * math.sin(t * math.pi),
+                    );
+                    final radius = 1.35 + 0.25 * math.sin(t * math.pi);
+                    return Container(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: center,
+                          radius: radius,
+                          colors: [
+                            _prominentColor.withValues(alpha: 0.52),
+                            _prominentColor.withValues(alpha: 0.24),
+                            _prominentColor.withValues(alpha: 0.08),
+                            Colors.transparent,
+                          ],
+                          stops: const [0.0, 0.45, 0.75, 1.0],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -667,12 +687,21 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
               left: 16,
               right: 16,
               bottom: bottomInset > 0 ? bottomInset + 10 : 16,
-              child: Row(
-                children: [
-                  Expanded(child: _buildFloatingSearchBar()),
-                  const SizedBox(width: 10),
-                  _GlassFilterButton(onTap: widget.onOpenFilters),
-                ],
+              child: Builder(
+                builder: (context) {
+                  final materialThemeBg = Color.lerp(
+                    ThemeController.materialYou ? AppColors.surface2 : const Color(0xFF221C1A),
+                    AppColors.accent,
+                    0.08,
+                  )!;
+                  return Row(
+                    children: [
+                      Expanded(child: _buildFloatingSearchBar(materialThemeBg)),
+                      const SizedBox(width: 10),
+                      _GlassFilterButton(onTap: widget.onOpenFilters, bgColor: materialThemeBg),
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -822,7 +851,12 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
     );
   }
 
-  Widget _buildFloatingSearchBar() {
+  Widget _buildFloatingSearchBar(Color bg) {
+    final unselectedColor = Color.lerp(
+      const Color(0xFFDEC5BF),
+      AppColors.accent,
+      0.12,
+    )!;
     return GestureDetector(
       onTap: widget.onTapSearch,
       behavior: HitTestBehavior.opaque,
@@ -830,11 +864,11 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
         height: 52,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1E24),
+          color: bg,
           borderRadius: BorderRadius.circular(28),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x88000000),
+              color: Color(0x66000000),
               blurRadius: 18,
               offset: Offset(0, 6),
             ),
@@ -842,24 +876,24 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
         ),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.search_rounded,
-              color: Colors.white70,
+              color: unselectedColor,
               size: 22,
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Text(
-                'Search movies, series, actors...',
+                'Search movies, series, anime...',
                 style: AppText.body.copyWith(
-                  color: Colors.white60,
+                  color: unselectedColor.withValues(alpha: 0.8),
                   fontSize: 14,
                 ),
               ),
             ),
-            const Icon(
+            Icon(
               Icons.mic_none_rounded,
-              color: Colors.white70,
+              color: unselectedColor.withValues(alpha: 0.8),
               size: 22,
             ),
           ],
@@ -1231,9 +1265,10 @@ class _NewReleasesCarouselState extends State<_NewReleasesCarousel> {
 
 /// The circular glass filter button in top right of Discover header
 class _GlassFilterButton extends StatefulWidget {
-  const _GlassFilterButton({required this.onTap});
+  const _GlassFilterButton({required this.onTap, this.bgColor});
 
   final VoidCallback onTap;
+  final Color? bgColor;
 
   @override
   State<_GlassFilterButton> createState() => _GlassFilterButtonState();
@@ -1244,6 +1279,12 @@ class _GlassFilterButtonState extends State<_GlassFilterButton> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = widget.bgColor ?? const Color(0x6618181E);
+    final iconColor = Color.lerp(
+      const Color(0xFFDEC5BF),
+      AppColors.accent,
+      0.12,
+    )!;
     return GestureDetector(
       onTap: widget.onTap,
       behavior: HitTestBehavior.opaque,
@@ -1255,17 +1296,24 @@ class _GlassFilterButtonState extends State<_GlassFilterButton> {
         duration: const Duration(milliseconds: 140),
         curve: Curves.easeOutCubic,
         child: Container(
-          width: 40,
-          height: 40,
-          decoration: const BoxDecoration(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Color(0x6618181E),
+            color: bg,
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x66000000),
+                blurRadius: 18,
+                offset: Offset(0, 6),
+              ),
+            ],
           ),
-          child: const Center(
+          child: Center(
             child: Icon(
-              CupertinoIcons.slider_horizontal_3,
-              color: Colors.white,
-              size: 20,
+              Icons.tune_rounded,
+              color: iconColor,
+              size: 22,
             ),
           ),
         ),

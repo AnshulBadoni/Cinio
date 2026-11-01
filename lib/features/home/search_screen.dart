@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +29,7 @@ import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/theme/theme_controller.dart';
 import '../../core/ui/poster_quick_actions.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
@@ -155,6 +157,7 @@ class _SearchViewState extends State<_SearchView>
   final _searchPrefs = sl<SearchPrefs>();
   final _discoverScrollController = ScrollController();
   bool _isSearching = false;
+  Timer? _searchDebounceTimer;
 
   /// Owns the ecosystem [TabBar]'s controller — see [_ecoTabControllerFor].
   TabController? _ecoTabController;
@@ -235,6 +238,7 @@ class _SearchViewState extends State<_SearchView>
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     dockHiddenBySearch.value = false;
     sl<CatalogSourcePrefs>().removeListener(_onPrefsChanged);
     widget.focusSignal?.removeListener(_onFocusSignal);
@@ -599,93 +603,17 @@ class _SearchViewState extends State<_SearchView>
   Widget build(BuildContext context) {
     final query = context.select<SearchBloc, String>((b) => b.state.query);
     final useNewDiscover = sl<CatalogSourcePrefs>().newDiscoverPage;
-    final isNewDiscover = useNewDiscover && !_isSearching && query.trim().isEmpty;
-
-    if (isNewDiscover) {
-      return PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, _) {
-          if (didPop) return;
-          if (widget.onBackToPrevTab != null) {
-            widget.onBackToPrevTab!();
-          } else if (widget.showBack) {
-            Navigator.maybePop(context);
-          }
-        },
-        child: Scaffold(
-          backgroundColor: AppColors.bg,
-          body: SafeArea(
-            bottom: false,
-            child: NewDiscoverView(
-              onBack: () {
-                if (widget.onBackToPrevTab != null) {
-                  widget.onBackToPrevTab!();
-                } else if (widget.showBack) {
-                  Navigator.maybePop(context);
-                }
-              },
-              onTapItem: _openDetail,
-              onLongPressItem: (item, heroTag) =>
-                  _showQuickActions(item, heroTag: heroTag),
-              onTapPerson: (person) =>
-                  Navigator.of(context).push(PersonPage.route(person)),
-              onLongPressPerson: (person, heroTag) {
-                final mediaItem = MediaItem(
-                  id: person.id != 0
-                      ? person.id.toString()
-                      : (person.externalId ?? person.name),
-                  sourceId: person.source == PersonSource.thePornDbPerformer
-                      ? 'tpdb:performer'
-                      : 'person',
-                  title: person.name,
-                  url: person.externalId ?? person.id.toString(),
-                  cover: person.photo,
-                  type: ProviderType.movie,
-                );
-                _showQuickActions(mediaItem, heroTag: heroTag);
-              },
-              onOpenSeeAll: (title, items, {onLoadMore}) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SeeAllScreen(
-                      title: title,
-                      items: items,
-                      tagsFor: _tagsFor,
-                      onTap: _openDetail,
-                      onLongPress: (item) => _showQuickActions(item),
-                      onLoadMore: onLoadMore,
-                    ),
-                  ),
-                ).then((_) {
-                  if (mounted) setState(() {});
-                });
-              },
-              onTapSearch: () {
-                setState(() {
-                  _isSearching = true;
-                });
-                dockHiddenBySearch.value = true;
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) _focusNode.requestFocus();
-                });
-              },
-              onOpenFilters: () => _openFilterSheet(context),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // sizeOf (not MediaQuery.of) so this rebuilds only when the screen size
-    // actually changes, not on every viewInsets change (e.g. every keyboard
-    // animation frame).
     final cellW = _searchGridCellWidth();
-    // Computed once per outer build, not once per BlocBuilder rebuild below
-    // (each fires on every search state emission during a live fan-out).
     final modeSources = _modeSources;
 
     if (useNewDiscover) {
+      final isDiscoverMode = !_isSearching && query.trim().isEmpty;
+      final materialThemeBg = Color.lerp(
+        ThemeController.materialYou ? AppColors.surface2 : const Color(0xFF221C1A),
+        AppColors.accent,
+        0.08,
+      )!;
+
       return PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
@@ -709,113 +637,193 @@ class _SearchViewState extends State<_SearchView>
         child: Scaffold(
           backgroundColor: AppColors.bg,
           resizeToAvoidBottomInset: false,
-          body: SafeArea(
-            bottom: false,
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 84),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          body: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 280),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              final isSearch = child.key == const ValueKey('active_search');
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: isSearch ? const Offset(0, 0.05) : const Offset(0, -0.03),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              );
+            },
+            child: isDiscoverMode
+                ? SafeArea(
+                    key: const ValueKey('discover_view'),
+                    bottom: false,
+                    child: NewDiscoverView(
+                      onBack: () {
+                        if (widget.onBackToPrevTab != null) {
+                          widget.onBackToPrevTab!();
+                        } else if (widget.showBack) {
+                          Navigator.maybePop(context);
+                        }
+                      },
+                      onTapItem: _openDetail,
+                      onLongPressItem: (item, heroTag) =>
+                          _showQuickActions(item, heroTag: heroTag),
+                      onTapPerson: (person) =>
+                          Navigator.of(context).push(PersonPage.route(person)),
+                      onLongPressPerson: (person, heroTag) {
+                        final mediaItem = MediaItem(
+                          id: person.id != 0
+                              ? person.id.toString()
+                              : (person.externalId ?? person.name),
+                          sourceId: person.source == PersonSource.thePornDbPerformer
+                              ? 'tpdb:performer'
+                              : 'person',
+                          title: person.name,
+                          url: person.externalId ?? person.id.toString(),
+                          cover: person.photo,
+                          type: ProviderType.movie,
+                        );
+                        _showQuickActions(mediaItem, heroTag: heroTag);
+                      },
+                      onOpenSeeAll: (title, items, {onLoadMore}) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SeeAllScreen(
+                              title: title,
+                              items: items,
+                              tagsFor: _tagsFor,
+                              onTap: _openDetail,
+                              onLongPress: (item) => _showQuickActions(item),
+                              onLoadMore: onLoadMore,
+                            ),
+                          ),
+                        ).then((_) {
+                          if (mounted) setState(() {});
+                        });
+                      },
+                      onTapSearch: () {
+                        setState(() {
+                          _isSearching = true;
+                        });
+                        dockHiddenBySearch.value = true;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) _focusNode.requestFocus();
+                        });
+                      },
+                      onOpenFilters: () => _openFilterSheet(context),
+                    ),
+                  )
+                : SafeArea(
+                    key: const ValueKey('active_search'),
+                    bottom: false,
+                    child: Stack(
                       children: [
-                        BlocBuilder<SearchBloc, SearchState>(
-                          buildWhen: (p, c) =>
-                              p.query.trim().isEmpty != c.query.trim().isEmpty,
-                          builder: (context, state) {
-                            final discover = state.query.trim().isEmpty;
-                            if (discover) {
-                              return const SizedBox.shrink();
-                            }
-                            return Column(
-                              mainAxisSize: MainAxisSize.min,
+                        Positioned.fill(
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 84),
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const SizedBox(height: 12),
-                                _controlRow(modeSources),
-                                _sourcePillsRow(),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  child: Divider(
-                                    height: 1,
-                                    thickness: 1,
-                                    color: AppColors.hairline,
+                                BlocBuilder<SearchBloc, SearchState>(
+                                  buildWhen: (p, c) =>
+                                      p.query.trim().isEmpty != c.query.trim().isEmpty,
+                                  builder: (context, state) {
+                                    final discover = state.query.trim().isEmpty;
+                                    if (discover) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const SizedBox(height: 12),
+                                        _controlRow(modeSources),
+                                        _sourcePillsRow(),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                                          child: Divider(
+                                            height: 1,
+                                            thickness: 1,
+                                            color: AppColors.hairline,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                                Expanded(
+                                  child: BlocBuilder<SearchBloc, SearchState>(
+                                    builder: (context, state) {
+                                      final discover = state.query.trim().isEmpty;
+                                      if (discover) {
+                                        return _newDiscoverSearchIdle();
+                                      }
+                                      if (state.status != SearchStatus.success &&
+                                          state.suggestions.isNotEmpty) {
+                                        return _suggestionList(state.suggestions);
+                                      }
+                                      switch (state.status) {
+                                        case SearchStatus.idle:
+                                          return _idleView(state);
+                                        case SearchStatus.loading:
+                                          return const Padding(
+                                            padding: EdgeInsets.all(20),
+                                            child: SkeletonGrid(),
+                                          );
+                                        case SearchStatus.error:
+                                          return _errorView(state);
+                                        case SearchStatus.success:
+                                          return _resultsBody(state, cellW, modeSources);
+                                      }
+                                    },
                                   ),
                                 ),
                               ],
-                            );
-                          },
+                            ),
+                          ),
                         ),
-                        Expanded(
-                          child: BlocBuilder<SearchBloc, SearchState>(
-                            builder: (context, state) {
-                              final discover = state.query.trim().isEmpty;
-                              if (discover) {
-                                return _newDiscoverSearchIdle();
-                              }
-                              if (state.status != SearchStatus.success &&
-                                  state.suggestions.isNotEmpty) {
-                                return _suggestionList(state.suggestions);
-                              }
-                              switch (state.status) {
-                                case SearchStatus.idle:
-                                  return _idleView(state);
-                                case SearchStatus.loading:
-                                  return const Padding(
-                                    padding: EdgeInsets.all(20),
-                                    child: SkeletonGrid(),
-                                  );
-                                case SearchStatus.error:
-                                  return _errorView(state);
-                                case SearchStatus.success:
-                                  return _resultsBody(state, cellW, modeSources);
-                              }
-                            },
+
+                        // Floating bottom search input bar + back + filter
+                        Positioned(
+                          left: 16,
+                          right: 16,
+                          bottom: MediaQuery.viewInsetsOf(context).bottom +
+                              (MediaQuery.paddingOf(context).bottom > 0
+                                  ? MediaQuery.paddingOf(context).bottom + 8
+                                  : 16),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.arrow_back_ios_new_rounded,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _isSearching = false;
+                                    _controller.clear();
+                                  });
+                                  dockHiddenBySearch.value = false;
+                                  _focusNode.unfocus();
+                                  context.read<SearchBloc>().add(const SearchQueryChanged(''));
+                                },
+                                tooltip: 'Back',
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: _buildBottomSearchInputField(materialThemeBg),
+                              ),
+                              const SizedBox(width: 8),
+                              _discoverFilterButton(bgColor: materialThemeBg),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
-                ),
-
-                // Floating bottom search input bar + back + filter
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: MediaQuery.viewInsetsOf(context).bottom +
-                      (MediaQuery.paddingOf(context).bottom > 0
-                          ? MediaQuery.paddingOf(context).bottom + 8
-                          : 16),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _isSearching = false;
-                            _controller.clear();
-                          });
-                          dockHiddenBySearch.value = false;
-                          _focusNode.unfocus();
-                          context.read<SearchBloc>().add(const SearchQueryChanged(''));
-                        },
-                        tooltip: 'Back',
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: _buildBottomSearchInputField(),
-                      ),
-                      const SizedBox(width: 8),
-                      _discoverFilterButton(),
-                    ],
-                  ),
-                ),
-              ],
-            ),
           ),
         ),
       );
@@ -990,16 +998,21 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
-  Widget _buildBottomSearchInputField() {
+  Widget _buildBottomSearchInputField(Color bg) {
+    final unselectedColor = Color.lerp(
+      const Color(0xFFDEC5BF),
+      AppColors.accent,
+      0.12,
+    )!;
     return Container(
-      height: 50,
+      height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E24),
+        color: bg,
         borderRadius: BorderRadius.circular(28),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x88000000),
+            color: Color(0x66000000),
             blurRadius: 18,
             offset: Offset(0, 6),
           ),
@@ -1007,12 +1020,24 @@ class _SearchViewState extends State<_SearchView>
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.search_rounded,
-            color: AppColors.textTertiary,
-            size: 22,
+          IconButton(
+            icon: Icon(
+              Icons.search_rounded,
+              color: unselectedColor,
+              size: 22,
+            ),
+            tooltip: 'Search',
+            onPressed: () {
+              FocusScope.of(context).unfocus();
+              final q = _controller.text.trim();
+              if (q.isNotEmpty) {
+                context.read<SearchBloc>().add(SearchRunRequested(q));
+              }
+            },
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           Expanded(
             child: TextField(
               controller: _controller,
@@ -1021,25 +1046,37 @@ class _SearchViewState extends State<_SearchView>
               textInputAction: TextInputAction.search,
               onChanged: (text) {
                 context.read<SearchBloc>().add(SearchQueryChanged(text));
+                _searchDebounceTimer?.cancel();
+                final q = text.trim();
+                if (q.isNotEmpty) {
+                  _searchDebounceTimer = Timer(const Duration(milliseconds: 550), () {
+                    if (mounted && _controller.text.trim().isNotEmpty) {
+                      context.read<SearchBloc>().add(SearchRunRequested(_controller.text));
+                    }
+                  });
+                }
               },
               onSubmitted: (text) {
                 FocusScope.of(context).unfocus();
-                context.read<SearchBloc>().add(SearchRunRequested(text));
+                final q = text.trim();
+                if (q.isNotEmpty) {
+                  context.read<SearchBloc>().add(SearchRunRequested(q));
+                }
               },
               style: AppText.body.copyWith(
                 color: AppColors.textPrimary,
                 fontSize: 15,
               ),
               cursorColor: AppColors.accent,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Search movies, series, anime...',
                 hintStyle: TextStyle(
-                  color: AppColors.textTertiary,
+                  color: unselectedColor.withValues(alpha: 0.7),
                   fontSize: 14.5,
                 ),
                 border: InputBorder.none,
                 isDense: true,
-                contentPadding: EdgeInsets.symmetric(vertical: 14),
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
               ),
             ),
           ),
@@ -1048,10 +1085,10 @@ class _SearchViewState extends State<_SearchView>
             builder: (context, value, _) => value.text.isEmpty
                 ? const SizedBox.shrink()
                 : IconButton(
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.close_rounded,
                       size: 20,
-                      color: AppColors.textTertiary,
+                      color: unselectedColor,
                     ),
                     tooltip: 'Clear',
                     onPressed: _clear,
@@ -1173,7 +1210,7 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
-  Widget _discoverFilterButton() {
+  Widget _discoverFilterButton({Color? bgColor}) {
     return BlocBuilder<SearchBloc, SearchState>(
       buildWhen: (p, c) =>
           p.sort != c.sort ||
@@ -1188,24 +1225,38 @@ class _SearchViewState extends State<_SearchView>
           final excluded = !state.currentSourceOnly &&
               sl<SearchSourcePrefs>().excluded.isNotEmpty;
           final count = state.activeFilterCount + (excluded ? 1 : 0);
+          final fill = bgColor ?? AppColors.surface2;
+          final isFloating = bgColor != null;
+          final iconColor = Color.lerp(
+            const Color(0xFFDEC5BF),
+            AppColors.accent,
+            0.12,
+          )!;
+          final buttonSize = isFloating ? 52.0 : 44.0;
           return SizedBox(
-            width: 42,
-            height: 42,
+            width: buttonSize,
+            height: buttonSize,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
                 Material(
-                  color: AppColors.surface2,
-                  shape: const CircleBorder(
-                    side: BorderSide(color: AppColors.hairline),
+                  color: fill,
+                  shape: CircleBorder(
+                    side: isFloating
+                        ? BorderSide.none
+                        : const BorderSide(color: AppColors.hairline),
                   ),
                   child: InkWell(
                     customBorder: const CircleBorder(),
                     onTap: () => _openFilterSheet(context),
-                    child: const SizedBox(
-                      width: 42,
-                      height: 42,
-                      child: Icon(Icons.tune_rounded, size: 20),
+                    child: SizedBox(
+                      width: buttonSize,
+                      height: buttonSize,
+                      child: Icon(
+                        Icons.tune_rounded,
+                        size: isFloating ? 22 : 20,
+                        color: isFloating ? iconColor : null,
+                      ),
                     ),
                   ),
                 ),
