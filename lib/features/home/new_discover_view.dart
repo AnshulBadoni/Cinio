@@ -177,130 +177,168 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
     } catch (_) {}
   }
 
-  Future<void> _loadAllCategories() async {
+  void _loadAllCategories() {
     if (!mounted) return;
 
-    try {
-      if (_isTpdb && _tpdb != null) {
-        await _loadTpdbContent();
-      } else if (_isMixed) {
-        await _loadMixedContent();
-      } else {
-        await _loadTmdbContent();
-      }
-    } catch (_) {
-      // Keep fallbacks
-    } finally {
-      if (mounted) {
-        final topItem = _isTpdb
-            ? _popularScenes.firstOrNull
-            : _movies.firstOrNull;
-        if (topItem != null) {
-          _extractProminentColor(topItem.cover, topItem.coverHeaders);
-        }
-      }
+    if (_isTpdb && _tpdb != null) {
+      _loadTpdbContent();
+    } else if (_isMixed) {
+      _loadMixedContent();
+    } else {
+      _loadTmdbContent();
     }
   }
 
-  Future<void> _loadTmdbContent() async {
+  void _loadTmdbContent() {
     _moviesPage = 1;
     _seriesPage = 1;
     _animePage = 1;
 
-    final results = await Future.wait([
-      _tmdb.getTrendingMovies(page: 1).catchError((_) => <MediaItem>[]),
-      _tmdb.getPopularSeries(page: 1).catchError((_) => <MediaItem>[]),
-      _tmdb.getPopularAnime(page: 1).catchError((_) => <MediaItem>[]),
-      _tmdb.getPopularPeople().catchError((_) => <PersonRef>[]),
-      _tmdb.getLatestMovies().catchError((_) => <MediaItem>[]),
-    ]);
+    _tmdb.getTrendingMovies(page: 1).then((items) {
+      if (!mounted) return;
+      setState(() {
+        _movies = items;
+        if (_bannerItems.isEmpty) _bannerItems = items.take(6).toList();
+      });
+      if (items.isNotEmpty) {
+        _extractProminentColor(items.first.cover, items.first.coverHeaders);
+      }
+    }).catchError((_) => <MediaItem>[]);
 
-    _movies = results[0] as List<MediaItem>;
-    _series = results[1] as List<MediaItem>;
-    _anime = results[2] as List<MediaItem>;
-    _actors = results[3] as List<PersonRef>;
+    _tmdb.getPopularSeries(page: 1).then((items) {
+      if (mounted) setState(() => _series = items);
+    }).catchError((_) => <MediaItem>[]);
 
-    final latestMovies = results[4] as List<MediaItem>;
-    _bannerItems = latestMovies.isNotEmpty
-        ? latestMovies.take(6).toList()
-        : _movies.take(6).toList();
+    _tmdb.getPopularAnime(page: 1).then((items) {
+      if (mounted) setState(() => _anime = items);
+    }).catchError((_) => <MediaItem>[]);
+
+    _tmdb.getPopularPeople().then((people) {
+      if (mounted) setState(() => _actors = people);
+    }).catchError((_) => <PersonRef>[]);
+
+    _tmdb.getLatestMovies().then((items) {
+      if (!mounted) return;
+      if (items.isNotEmpty) {
+        setState(() => _bannerItems = items.take(6).toList());
+      }
+    }).catchError((_) => <MediaItem>[]);
   }
 
-  Future<void> _loadTpdbContent() async {
+  void _loadTpdbContent() {
     final tpdb = _tpdb!;
     _popularPage = 1;
     _trendingPage = 1;
     _topRatedPage = 1;
 
-    final futures = <Future<dynamic>>[
-      tpdb.popularMovies(page: 1).catchError((_) => <MediaItem>[]),
-      tpdb.trendingMovies(page: 1).catchError((_) => <MediaItem>[]),
-      tpdb.topRatedMovies(page: 1).catchError((_) => <MediaItem>[]),
-      tpdb.performers().catchError((_) => <MediaItem>[]),
-    ];
+    tpdb.popularMovies(page: 1).then((items) {
+      if (!mounted) return;
+      setState(() {
+        _popularScenes = items;
+      });
+      if (items.isNotEmpty) {
+        _extractProminentColor(items.first.cover, items.first.coverHeaders);
+      }
+    }).catchError((_) => <MediaItem>[]);
 
-    final results = await Future.wait(futures);
+    tpdb.trendingMovies(page: 1).then((items) {
+      if (!mounted) return;
+      setState(() {
+        _trendingScenes = items;
+        if (_bannerItems.isEmpty) _bannerItems = items.take(6).toList();
+      });
+      if (_popularScenes.isEmpty && items.isNotEmpty) {
+        _extractProminentColor(items.first.cover, items.first.coverHeaders);
+      }
+    }).catchError((_) => <MediaItem>[]);
 
-    _popularScenes = results[0] as List<MediaItem>;
-    _trendingScenes = results[1] as List<MediaItem>;
-    _topRatedScenes = results[2] as List<MediaItem>;
+    tpdb.topRatedMovies(page: 1).then((items) {
+      if (!mounted) return;
+      setState(() => _topRatedScenes = items);
+    }).catchError((_) => <MediaItem>[]);
 
-    final performers = results[3] as List<MediaItem>;
-    _actors = performers
-        .map((p) => PersonRef(
-              id: 0,
-              externalId: p.id.replaceFirst('tpdb:performer:', ''),
-              source: PersonSource.thePornDbPerformer,
-              name: p.title,
-              photo: p.cover,
-            ))
-        .toList();
-
-    await _fetchProviderItems(_selectedProviderId);
+    tpdb.performers().then((performers) {
+      if (!mounted) return;
+      final actors = performers
+          .map((p) => PersonRef(
+                id: 0,
+                externalId: p.id.replaceFirst('tpdb:performer:', ''),
+                source: PersonSource.thePornDbPerformer,
+                name: p.title,
+                photo: p.cover,
+              ))
+          .toList();
+      setState(() => _actors = actors);
+    }).catchError((_) => <PersonRef>[]);
   }
 
-  Future<void> _loadMixedContent() async {
+  void _loadMixedContent() {
     _moviesPage = 1;
     _seriesPage = 1;
     _animePage = 1;
 
     final tpdb = _tpdb;
-    final results = await Future.wait([
-      _tmdb.getTrendingMovies(page: 1).catchError((_) => <MediaItem>[]),
-      _tmdb.getPopularSeries(page: 1).catchError((_) => <MediaItem>[]),
-      _tmdb.getPopularAnime(page: 1).catchError((_) => <MediaItem>[]),
-      _tmdb.getPopularPeople().catchError((_) => <PersonRef>[]),
-      if (tpdb != null) ...[
-        tpdb.trendingMovies(page: 1).catchError((_) => <MediaItem>[]),
-        tpdb.performers().catchError((_) => <MediaItem>[]),
-      ] else ...[
-        Future.value(<MediaItem>[]),
-        Future.value(<MediaItem>[]),
-      ],
-    ]);
+    List<MediaItem> tmdbMovies = [];
+    List<MediaItem> tpdbMovies = [];
+    List<PersonRef> tmdbPeople = [];
+    List<PersonRef> tpdbPeople = [];
 
-    final tmdbMovies = results[0] as List<MediaItem>;
-    _series = results[1] as List<MediaItem>;
-    _anime = results[2] as List<MediaItem>;
-    final tmdbActors = results[3] as List<PersonRef>;
+    void updateMovies() {
+      if (!mounted) return;
+      final mixed = _interleaveItems(tmdbMovies, tpdbMovies);
+      setState(() {
+        _movies = mixed;
+        if (mixed.isNotEmpty) _bannerItems = mixed.take(6).toList();
+      });
+      if (mixed.isNotEmpty) {
+        _extractProminentColor(mixed.first.cover, mixed.first.coverHeaders);
+      }
+    }
 
-    final tpdbTrending = results[4] as List<MediaItem>;
-    final tpdbPerformers = results[5] as List<MediaItem>;
+    void updatePeople() {
+      if (!mounted) return;
+      setState(() {
+        _actors = _interleavePeople(tmdbPeople, tpdbPeople);
+      });
+    }
 
-    _movies = _interleaveItems(tmdbMovies, tpdbTrending);
+    _tmdb.getTrendingMovies(page: 1).then((items) {
+      tmdbMovies = items;
+      updateMovies();
+    }).catchError((_) => <MediaItem>[]);
 
-    final tpdbActors = tpdbPerformers
-        .map((p) => PersonRef(
-              id: 0,
-              externalId: p.id.replaceFirst('tpdb:performer:', ''),
-              source: PersonSource.thePornDbPerformer,
-              name: p.title,
-              photo: p.cover,
-            ))
-        .toList();
+    _tmdb.getPopularSeries(page: 1).then((items) {
+      if (mounted) setState(() => _series = items);
+    }).catchError((_) => <MediaItem>[]);
 
-    _actors = _interleavePeople(tmdbActors, tpdbActors);
-    _bannerItems = _movies.take(6).toList();
+    _tmdb.getPopularAnime(page: 1).then((items) {
+      if (mounted) setState(() => _anime = items);
+    }).catchError((_) => <MediaItem>[]);
+
+    _tmdb.getPopularPeople().then((people) {
+      tmdbPeople = people;
+      updatePeople();
+    }).catchError((_) => <PersonRef>[]);
+
+    if (tpdb != null) {
+      tpdb.trendingMovies(page: 1).then((items) {
+        tpdbMovies = items;
+        updateMovies();
+      }).catchError((_) => <MediaItem>[]);
+
+      tpdb.performers().then((performers) {
+        tpdbPeople = performers
+            .map((p) => PersonRef(
+                  id: 0,
+                  externalId: p.id.replaceFirst('tpdb:performer:', ''),
+                  source: PersonSource.thePornDbPerformer,
+                  name: p.title,
+                  photo: p.cover,
+                ))
+            .toList();
+        updatePeople();
+      }).catchError((_) => <MediaItem>[]);
+    }
   }
 
   Future<void> _fetchProviderItems(String providerId) async {
@@ -475,10 +513,10 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
           children: [
             // Top-left ambient radial gradient from prominent color of top movie
             Positioned(
-              top: -90,
-              left: -90,
-              width: 380,
-              height: 380,
+              top: -120,
+              left: -120,
+              width: 540,
+              height: 540,
               child: IgnorePointer(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 700),
@@ -487,11 +525,11 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        _prominentColor.withValues(alpha: 0.38),
-                        _prominentColor.withValues(alpha: 0.14),
+                        _prominentColor.withValues(alpha: 0.45),
+                        _prominentColor.withValues(alpha: 0.18),
                         Colors.transparent,
                       ],
-                      stops: const [0.0, 0.46, 1.0],
+                      stops: const [0.0, 0.50, 1.0],
                     ),
                   ),
                 ),
@@ -501,9 +539,9 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
             CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                SliverToBoxAdapter(child: _buildTopBar()),
+                const SliverToBoxAdapter(child: SizedBox(height: 18)),
                 if (_isTpdb) ...[
-                  // TPDB Mode: Popular, Trending, Top Rated, Performers, New Releases (from Provider)
+                  // TPDB Mode: Popular, Trending, Top Rated, Performers, New Releases
                   SliverToBoxAdapter(
                     child: ContentRow(
                       title: 'Popular',
@@ -572,7 +610,11 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
                   SliverToBoxAdapter(
-                    child: _buildTpdbProviderSection(),
+                    child: _buildBannerSection(
+                      title: 'New Releases',
+                      items: _bannerItems,
+                      onSeeAll: () => _openTpdbProviderView(context),
+                    ),
                   ),
                 ] else ...[
                   // TMDB & Mixed Mode: Movies, Series, Anime, Actors, New Releases
@@ -656,12 +698,18 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
               ],
             ),
 
-            // Bottom Floating Search Bar Pill (Cleanly at bottom, navbar is hidden on Discover)
+            // Bottom Floating Search Bar Pill + Filter Toggle (Fixed at bottom)
             Positioned(
               left: 16,
               right: 16,
               bottom: bottomInset > 0 ? bottomInset + 10 : 16,
-              child: _buildFloatingSearchBar(),
+              child: Row(
+                children: [
+                  Expanded(child: _buildFloatingSearchBar()),
+                  const SizedBox(width: 10),
+                  _GlassFilterButton(onTap: widget.onOpenFilters),
+                ],
+              ),
             ),
           ],
         );
@@ -683,24 +731,15 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
     );
   }
 
-  Widget _buildTopBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Text(
-              'Discover',
-              style: AppText.display.copyWith(
-                fontSize: 32,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
-              ),
-            ),
-          ),
-          _GlassFilterButton(onTap: widget.onOpenFilters),
-        ],
+  void _openTpdbProviderView(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _TpdbProviderScreen(
+          availableProviders: _availableProviders,
+          initialProviderId: _selectedProviderId,
+          onTapItem: widget.onTapItem,
+          onLongPressItem: widget.onLongPressItem,
+        ),
       ),
     );
   }
@@ -721,7 +760,15 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
           child: Row(
             children: [
               Expanded(
-                child: Text('Actors', style: AppText.headline),
+                child: Text(
+                  'Actors',
+                  style: AppText.headline.copyWith(
+                    color: const Color(0xFFEDE8E4),
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.1,
+                  ),
+                ),
               ),
               _GlassChevronButton(
                 onTap: () => Navigator.of(context).push(
@@ -772,130 +819,11 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
     );
   }
 
-  Widget _buildTpdbProviderSection() {
-    const widerWidth = 220.0;
-    const widerHeight = 124.0;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Row(
-            children: [
-              Expanded(child: Text('New Releases', style: AppText.headline)),
-              _GlassChevronButton(
-                onTap: () => widget.onOpenSeeAll('New Releases', _providerItems),
-              ),
-            ],
-          ),
-        ),
-        // Provider selector chips (XNXX, Xtapes, ThePornDB Discovery, etc.)
-        SizedBox(
-          height: 38,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _availableProviders.length,
-            itemBuilder: (context, index) {
-              final p = _availableProviders[index];
-              final isSelected = p.id == _selectedProviderId;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: FilterChip(
-                  label: Text(p.label),
-                  selected: isSelected,
-                  showCheckmark: false,
-                  selectedColor: AppColors.accent,
-                  backgroundColor: const Color(0xFF1E1E26),
-                  side: BorderSide.none,
-                  labelStyle: TextStyle(
-                    color: isSelected ? Colors.white : Colors.white70,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    fontSize: 13,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  onSelected: (_) => _onSelectProvider(p.id),
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 12),
-        // Wider poster row (16:9 landscape)
-        if (_loadingProvider)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 36),
-            child: Center(
-              child: SizedBox(
-                width: 26,
-                height: 26,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
-              ),
-            ),
-          )
-        else if (_providerItems.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.cloud_off_rounded, color: Colors.white38, size: 36),
-                  const SizedBox(height: 8),
-                  Text(
-                    'No streams found on ${_availableProviders.firstWhere((p) => p.id == _selectedProviderId, orElse: () => (id: '', label: 'Provider', repo: null)).label}',
-                    style: const TextStyle(color: Colors.white54, fontSize: 13),
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: () => _fetchProviderItems(_selectedProviderId),
-                    icon: const Icon(Icons.refresh_rounded, size: 16),
-                    label: const Text('Retry'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          SizedBox(
-            height: widerHeight,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _providerItems.length,
-              itemBuilder: (context, index) {
-                final item = _providerItems[index];
-                final heroTag = 'discover:tpdb:provider:$index:${item.id}';
-                return Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: _DiscoverWiderCard(
-                    item: item,
-                    heroTag: heroTag,
-                    width: widerWidth,
-                    height: widerHeight,
-                    onTap: () => widget.onTapItem(item),
-                    onLongPress: () => widget.onLongPressItem?.call(item, heroTag),
-                  ),
-                );
-              },
-            ),
-          ),
-      ],
-    );
-  }
-
   Widget _buildBannerSection({
+    required String title,
+    required List<MediaItem> items,
+    required VoidCallback onSeeAll,
+  }) {
     required String title,
     required List<MediaItem> items,
     required VoidCallback onSeeAll,
@@ -1231,9 +1159,12 @@ class _NewReleasesCarouselState extends State<_NewReleasesCarousel> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final carouselHeight = ((screenWidth - 32) * 9 / 16).clamp(148.0, 196.0);
+
     if (widget.items.isEmpty) {
       return Container(
-        height: 154,
+        height: carouselHeight,
         decoration: BoxDecoration(
           color: AppColors.surface2,
           borderRadius: BorderRadius.circular(18),
@@ -1248,7 +1179,7 @@ class _NewReleasesCarouselState extends State<_NewReleasesCarousel> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
         child: Container(
-          height: 154,
+          height: carouselHeight,
           decoration: BoxDecoration(
             color: const Color(0xFF16161D),
             borderRadius: BorderRadius.circular(18),
@@ -1263,7 +1194,7 @@ class _NewReleasesCarouselState extends State<_NewReleasesCarousel> {
                 },
                 itemBuilder: (context, index) {
                   final item = widget.items[index];
-                  final imageUrl = item.cover;
+                  final imageUrl = item.heroImage ?? item.cover;
                   final heroTag = 'discover:banner:$index:${item.id}';
 
                   return GestureDetector(
@@ -1287,49 +1218,6 @@ class _NewReleasesCarouselState extends State<_NewReleasesCarousel> {
                           )
                         else
                           Container(color: const Color(0xFF1E1E26)),
-
-                        // Gradient Overlay
-                        Positioned.fill(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.transparent,
-                                  Colors.black.withValues(alpha: 0.4),
-                                  Colors.black.withValues(alpha: 0.85),
-                                ],
-                                stops: const [0.3, 0.65, 1.0],
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        // Title
-                        Positioned(
-                          left: 16,
-                          bottom: 14,
-                          right: 80,
-                          child: Text(
-                            item.title,
-                            style: AppText.headline.copyWith(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.4,
-                              color: Colors.white,
-                              shadows: const [
-                                Shadow(
-                                  color: Colors.black,
-                                  blurRadius: 4,
-                                  offset: Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
                       ],
                     ),
                   );
@@ -1461,6 +1349,216 @@ class _GlassChevronButtonState extends State<_GlassChevronButton> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Dedicated provider screen for TPDB New Releases ("View all")
+class _TpdbProviderScreen extends StatefulWidget {
+  const _TpdbProviderScreen({
+    required this.availableProviders,
+    required this.initialProviderId,
+    required this.onTapItem,
+    required this.onLongPressItem,
+  });
+
+  final List<({String id, String label, String? repo})> availableProviders;
+  final String initialProviderId;
+  final void Function(MediaItem) onTapItem;
+  final void Function(MediaItem, String)? onLongPressItem;
+
+  @override
+  State<_TpdbProviderScreen> createState() => _TpdbProviderScreenState();
+}
+
+class _TpdbProviderScreenState extends State<_TpdbProviderScreen> {
+  late String _selectedId;
+  List<MediaItem> _items = [];
+  bool _loading = false;
+  final SourceRepository _repo = sl<SourceRepository>();
+  ThePornDb? get _tpdb => sl.isRegistered<ThePornDb>() ? sl<ThePornDb>() : null;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedId = widget.initialProviderId;
+    _fetchItems(_selectedId);
+  }
+
+  Future<void> _fetchItems(String providerId) async {
+    setState(() => _loading = true);
+    try {
+      List<MediaItem> items;
+      if (providerId == 'theporndb' || providerId == 'tpdb') {
+        items = await (_tpdb?.trendingMovies() ?? Future.value(<MediaItem>[]));
+      } else {
+        final sections = await _repo.home(sourceId: providerId);
+        final out = <MediaItem>[];
+        for (final sec in sections) {
+          out.addAll(sec.items);
+        }
+        items = out;
+      }
+      if (mounted) {
+        setState(() {
+          _items = items;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedProvider = widget.availableProviders.firstWhere(
+      (p) => p.id == _selectedId,
+      orElse: () => (id: _selectedId, label: 'Provider', repo: null),
+    );
+
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          'New Releases',
+          style: AppText.headline.copyWith(
+            color: const Color(0xFFEDE8E4),
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Provider selector chips (XNXX, Xtapes, ThePornDB Discovery)
+          SizedBox(
+            height: 42,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: widget.availableProviders.length,
+              itemBuilder: (context, index) {
+                final p = widget.availableProviders[index];
+                final isSelected = p.id == _selectedId;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: Text(p.label),
+                    selected: isSelected,
+                    showCheckmark: false,
+                    selectedColor: const Color(0xFF2979FF),
+                    backgroundColor: const Color(0xFF1E1E26),
+                    side: BorderSide.none,
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.white : Colors.white70,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      fontSize: 13.5,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    onSelected: (_) {
+                      if (_selectedId == p.id) return;
+                      setState(() => _selectedId = p.id);
+                      _fetchItems(p.id);
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              selectedProvider.label,
+              style: AppText.headline.copyWith(
+                color: const Color(0xFFEDE8E4),
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: _loading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white38,
+                    ),
+                  )
+                : _items.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.cloud_off_rounded,
+                              color: Colors.white38,
+                              size: 48,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'No streams found on ${selectedProvider.label}',
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            OutlinedButton.icon(
+                              onPressed: () => _fetchItems(_selectedId),
+                              icon: const Icon(Icons.refresh_rounded, size: 18),
+                              label: const Text('Retry'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.25),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        physics: const BouncingScrollPhysics(),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 16 / 10,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
+                        itemCount: _items.length,
+                        itemBuilder: (context, index) {
+                          final item = _items[index];
+                          final heroTag = 'tpdb:provider_screen:$index:${item.id}';
+                          return _DiscoverWiderCard(
+                            item: item,
+                            heroTag: heroTag,
+                            width: double.infinity,
+                            height: double.infinity,
+                            onTap: () => widget.onTapItem(item),
+                            onLongPress: () =>
+                                widget.onLongPressItem?.call(item, heroTag),
+                          );
+                        },
+                      ),
+          ),
+        ],
       ),
     );
   }

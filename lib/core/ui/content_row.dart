@@ -14,6 +14,7 @@ class ContentRow extends StatefulWidget {
   const ContentRow({
     super.key,
     required this.title,
+    this.titleStyle,
     this.overline,
     required this.itemCount,
     required this.itemBuilder,
@@ -25,6 +26,7 @@ class ContentRow extends StatefulWidget {
   });
 
   final String title;
+  final TextStyle? titleStyle;
   final String? overline;
   final int itemCount;
   final Widget Function(BuildContext context, int index) itemBuilder;
@@ -82,7 +84,12 @@ class _ContentRowState extends State<ContentRow> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _Header(title: widget.title, overline: widget.overline, onSeeAll: widget.onSeeAll),
+        _Header(
+          title: widget.title,
+          titleStyle: widget.titleStyle,
+          overline: widget.overline,
+          onSeeAll: widget.onSeeAll,
+        ),
         SizedBox(
           height: widget.itemHeight,
           child: NotificationListener<ScrollNotification>(
@@ -153,14 +160,28 @@ class _ContentRowState extends State<ContentRow> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.title, this.overline, this.onSeeAll});
+  const _Header({
+    required this.title,
+    this.titleStyle,
+    this.overline,
+    this.onSeeAll,
+  });
 
   final String title;
+  final TextStyle? titleStyle;
   final String? overline;
   final VoidCallback? onSeeAll;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveStyle = titleStyle ??
+        AppText.headline.copyWith(
+          color: const Color(0xFFEDE8E4),
+          fontSize: 16.5,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.1,
+        );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
       child: Column(
@@ -174,12 +195,12 @@ class _Header extends StatelessWidget {
           if (onSeeAll != null)
             Row(
               children: [
-                Expanded(child: Text(title, style: AppText.headline)),
+                Expanded(child: Text(title, style: effectiveStyle)),
                 _GlassChevronButton(onTap: onSeeAll!),
               ],
             )
           else
-            Text(title, style: AppText.headline),
+            Text(title, style: effectiveStyle),
         ],
       ),
     );

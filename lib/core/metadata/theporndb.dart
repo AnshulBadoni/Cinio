@@ -318,11 +318,22 @@ class ThePornDb {
     final cached = _curatedTrendingMoviesCache ?? const [];
     final pageSize = 16;
     final start = (page - 1) * pageSize;
+    final results = <MediaItem>[];
     if (start < cached.length) {
       final end = (start + pageSize).clamp(0, cached.length);
-      final slice = cached.sublist(start, end);
-      if (slice.isNotEmpty) return slice;
+      results.addAll(cached.sublist(start, end));
     }
+    if (results.length < pageSize) {
+      final more = await _moviesWithStudioCap(
+        page: page,
+        orderBy: 'recently_updated',
+        maxPerStudio: 2,
+        minYear: DateTime.now().year - 3,
+        excludedIds: results.map((m) => m.id).toSet(),
+      );
+      results.addAll(more.take(pageSize - results.length));
+    }
+    if (results.isNotEmpty) return results;
 
     return _moviesWithStudioCap(
       page: page,
@@ -431,11 +442,21 @@ class ThePornDb {
     final cached = _curatedPopularMoviesCache ?? const [];
     final pageSize = 16;
     final start = (page - 1) * pageSize;
+    final results = <MediaItem>[];
     if (start < cached.length) {
       final end = (start + pageSize).clamp(0, cached.length);
-      final slice = cached.sublist(start, end);
-      if (slice.isNotEmpty) return slice;
+      results.addAll(cached.sublist(start, end));
     }
+    if (results.length < pageSize) {
+      final more = await _moviesWithStudioCap(
+        page: page,
+        orderBy: 'recently_created',
+        maxPerStudio: 2,
+        excludedIds: results.map((m) => m.id).toSet(),
+      );
+      results.addAll(more.take(pageSize - results.length));
+    }
+    if (results.isNotEmpty) return results;
 
     return _moviesWithStudioCap(
       page: page,
@@ -989,7 +1010,6 @@ class ThePornDb {
       description: (row['description'] ?? row['synopsis'])?.toString(),
     );
     final title = (row['title'] ?? item.title).toString();
-    final isSeries = isSeriesTitle(title);
     return MediaDetail(
       id: item.id,
       title: title,
@@ -1004,8 +1024,8 @@ class ThePornDb {
       cast: cast,
       castMembers: members,
       episodes: [ep],
-      isSeries: isSeries,
-      tmdbIsTv: isSeries,
+      isSeries: false,
+      tmdbIsTv: false,
     );
   }
 
@@ -1067,11 +1087,22 @@ class ThePornDb {
     final cached = _curatedTopRatedCache ?? const [];
     final pageSize = 16;
     final start = (page - 1) * pageSize;
+    final results = <MediaItem>[];
     if (start < cached.length) {
       final end = (start + pageSize).clamp(0, cached.length);
-      final slice = cached.sublist(start, end);
-      if (slice.isNotEmpty) return slice;
+      results.addAll(cached.sublist(start, end));
     }
+    if (results.length < pageSize) {
+      final more = await _moviesWithStudioCap(
+        page: page,
+        orderBy: 'recently_updated',
+        maxPerStudio: 2,
+        minYear: DateTime.now().year - 3,
+        excludedIds: results.map((m) => m.id).toSet(),
+      );
+      results.addAll(more.take(pageSize - results.length));
+    }
+    if (results.isNotEmpty) return results;
 
     return _moviesWithStudioCap(
       page: page,

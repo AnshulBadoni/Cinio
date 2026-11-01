@@ -451,8 +451,8 @@ class _FloatingDock extends StatelessWidget {
         }) {
           if (isPixel) {
             final containerBg = ThemeController.materialYou
-                ? AppColors.surface2
-                : const Color(0xFF201A18);
+                ? Color.lerp(AppColors.surface2, AppColors.accent, 0.09)!
+                : Color.lerp(const Color(0xFF201A18), AppColors.accent, 0.08)!;
             return Container(
               width: pillWidth,
               height: height,
@@ -554,8 +554,8 @@ class _ProfileCircle extends StatelessWidget {
 
     if (isPixel) {
       final containerBg = ThemeController.materialYou
-          ? AppColors.surface2
-          : const Color(0xFF201A18);
+          ? Color.lerp(AppColors.surface2, AppColors.accent, 0.09)!
+          : Color.lerp(const Color(0xFF201A18), AppColors.accent, 0.08)!;
       return Container(
         width: size,
         height: size,
@@ -837,10 +837,10 @@ class _PixelDockItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final activeColor = ThemeController.materialYou
         ? Color.lerp(AppColors.surface2, AppColors.accent, 0.38)!
-        : const Color(0xFF553B34);
+        : Color.lerp(const Color(0xFF553B34), AppColors.accent, 0.25)!;
     final unselectedColor = ThemeController.materialYou
-        ? AppColors.textSecondary
-        : const Color(0xFFDDD0CB);
+        ? Color.lerp(const Color(0xFFDDD0CB), AppColors.accent, 0.18)!
+        : Color.lerp(const Color(0xFFDDD0CB), AppColors.accent, 0.12)!;
 
     final iconWidget = HugeIcon(
       icon: _hugeIconFor(tab),
