@@ -314,12 +314,19 @@ class _RootShellState extends State<RootShell>
             );
           }),
           bottomNavigationBar: AnimatedBuilder(
-            animation: Listenable.merge([dockHiddenBySection, dockHiddenBySearch]),
+            animation: Listenable.merge([
+              dockHiddenBySection,
+              dockHiddenBySearch,
+              if (sl.isRegistered<CatalogSourcePrefs>()) sl<CatalogSourcePrefs>(),
+            ]),
             builder: (context, _) {
-              // Slide the dock away when a Settings section is open OR while
-              // actively searching (so the search results / keyboard are never blocked).
+              final isNewDiscover = sl.isRegistered<CatalogSourcePrefs>() &&
+                  sl<CatalogSourcePrefs>().newDiscoverPage;
+              // Slide the dock away when a Settings section is open, while
+              // actively searching, OR while on Discover page (so the bottom search bar has the spotlight).
               final hide = (dockHiddenBySection.value && _tab == DockTab.profile) ||
-                  (dockHiddenBySearch.value && _tab == DockTab.search);
+                  (dockHiddenBySearch.value && _tab == DockTab.search) ||
+                  (_tab == DockTab.search && isNewDiscover);
               return AnimatedSlide(
                 offset: hide ? const Offset(0, 1.6) : Offset.zero,
                 duration: const Duration(milliseconds: 240),
@@ -395,13 +402,15 @@ class _FloatingDock extends StatelessWidget {
         final hasProfile = tabs.contains(DockTab.profile);
         final isSplit = separateProfile && hasProfile;
 
-        // Proportions: compact and balanced (58dp expanded -> 44dp collapsed)
-        final height = 58.0 - (14.0 * t);
+        // Proportions: in Pixel mode height does not shrink on scroll
+        final height = isPixel ? 54.0 : (58.0 - (14.0 * t));
         final radius = height / 2;
 
         final expandedWidth = (screenWidth * 0.90).clamp(290.0, 480.0);
         final compactWidth = (screenWidth * 0.66).clamp(230.0, 360.0);
-        final totalWidth = expandedWidth + (compactWidth - expandedWidth) * t;
+        final totalWidth = isPixel
+            ? expandedWidth
+            : (expandedWidth + (compactWidth - expandedWidth) * t);
 
         Widget buildCapsuleContent(List<DockTab> pillTabs) {
           if (isPixel) {
@@ -438,6 +447,28 @@ class _FloatingDock extends StatelessWidget {
           required double pillWidth,
           required List<DockTab> pillTabs,
         }) {
+          if (isPixel) {
+            final containerBg = ThemeController.materialYou
+                ? AppColors.surface2
+                : const Color(0xFF201A18);
+            return Container(
+              width: pillWidth,
+              height: height,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(radius),
+                color: containerBg,
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x66000000),
+                    blurRadius: 18,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: buildCapsuleContent(pillTabs),
+            );
+          }
           return ClipRRect(
             borderRadius: BorderRadius.circular(radius),
             child: BackdropFilter(
@@ -474,6 +505,7 @@ class _FloatingDock extends StatelessWidget {
                 radius: radius,
                 selected: active == DockTab.profile,
                 onTap: () => onSelected(DockTab.profile),
+                isPixel: isPixel,
               ),
             ],
           );
@@ -504,17 +536,77 @@ class _ProfileCircle extends StatelessWidget {
     required this.radius,
     required this.selected,
     required this.onTap,
+    this.isPixel = false,
   });
 
   final double size;
   final double radius;
   final bool selected;
   final VoidCallback onTap;
+  final bool isPixel;
 
   @override
   Widget build(BuildContext context) {
     // User avatar fills ~82% of the circle, leaving a clean minimal frosted rim
     final avatarSize = (size * 0.82).roundToDouble();
+
+    if (isPixel) {
+      final containerBg = ThemeController.materialYou
+          ? AppColors.surface2
+          : const Color(0xFF201A18);
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: containerBg,
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x66000000),
+              blurRadius: 18,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(radius),
+            onTap: onTap,
+            child: Center(
+              child: _DockPop(
+                selected: selected,
+                child: BlocBuilder<AuthCubit, AuthState>(
+                  builder: (context, auth) {
+                    if (auth.isLoggedIn && auth.avatarUrl != null) {
+                      return Container(
+                        width: avatarSize,
+                        height: avatarSize,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          image: DecorationImage(
+                            image: NetworkImage(auth.avatarUrl!),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      );
+                    }
+                    return Center(
+                      child: HugeIcon(
+                        icon: HugeIcons.strokeRoundedUserCircle02,
+                        color: selected ? Colors.white : const Color(0xFFDDD0CB),
+                        size: avatarSize * 0.65,
+                        strokeWidth: selected ? 2.2 : 1.8,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
@@ -741,12 +833,18 @@ class _PixelDockItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activeAccent = AppColors.accent;
+    final activeColor = ThemeController.materialYou
+        ? Color.lerp(AppColors.surface2, AppColors.accent, 0.38)!
+        : const Color(0xFF553B34);
+    final unselectedColor = ThemeController.materialYou
+        ? AppColors.textSecondary
+        : const Color(0xFFDDD0CB);
+
     final iconWidget = HugeIcon(
       icon: _hugeIconFor(tab),
-      color: selected ? Colors.white : const Color(0xFFC7C5C8),
+      color: Colors.white,
       size: 19.5,
-      strokeWidth: selected ? 2.2 : 1.7,
+      strokeWidth: 2.2,
     );
 
     return Material(
@@ -755,35 +853,33 @@ class _PixelDockItem extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(999),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
           padding: EdgeInsets.symmetric(
-            horizontal: selected ? 14.0 : 10.0,
-            vertical: 6.5,
+            horizontal: selected ? 18.0 : 14.0,
+            vertical: 8.0,
           ),
           decoration: BoxDecoration(
-            color: selected
-                ? activeAccent.withValues(alpha: 0.35)
-                : Colors.transparent,
+            color: selected ? activeColor : Colors.transparent,
             borderRadius: BorderRadius.circular(999),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              iconWidget,
               if (selected) ...[
-                const SizedBox(width: 6.5),
-                Text(
-                  tab.label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13.0,
-                    letterSpacing: 0.2,
-                  ),
-                ),
+                iconWidget,
+                const SizedBox(width: 8),
               ],
+              Text(
+                tab.label,
+                style: TextStyle(
+                  color: selected ? Colors.white : unselectedColor,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  fontSize: 14.0,
+                  letterSpacing: 0.1,
+                ),
+              ),
             ],
           ),
         ),

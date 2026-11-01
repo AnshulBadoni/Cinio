@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:palette_generator/palette_generator.dart';
 
 import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
@@ -10,13 +11,13 @@ import '../../core/metadata/theporndb.dart';
 import '../../core/metadata/tmdb_discover_service.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/person.dart';
-import '../../core/models/provider_info.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/content_row.dart';
+import '../../core/ui/native_cover_provider.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/source_switcher.dart';
 import '../people/favorite_actors_screen.dart';
@@ -35,7 +36,6 @@ class NewDiscoverView extends StatefulWidget {
     this.onLongPressItem,
     this.onLongPressPerson,
     this.onBack,
-    this.showBack = false,
   });
 
   final void Function(MediaItem item) onTapItem;
@@ -50,7 +50,6 @@ class NewDiscoverView extends StatefulWidget {
   final void Function(MediaItem item, String heroTag)? onLongPressItem;
   final void Function(PersonRef person, String heroTag)? onLongPressPerson;
   final VoidCallback? onBack;
-  final bool showBack;
 
   @override
   State<NewDiscoverView> createState() => _NewDiscoverViewState();
@@ -63,6 +62,8 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
   SourceRepository get _repo => sl<SourceRepository>();
 
   StreamSubscription<SearchState>? _searchSub;
+
+  Color _prominentColor = const Color(0xFF673AB7);
 
   // TMDB / Mixed Data
   List<MediaItem> _movies = [];
@@ -100,8 +101,6 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
   List<({String id, String label, String? repo})> _availableProviders = [];
   List<MediaItem> _providerItems = [];
   bool _loadingProvider = false;
-
-  bool _loading = true;
 
   @override
   void initState() {
@@ -157,9 +156,29 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
     }
   }
 
+  Future<void> _extractProminentColor(String? coverUrl, [Map<String, String>? headers]) async {
+    if (coverUrl == null || coverUrl.isEmpty) return;
+    try {
+      final ImageProvider imageProvider = headers != null && headers.isNotEmpty
+          ? nativeCoverProvider(coverUrl, headers)
+          : CachedNetworkImageProvider(coverUrl);
+      final pal = await PaletteGenerator.fromImageProvider(
+        ResizeImage(imageProvider, width: 120),
+        size: const Size(120, 180),
+        maximumColorCount: 6,
+      );
+      final color = pal.vibrantColor?.color ??
+          pal.dominantColor?.color ??
+          pal.darkVibrantColor?.color ??
+          pal.mutedColor?.color;
+      if (color != null && mounted) {
+        setState(() => _prominentColor = color);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadAllCategories() async {
     if (!mounted) return;
-    setState(() => _loading = true);
 
     try {
       if (_isTpdb && _tpdb != null) {
@@ -173,7 +192,12 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
       // Keep fallbacks
     } finally {
       if (mounted) {
-        setState(() => _loading = false);
+        final topItem = _isTpdb
+            ? _popularScenes.firstOrNull
+            : _movies.firstOrNull;
+        if (topItem != null) {
+          _extractProminentColor(topItem.cover, topItem.coverHeaders);
+        }
       }
     }
   }
@@ -449,12 +473,37 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
 
         return Stack(
           children: [
+            // Top-left ambient radial gradient from prominent color of top movie
+            Positioned(
+              top: -90,
+              left: -90,
+              width: 380,
+              height: 380,
+              child: IgnorePointer(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 700),
+                  curve: Curves.easeOutCubic,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        _prominentColor.withValues(alpha: 0.38),
+                        _prominentColor.withValues(alpha: 0.14),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.46, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
             CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
                 SliverToBoxAdapter(child: _buildTopBar()),
                 if (_isTpdb) ...[
-                  // TPDB Mode: Popular, Trending, Top Rated, Performers, Provider
+                  // TPDB Mode: Popular, Trending, Top Rated, Performers, New Releases (from Provider)
                   SliverToBoxAdapter(
                     child: ContentRow(
                       title: 'Popular',
@@ -519,11 +568,11 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 16)),
                   SliverToBoxAdapter(
-                    child: _buildActorsSection(),
+                    child: _buildActorsSection(hideTitles),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
                   SliverToBoxAdapter(
-                    child: _buildProviderSection(width, rowHeight),
+                    child: _buildTpdbProviderSection(),
                   ),
                 ] else ...[
                   // TMDB & Mixed Mode: Movies, Series, Anime, Actors, New Releases
@@ -591,7 +640,7 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 16)),
                   SliverToBoxAdapter(
-                    child: _buildActorsSection(),
+                    child: _buildActorsSection(hideTitles),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
                   SliverToBoxAdapter(
@@ -602,16 +651,16 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
                     ),
                   ),
                 ],
-                // Generous bottom padding so content scrolls completely clear of floating search bar
-                const SliverToBoxAdapter(child: SizedBox(height: 170)),
+                // Bottom padding so content scrolls clear of the bottom floating search pill
+                const SliverToBoxAdapter(child: SizedBox(height: 96)),
               ],
             ),
 
-            // Bottom Floating Search Bar Pill (floating cleanly above navbar dock)
+            // Bottom Floating Search Bar Pill (Cleanly at bottom, navbar is hidden on Discover)
             Positioned(
               left: 16,
               right: 16,
-              bottom: bottomInset > 0 ? bottomInset + 76 : 82,
+              bottom: bottomInset > 0 ? bottomInset + 10 : 16,
               child: _buildFloatingSearchBar(),
             ),
           ],
@@ -640,16 +689,6 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          if (widget.showBack)
-            IconButton(
-              icon: const Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: Colors.white,
-                size: 19.5,
-              ),
-              onPressed: widget.onBack,
-              tooltip: 'Back',
-            ),
           Expanded(
             child: Text(
               'Discover',
@@ -666,10 +705,12 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
     );
   }
 
-  Widget _buildActorsSection() {
+  Widget _buildActorsSection(bool hideTitles) {
     final square = sl<PlaybackPrefs>().peopleCardStyle == 'square';
-    final cardWidth = square ? 128.0 : 116.0;
-    final cardHeight = square ? 184.0 : 172.0;
+    final cardWidth = square ? 120.0 : 108.0;
+    final cardHeight = hideTitles
+        ? (square ? 116.0 : 106.0)
+        : (square ? 156.0 : 148.0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -711,12 +752,13 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
                     final actor = _actors[index];
                     final heroTag = 'discover:actor:$index:${actor.id}:${actor.name}';
                     return Padding(
-                      padding: const EdgeInsets.only(right: 14),
+                      padding: const EdgeInsets.only(right: 8),
                       child: SizedBox(
                         width: cardWidth,
                         child: _DiscoverActorCard(
                           actor: actor,
                           square: square,
+                          hideTitles: hideTitles,
                           heroTag: heroTag,
                           onTap: () => widget.onTapPerson(actor),
                           onLongPress: () => widget.onLongPressPerson?.call(actor, heroTag),
@@ -730,7 +772,10 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
     );
   }
 
-  Widget _buildProviderSection(double width, double rowHeight) {
+  Widget _buildTpdbProviderSection() {
+    const widerWidth = 220.0;
+    const widerHeight = 124.0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -739,9 +784,9 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Row(
             children: [
-              Expanded(child: Text('Provider', style: AppText.headline)),
+              Expanded(child: Text('New Releases', style: AppText.headline)),
               _GlassChevronButton(
-                onTap: () => widget.onOpenSeeAll('Provider', _providerItems),
+                onTap: () => widget.onOpenSeeAll('New Releases', _providerItems),
               ),
             ],
           ),
@@ -765,6 +810,7 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
                   showCheckmark: false,
                   selectedColor: AppColors.accent,
                   backgroundColor: const Color(0xFF1E1E26),
+                  side: BorderSide.none,
                   labelStyle: TextStyle(
                     color: isSelected ? Colors.white : Colors.white70,
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
@@ -772,12 +818,6 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
-                    side: BorderSide(
-                      color: isSelected
-                          ? AppColors.accent
-                          : Colors.white.withValues(alpha: 0.12),
-                      width: 0.8,
-                    ),
                   ),
                   onSelected: (_) => _onSelectProvider(p.id),
                 ),
@@ -786,10 +826,10 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
           ),
         ),
         const SizedBox(height: 12),
-        // Provider content row
+        // Wider poster row (16:9 landscape)
         if (_loadingProvider)
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
+            padding: EdgeInsets.symmetric(vertical: 36),
             child: Center(
               child: SizedBox(
                 width: 26,
@@ -800,18 +840,18 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
           )
         else if (_providerItems.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 30),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.cloud_off_rounded, color: Colors.white38, size: 38),
+                  const Icon(Icons.cloud_off_rounded, color: Colors.white38, size: 36),
                   const SizedBox(height: 8),
                   Text(
                     'No streams found on ${_availableProviders.firstWhere((p) => p.id == _selectedProviderId, orElse: () => (id: '', label: 'Provider', repo: null)).label}',
-                    style: const TextStyle(color: Colors.white54, fontSize: 13.5),
+                    style: const TextStyle(color: Colors.white54, fontSize: 13),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: () => _fetchProviderItems(_selectedProviderId),
                     icon: const Icon(Icons.refresh_rounded, size: 16),
@@ -828,7 +868,7 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
           )
         else
           SizedBox(
-            height: rowHeight,
+            height: widerHeight,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
@@ -836,15 +876,16 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
               itemCount: _providerItems.length,
               itemBuilder: (context, index) {
                 final item = _providerItems[index];
+                final heroTag = 'discover:tpdb:provider:$index:${item.id}';
                 return Padding(
                   padding: const EdgeInsets.only(right: 12),
-                  child: SizedBox(
-                    width: width,
-                    child: _buildPosterCard(
-                      item,
-                      'discover:provider:$index:${item.id}',
-                      width,
-                    ),
+                  child: _DiscoverWiderCard(
+                    item: item,
+                    heroTag: heroTag,
+                    width: widerWidth,
+                    height: widerHeight,
+                    onTap: () => widget.onTapItem(item),
+                    onLongPress: () => widget.onLongPressItem?.call(item, heroTag),
                   ),
                 );
               },
@@ -891,17 +932,13 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
         height: 52,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         decoration: BoxDecoration(
-          color: const Color(0xEE16161B),
+          color: const Color(0xFF1E1E24),
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.14),
-            width: 0.85,
-          ),
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.55),
-              blurRadius: 20,
-              offset: const Offset(0, 6),
+              color: Color(0x88000000),
+              blurRadius: 18,
+              offset: Offset(0, 6),
             ),
           ],
         ),
@@ -934,11 +971,105 @@ class _NewDiscoverViewState extends State<NewDiscoverView> {
   }
 }
 
+/// Wider landscape 16:9 poster card for TPDB New Releases
+class _DiscoverWiderCard extends StatefulWidget {
+  const _DiscoverWiderCard({
+    required this.item,
+    required this.heroTag,
+    required this.onTap,
+    required this.onLongPress,
+    required this.width,
+    required this.height,
+  });
+
+  final MediaItem item;
+  final String heroTag;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  final double width;
+  final double height;
+
+  @override
+  State<_DiscoverWiderCard> createState() => _DiscoverWiderCardState();
+}
+
+class _DiscoverWiderCardState extends State<_DiscoverWiderCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedScale(
+        scale: _pressed ? 0.95 : 1.0,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            width: widget.width,
+            height: widget.height,
+            color: const Color(0xFF16161D),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (widget.item.cover != null && widget.item.cover!.isNotEmpty)
+                  CachedNetworkImage(
+                    imageUrl: widget.item.cover!,
+                    fit: BoxFit.cover,
+                    cacheManager: AppImageCache.cacheManagerOrDefault,
+                    errorWidget: (_, _, _) => Container(color: const Color(0xFF1E1E26)),
+                  )
+                else
+                  Container(color: const Color(0xFF1E1E26)),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Color(0xB3000000),
+                      ],
+                      stops: [0.45, 1.0],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 10,
+                  bottom: 8,
+                  right: 10,
+                  child: Text(
+                    widget.item.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Actor card following circle vs square people preference with smooth scale animation
 class _DiscoverActorCard extends StatefulWidget {
   const _DiscoverActorCard({
     required this.actor,
     required this.square,
+    required this.hideTitles,
     required this.heroTag,
     required this.onTap,
     required this.onLongPress,
@@ -946,6 +1077,7 @@ class _DiscoverActorCard extends StatefulWidget {
 
   final PersonRef actor;
   final bool square;
+  final bool hideTitles;
   final String heroTag;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
@@ -959,7 +1091,7 @@ class _DiscoverActorCardState extends State<_DiscoverActorCard> {
 
   @override
   Widget build(BuildContext context) {
-    final avatarSize = widget.square ? 116.0 : 106.0;
+    final avatarSize = widget.square ? 112.0 : 102.0;
 
     return GestureDetector(
       onTap: widget.onTap,
@@ -982,39 +1114,37 @@ class _DiscoverActorCardState extends State<_DiscoverActorCard> {
               decoration: BoxDecoration(
                 shape: widget.square ? BoxShape.rectangle : BoxShape.circle,
                 borderRadius: widget.square ? BorderRadius.circular(16) : null,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  width: 1.2,
-                ),
-                boxShadow: [
+                boxShadow: const [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
+                    color: Color(0x44000000),
                     blurRadius: 8,
-                    offset: const Offset(0, 3),
+                    offset: Offset(0, 3),
                   ),
                 ],
               ),
               child: widget.square
                   ? ClipRRect(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(16),
                       child: _buildAvatarImage(),
                     )
                   : ClipOval(
                       child: _buildAvatarImage(),
                     ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              widget.actor.name,
-              style: AppText.caption.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 12.5,
+            if (!widget.hideTitles) ...[
+              const SizedBox(height: 6),
+              Text(
+                widget.actor.name,
+                style: AppText.caption.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12.0,
+                ),
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 2,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-            ),
+            ],
           ],
         ),
       ),
@@ -1122,10 +1252,6 @@ class _NewReleasesCarouselState extends State<_NewReleasesCarousel> {
           decoration: BoxDecoration(
             color: const Color(0xFF16161D),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.12),
-              width: 0.8,
-            ),
           ),
           child: Stack(
             children: [
@@ -1273,13 +1399,9 @@ class _GlassFilterButtonState extends State<_GlassFilterButton> {
         child: Container(
           width: 40,
           height: 40,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            color: const Color(0x6618181E),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.15),
-              width: 0.8,
-            ),
+            color: Color(0x6618181E),
           ),
           child: const Center(
             child: Icon(
@@ -1323,13 +1445,9 @@ class _GlassChevronButtonState extends State<_GlassChevronButton> {
           child: Container(
             width: 28,
             height: 28,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              color: const Color(0x6618181E),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.14),
-                width: 0.65,
-              ),
+              color: Color(0x6618181E),
             ),
             child: const Center(
               child: Padding(

@@ -618,7 +618,6 @@ class _SearchViewState extends State<_SearchView>
           body: SafeArea(
             bottom: false,
             child: NewDiscoverView(
-              showBack: widget.showBack || widget.onBackToPrevTab != null,
               onBack: () {
                 if (widget.onBackToPrevTab != null) {
                   widget.onBackToPrevTab!();
