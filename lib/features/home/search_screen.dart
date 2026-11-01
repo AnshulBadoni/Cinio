@@ -46,6 +46,7 @@ import '../player/player_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import 'search_screen_tv.dart';
 import 'see_all_screen.dart';
+import 'new_discover_view.dart';
 import '../search/bloc/search_bloc.dart';
 import '../search/bloc/search_event.dart';
 import '../search/bloc/search_state.dart';
@@ -148,6 +149,7 @@ class _SearchViewState extends State<_SearchView>
   final _history = sl<SearchHistory>();
   final _searchPrefs = sl<SearchPrefs>();
   final _discoverScrollController = ScrollController();
+  bool _isSearching = false;
 
   /// Owns the ecosystem [TabBar]'s controller — see [_ecoTabControllerFor].
   TabController? _ecoTabController;
@@ -171,18 +173,26 @@ class _SearchViewState extends State<_SearchView>
   @override
   void initState() {
     super.initState();
+    _isSearching = widget.initialQuery != null && widget.initialQuery!.trim().isNotEmpty;
     _discoverScrollController.addListener(_onDiscoverScroll);
     _controller = TextEditingController(text: widget.initialQuery ?? '');
     widget.focusSignal?.addListener(_onFocusSignal);
+    sl<CatalogSourcePrefs>().addListener(_onPrefsChanged);
+  }
+
+  void _onPrefsChanged() {
+    if (mounted) setState(() {});
   }
 
   /// Focus the field when the Search tab is (re)selected so the keyboard is
   /// ready. Defers a frame so it runs after the IndexedStack reveals the tab.
   void _onFocusSignal() {
     if (!mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focusNode.requestFocus();
-    });
+    if (!sl<CatalogSourcePrefs>().newDiscoverPage || _isSearching) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusNode.requestFocus();
+      });
+    }
   }
 
   void _onDiscoverScroll() {
@@ -210,6 +220,7 @@ class _SearchViewState extends State<_SearchView>
 
   @override
   void dispose() {
+    sl<CatalogSourcePrefs>().removeListener(_onPrefsChanged);
     widget.focusSignal?.removeListener(_onFocusSignal);
     _discoverScrollController.dispose();
     _controller.dispose();
@@ -232,7 +243,10 @@ class _SearchViewState extends State<_SearchView>
 
   void _clear() {
     _controller.clear();
+    _isSearching = false;
+    _focusNode.unfocus();
     context.read<SearchBloc>().add(const SearchQueryChanged(''));
+    if (mounted) setState(() {});
   }
 
   List<String> _tagsFor(MediaItem m) {
@@ -567,6 +581,49 @@ class _SearchViewState extends State<_SearchView>
 
   @override
   Widget build(BuildContext context) {
+    final query = context.select<SearchBloc, String>((b) => b.state.query);
+    final isNewDiscover = sl<CatalogSourcePrefs>().newDiscoverPage && !_isSearching && query.trim().isEmpty;
+
+    if (isNewDiscover) {
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: SafeArea(
+          bottom: false,
+          child: NewDiscoverView(
+            showBack: widget.showBack,
+            onTapItem: _openDetail,
+            onTapPerson: (person) => Navigator.of(context).push(PersonPage.route(person)),
+            onOpenSeeAll: (title, items, {onLoadMore}) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SeeAllScreen(
+                    title: title,
+                    items: items,
+                    tagsFor: _tagsFor,
+                    onTap: _openDetail,
+                    onLongPress: (item) => _showQuickActions(item),
+                    onLoadMore: onLoadMore,
+                  ),
+                ),
+              ).then((_) {
+                if (mounted) setState(() {});
+              });
+            },
+            onTapSearch: () {
+              setState(() {
+                _isSearching = true;
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _focusNode.requestFocus();
+              });
+            },
+            onOpenFilters: () => _openFilterSheet(context),
+          ),
+        ),
+      );
+    }
+
     // sizeOf (not MediaQuery.of) so this rebuilds only when the screen size
     // actually changes, not on every viewInsets change (e.g. every keyboard
     // animation frame).
@@ -852,18 +909,30 @@ class _SearchViewState extends State<_SearchView>
 
   // ── Search bar ────────────────────────────────────────────────────────────
   Widget _searchBar() {
+    final showBackButton = widget.showBack || (_isSearching && sl<CatalogSourcePrefs>().newDiscoverPage);
     return Padding(
-      padding: EdgeInsets.fromLTRB(widget.showBack ? 4 : 16, 12, 16, 0),
+      padding: EdgeInsets.fromLTRB(showBackButton ? 4 : 16, 12, 16, 0),
       child: Row(
         children: [
-          if (widget.showBack)
+          if (showBackButton)
             IconButton(
               icon: const Icon(
                 Icons.arrow_back_ios_new,
                 color: Colors.white,
                 size: 20,
               ),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                if (_isSearching && sl<CatalogSourcePrefs>().newDiscoverPage) {
+                  setState(() {
+                    _isSearching = false;
+                    _controller.clear();
+                    _focusNode.unfocus();
+                  });
+                  context.read<SearchBloc>().add(const SearchQueryChanged(''));
+                } else {
+                  Navigator.pop(context);
+                }
+              },
               tooltip: 'Back',
             ),
           Expanded(

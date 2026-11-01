@@ -7,6 +7,7 @@ import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/episode.dart';
 import '../models/media_item.dart';
+import '../models/person.dart';
 import '../models/provider_info.dart';
 import 'tmdb.dart';
 
@@ -123,6 +124,60 @@ class TmdbDiscoverService {
       _ => '',
     };
     return HomeSection(title: title, items: result, more: BrowseMore(sourceId: 'tmdb:catalog', kind: kind));
+  }
+
+  // ── Public Modern Discover API ─────────────────────────────────────────────
+  Future<List<MediaItem>> getLatestMovies({int page = 1}) async => _newReleases(page);
+  Future<List<MediaItem>> getTrendingMovies({int page = 1}) async => _trendingKind('movie', page);
+  Future<List<MediaItem>> getTopRatedMovies({int page = 1}) async => _discoverKind(kind: 'movie', catalog: 'top_rated', page: page);
+
+  Future<List<MediaItem>> getPopularSeries({int page = 1}) async => _discoverKind(kind: 'tv', catalog: 'popular', page: page);
+  Future<List<MediaItem>> getRecentSeries({int page = 1}) async => _discoverKind(kind: 'tv', catalog: 'recent', page: page);
+  Future<List<MediaItem>> getTopRatedSeries({int page = 1}) async => _discoverKind(kind: 'tv', catalog: 'top_rated', page: page);
+
+  Future<List<MediaItem>> getPopularAnime({int page = 1}) async => _discoverKind(kind: 'tv', catalog: 'anime', page: page, anime: true);
+  Future<List<MediaItem>> getNewAnime({int page = 1}) async => _discoverKind(kind: 'tv', catalog: 'recent', page: page, anime: true);
+  Future<List<MediaItem>> getTopAnime({int page = 1}) async => _discoverKind(kind: 'tv', catalog: 'top_rated', page: page, anime: true);
+
+  static const List<PersonRef> _fallbackPopularPeople = [
+    PersonRef(id: 78749, source: PersonSource.tmdb, name: 'Hrithik Roshan', photo: 'https://image.tmdb.org/t/p/w185/747r8B1F8U5gB4x7l7fD0y8a7U7.jpg'),
+    PersonRef(id: 1108847, source: PersonSource.tmdb, name: 'Alia Bhatt', photo: 'https://image.tmdb.org/t/p/w185/87rK5k8D2c9M1d1r5p8f7r0y8a7.jpg'),
+    PersonRef(id: 2037, source: PersonSource.tmdb, name: 'Cillian Murphy', photo: 'https://image.tmdb.org/t/p/w185/360Rfrng2ipA285529712952136.jpg'),
+    PersonRef(id: 6384, source: PersonSource.tmdb, name: 'Keanu Reeves', photo: 'https://image.tmdb.org/t/p/w185/4D0PpNI0kmP58hgrwGC3UBTVYP.jpg'),
+    PersonRef(id: 525, source: PersonSource.tmdb, name: 'Christopher Nolan', photo: 'https://image.tmdb.org/t/p/w185/xuAIuYSmsUzKlUMBFGVZaWsY3Z5.jpg'),
+  ];
+
+  Future<List<PersonRef>> getPopularPeople({int page = 1}) async {
+    try {
+      final res = await _dio.get<dynamic>(
+        '${Tmdb.base}/person/popular',
+        queryParameters: {'page': page},
+        options: Options(receiveTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 12)),
+      );
+      final raw = res.data;
+      if (raw is! Map || raw['results'] is! List) return _fallbackPopularPeople;
+      final results = raw['results'] as List;
+      final out = <PersonRef>[];
+      for (final r in results) {
+        if (r is! Map) continue;
+        final id = (r['id'] as num?)?.toInt();
+        final name = r['name']?.toString() ?? '';
+        final path = r['profile_path']?.toString();
+        if (id != null && id > 0 && name.isNotEmpty) {
+          final photo = (path != null && path.isNotEmpty)
+              ? 'https://image.tmdb.org/t/p/w185$path'
+              : null;
+          out.add(PersonRef(
+            id: id,
+            source: PersonSource.tmdb,
+            name: name,
+            photo: photo,
+          ));
+        }
+      }
+      if (out.isNotEmpty) return out;
+    } catch (_) {}
+    return _fallbackPopularPeople;
   }
 
   List<HomeSection>? _homeCache;

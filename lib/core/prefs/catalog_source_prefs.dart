@@ -147,4 +147,14 @@ class CatalogSourcePrefs extends ChangeNotifier {
     await _box.put(_hideProviderSwitcherKey, value);
     notifyListeners();
   }
+
+  static const String _newDiscoverPageKey = 'new_discover_page';
+
+  bool get newDiscoverPage =>
+      _box.get(_newDiscoverPageKey, defaultValue: true) as bool;
+
+  Future<void> setNewDiscoverPage(bool value) async {
+    await _box.put(_newDiscoverPageKey, value);
+    notifyListeners();
+  }
 }

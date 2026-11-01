@@ -930,7 +930,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: 'Catalog source',
         subtitle: 'Home and Search catalog',
         keywords: 'catalog source home search tmdb theporndb provider mixed',
-        trailing: _value(sl<CatalogSourcePrefs>().source.label),
+        trailing: _value(sl.isRegistered<CatalogSourcePrefs>()
+            ? sl<CatalogSourcePrefs>().source.label
+            : 'TMDB'),
         onTap: _pickCatalogSource,
       ),
       _SettingsEntry(
@@ -948,10 +950,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         subtitle: 'Filter older performers (50+) and male/gay content on ThePornDB',
         keywords: 'theporndb filter mature old gay trans adult catalog content',
         trailing: Switch.adaptive(
-          value: sl<CatalogSourcePrefs>().tpdbFilterOldAndGay,
+          value: sl.isRegistered<CatalogSourcePrefs>()
+              ? sl<CatalogSourcePrefs>().tpdbFilterOldAndGay
+              : true,
           activeThumbColor: AppColors.accent,
           onChanged: (v) async {
-            await sl<CatalogSourcePrefs>().setTpdbFilterOldAndGay(v);
+            if (sl.isRegistered<CatalogSourcePrefs>()) {
+              await sl<CatalogSourcePrefs>().setTpdbFilterOldAndGay(v);
+            }
             if (mounted) setState(() {});
           },
         ),
@@ -963,13 +969,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
         subtitle: 'Hide top-right circle on home screen to switch provider',
         keywords: 'hide provider switcher circle button top right home interface',
         trailing: Switch.adaptive(
-          value: sl<CatalogSourcePrefs>().hideProviderSwitcher,
+          value: sl.isRegistered<CatalogSourcePrefs>()
+              ? sl<CatalogSourcePrefs>().hideProviderSwitcher
+              : false,
           activeThumbColor: AppColors.accent,
           onChanged: (v) async {
-            await sl<CatalogSourcePrefs>().setHideProviderSwitcher(v);
+            if (sl.isRegistered<CatalogSourcePrefs>()) {
+              await sl<CatalogSourcePrefs>().setHideProviderSwitcher(v);
+            }
             if (mounted) setState(() {});
           },
         ),
+      ),
+      _SettingsEntry(
+        section: 'Interface',
+        icon: Icons.explore_outlined,
+        title: 'New Discover page',
+        subtitle: 'Modern discover layout with curated categories',
+        keywords: 'new discover page layout modern curated categories interface search explore',
+        trailing: Switch.adaptive(
+          value: sl.isRegistered<CatalogSourcePrefs>()
+              ? sl<CatalogSourcePrefs>().newDiscoverPage
+              : true,
+          activeThumbColor: AppColors.accent,
+          onChanged: (v) async {
+            if (sl.isRegistered<CatalogSourcePrefs>()) {
+              await sl<CatalogSourcePrefs>().setNewDiscoverPage(v);
+            }
+            if (mounted) setState(() {});
+          },
+        ),
+        onTap: () async {
+          if (sl.isRegistered<CatalogSourcePrefs>()) {
+            final current = sl<CatalogSourcePrefs>().newDiscoverPage;
+            await sl<CatalogSourcePrefs>().setNewDiscoverPage(!current);
+          }
+          if (mounted) setState(() {});
+        },
       ),
       _SettingsEntry(
         section: 'Interface',
