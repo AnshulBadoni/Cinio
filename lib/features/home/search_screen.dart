@@ -25,6 +25,7 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/playback/list_status_store.dart';
 import '../../core/models/watch_status.dart';
+import '../../core/metadata/favorite_people_store.dart';
 import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
@@ -609,9 +610,11 @@ class _SearchViewState extends State<_SearchView>
     if (useNewDiscover) {
       final isDiscoverMode = !_isSearching && query.trim().isEmpty;
       final materialThemeBg = Color.lerp(
-        ThemeController.materialYou ? AppColors.surface2 : const Color(0xFF221C1A),
+        ThemeController.materialYou
+            ? Color.lerp(AppColors.bg, AppColors.surface, 0.40)!
+            : const Color(0xFF161211),
         AppColors.accent,
-        0.08,
+        0.05,
       )!;
 
       return PopScope(
@@ -666,7 +669,8 @@ class _SearchViewState extends State<_SearchView>
                           Navigator.maybePop(context);
                         }
                       },
-                      onTapItem: _openDetail,
+                      onTapItem: (item, {heroTag}) =>
+                          _openDetail(item, heroTag: heroTag),
                       onLongPressItem: (item, heroTag) =>
                           _showQuickActions(item, heroTag: heroTag),
                       onTapPerson: (person) =>
@@ -795,24 +799,6 @@ class _SearchViewState extends State<_SearchView>
                                   : 16),
                           child: Row(
                             children: [
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.arrow_back_ios_new_rounded,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _isSearching = false;
-                                    _controller.clear();
-                                  });
-                                  dockHiddenBySearch.value = false;
-                                  _focusNode.unfocus();
-                                  context.read<SearchBloc>().add(const SearchQueryChanged(''));
-                                },
-                                tooltip: 'Back',
-                              ),
-                              const SizedBox(width: 4),
                               Expanded(
                                 child: _buildBottomSearchInputField(materialThemeBg),
                               ),
@@ -1069,7 +1055,7 @@ class _SearchViewState extends State<_SearchView>
               ),
               cursorColor: AppColors.accent,
               decoration: InputDecoration(
-                hintText: 'Search movies, series, anime...',
+                hintText: 'Search',
                 hintStyle: TextStyle(
                   color: unselectedColor.withValues(alpha: 0.7),
                   fontSize: 14.5,
@@ -1106,10 +1092,49 @@ class _SearchViewState extends State<_SearchView>
 
   Widget _newDiscoverSearchIdle() {
     final recent = _history.recent();
-    if (recent.isNotEmpty) {
-      return ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        children: [
+    final List<HistoryEntry> recentHistory = sl.isRegistered<WatchHistory>()
+        ? sl<WatchHistory>().recent(limit: 12)
+        : [];
+    final List<PersonRef> favoritePeople = sl.isRegistered<FavoritePeopleStore>()
+        ? sl<FavoritePeopleStore>().allFavorites()
+        : [];
+
+    if (recent.isEmpty && recentHistory.isEmpty && favoritePeople.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.search_rounded,
+              size: 48,
+              color: Colors.white.withValues(alpha: 0.25),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Search',
+              style: AppText.headline.copyWith(
+                color: Colors.white70,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Type to start searching movies, series, anime, actors...',
+              style: AppText.caption.copyWith(
+                color: Colors.white38,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      children: [
+        if (recent.isNotEmpty) ...[
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1127,8 +1152,7 @@ class _SearchViewState extends State<_SearchView>
                   if (mounted) setState(() {});
                 },
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                   child: Text(
                     'Clear all',
                     style: AppText.caption.copyWith(
@@ -1141,7 +1165,7 @@ class _SearchViewState extends State<_SearchView>
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -1176,37 +1200,147 @@ class _SearchViewState extends State<_SearchView>
               );
             }).toList(),
           ),
+          const SizedBox(height: 20),
         ],
-      );
-    }
 
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.search_rounded,
-            size: 48,
-            color: Colors.white.withValues(alpha: 0.25),
-          ),
-          const SizedBox(height: 12),
+        if (recentHistory.isNotEmpty) ...[
           Text(
-            'Search movies, series, actors...',
-            style: AppText.headline.copyWith(
-              color: Colors.white70,
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Type above to start searching',
+            'Recently watched',
             style: AppText.caption.copyWith(
-              color: Colors.white38,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
               fontSize: 13,
             ),
           ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 190,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: recentHistory.length,
+              itemBuilder: (context, index) {
+                final entry = recentHistory[index];
+                final item = MediaItem(
+                  id: entry.showId,
+                  sourceId: entry.sourceId,
+                  title: entry.showTitle,
+                  url: entry.showUrl,
+                  cover: entry.cover,
+                  coverHeaders: entry.coverHeaders,
+                  type: entry.type,
+                );
+                final heroTag = 'search:recent:$index:${entry.showId}';
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: SizedBox(
+                    width: 110,
+                    child: PosterCard(
+                      title: item.title,
+                      imageUrl: item.cover,
+                      headers: item.coverHeaders,
+                      cellWidth: 110,
+                      qualityBadge: item.quality,
+                      dubBadge: item.dubBadge,
+                      heroTag: heroTag,
+                      onTap: () => _openDetail(item, heroTag: heroTag),
+                      onLongPress: () => _showQuickActions(item, heroTag: heroTag),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 20),
         ],
-      ),
+
+        if (favoritePeople.isNotEmpty) ...[
+          Text(
+            'Favorite actors',
+            style: AppText.caption.copyWith(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 120,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: favoritePeople.length,
+              itemBuilder: (context, index) {
+                final person = favoritePeople[index];
+                final heroTag = 'search:person:$index:${person.id}:${person.name}';
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).push(PersonPage.route(person, heroTag: heroTag)),
+                    behavior: HitTestBehavior.opaque,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Hero(
+                          tag: heroTag,
+                          child: Container(
+                            width: 72,
+                            height: 72,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Color(0x33000000),
+                                  blurRadius: 6,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: ClipOval(
+                              child: person.photo != null && person.photo!.isNotEmpty
+                                  ? CachedNetworkImage(
+                                      imageUrl: person.photo!,
+                                      fit: BoxFit.cover,
+                                      cacheManager: AppImageCache.cacheManagerOrDefault,
+                                      errorWidget: (_, _, _) => Container(
+                                        color: AppColors.surface2,
+                                        child: const Icon(Icons.person_rounded, color: AppColors.textTertiary, size: 28),
+                                      ),
+                                    )
+                                  : Container(
+                                      color: AppColors.surface2,
+                                      child: const Icon(Icons.person_rounded, color: AppColors.textTertiary, size: 28),
+                                    ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          width: 74,
+                          child: Text(
+                            person.name,
+                            style: AppText.caption.copyWith(
+                              color: Colors.white,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ],
     );
   }
 

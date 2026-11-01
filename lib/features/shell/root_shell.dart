@@ -395,28 +395,16 @@ class _FloatingDock extends StatelessWidget {
         );
         final navPrefs = sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : null;
         final isPixel = navPrefs?.pixelNavbar ?? false;
-
-        final DockTab? detachedTab;
-        if (isPixel) {
-          if (tabs.contains(DockTab.search)) {
-            detachedTab = DockTab.search;
-          } else if (tabs.contains(DockTab.profile)) {
-            detachedTab = DockTab.profile;
-          } else {
-            detachedTab = null;
-          }
-        } else {
-          final separateProfile = navPrefs?.separateProfile ?? true;
-          detachedTab = (separateProfile && tabs.contains(DockTab.profile))
-              ? DockTab.profile
-              : null;
-        }
+        final separateProfile = isPixel || (navPrefs?.separateProfile ?? true);
+        final detachedTab = (separateProfile && tabs.contains(DockTab.profile))
+            ? DockTab.profile
+            : null;
 
         // Proportions: in Pixel mode height does not shrink on scroll
         final height = isPixel ? 56.0 : (58.0 - (14.0 * t));
         final radius = height / 2;
 
-        final expandedWidth = (screenWidth * 0.92).clamp(290.0, 520.0);
+        final expandedWidth = (screenWidth * 0.82).clamp(260.0, 460.0);
         final compactWidth = (screenWidth * 0.66).clamp(230.0, 360.0);
         final totalWidth = isPixel
             ? expandedWidth
@@ -459,9 +447,11 @@ class _FloatingDock extends StatelessWidget {
         }) {
           if (isPixel) {
             final containerBg = Color.lerp(
-              ThemeController.materialYou ? AppColors.surface2 : const Color(0xFF221C1A),
+              ThemeController.materialYou
+                  ? Color.lerp(AppColors.bg, AppColors.surface, 0.40)!
+                  : const Color(0xFF161211),
               AppColors.accent,
-              0.08,
+              0.05,
             )!;
             return Container(
               width: pillWidth,
@@ -568,17 +558,19 @@ class _DetachedCircle extends StatelessWidget {
 
     if (isPixel) {
       final containerBg = Color.lerp(
-        ThemeController.materialYou ? AppColors.surface2 : const Color(0xFF221C1A),
+        ThemeController.materialYou
+            ? Color.lerp(AppColors.bg, AppColors.surface, 0.40)!
+            : const Color(0xFF161211),
         AppColors.accent,
-        0.08,
+        0.05,
       )!;
-      final selectedColor = Color.lerp(Colors.white, AppColors.accent, 0.35)!;
+      final selectedColor = Color.lerp(Colors.white, AppColors.accent, 0.30)!;
       final unselectedColor = Color.lerp(
         const Color(0xFFDEC5BF),
         AppColors.accent,
-        0.12,
+        0.10,
       )!;
-      final activeIndicatorBg = Color.lerp(containerBg, AppColors.accent, 0.38)!;
+      final activeIndicatorBg = Color.lerp(containerBg, AppColors.accent, 0.32)!;
 
       Widget circleChild;
       if (tab == DockTab.profile) {
@@ -885,16 +877,18 @@ class _PixelDockItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final containerBg = Color.lerp(
-      ThemeController.materialYou ? AppColors.surface2 : const Color(0xFF221C1A),
+      ThemeController.materialYou
+          ? Color.lerp(AppColors.bg, AppColors.surface, 0.40)!
+          : const Color(0xFF161211),
       AppColors.accent,
-      0.08,
+      0.05,
     )!;
-    final activeColor = Color.lerp(containerBg, AppColors.accent, 0.38)!;
-    final selectedTextColor = Color.lerp(Colors.white, AppColors.accent, 0.35)!;
+    final activeColor = Color.lerp(containerBg, AppColors.accent, 0.32)!;
+    final selectedTextColor = Color.lerp(Colors.white, AppColors.accent, 0.30)!;
     final unselectedColor = Color.lerp(
       const Color(0xFFDEC5BF),
       AppColors.accent,
-      0.12,
+      0.10,
     )!;
 
     final iconWidget = HugeIcon(
