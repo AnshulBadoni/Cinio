@@ -733,6 +733,12 @@ class SourceRepository {
     final List<String> candidates;
     if (isTpdb) {
       candidates = adultSources.isNotEmpty ? adultSources : allCandidates;
+      final tpdbIdx = candidates.indexWhere((id) =>
+          id.toLowerCase().contains('theporndb') || id.toLowerCase().contains('tpdb'));
+      if (tpdbIdx != -1) {
+        final tpdb = candidates.removeAt(tpdbIdx);
+        candidates.insert(0, tpdb);
+      }
     } else {
       candidates = [...nonAdultSources, ...adultSources];
     }

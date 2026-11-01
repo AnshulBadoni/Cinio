@@ -181,7 +181,11 @@ class _DownloadStreamPickerPageState extends State<DownloadStreamPickerPage> {
           }
 
           if (isTpdb) {
-            // Himeros first for TPDB
+            // ThePornDB Discovery first for TPDB
+            if (idLower.contains('theporndb') || nameLower.contains('theporndb') || idLower.contains('tpdb') || nameLower.contains('tpdb')) {
+              return -95;
+            }
+            // Himeros next for TPDB
             if (idLower.contains('himeros') || nameLower.contains('himeros')) {
               return -90;
             }
