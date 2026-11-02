@@ -640,6 +640,7 @@ class _SearchViewState extends State<_SearchView>
         child: Scaffold(
           backgroundColor: AppColors.bg,
           resizeToAvoidBottomInset: false,
+          extendBody: true,
           body: AnimatedSwitcher(
             duration: const Duration(milliseconds: 280),
             switchInCurve: Curves.easeOutCubic,

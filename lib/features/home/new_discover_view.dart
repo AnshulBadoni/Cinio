@@ -13,16 +13,12 @@ import '../../core/metadata/title_logo_service.dart';
 import '../../core/metadata/tmdb_discover_service.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/person.dart';
-import '../../core/models/provider_info.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/prefs/catalog_source_prefs.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/theme/theme_controller.dart';
-import '../../core/ui/content_row.dart';
 import '../../core/ui/native_cover_provider.dart';
-import '../../core/ui/poster_card.dart';
 import '../../core/ui/source_switcher.dart';
 import '../people/see_all_actors_screen.dart';
 import '../search/bloc/search_bloc.dart';
@@ -591,6 +587,8 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
     }
   }
 
+
+
   Future<void> _loadMorePopular() async {
     if (_loadingMorePopular || _tpdb == null) return;
     setState(() => _loadingMorePopular = true);
@@ -664,210 +662,228 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.paddingOf(context).top;
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final view = View.of(context);
+    final viewPadding = MediaQueryData.fromView(view).padding;
+    final mq = MediaQuery.of(context);
+    final topPadding = math.max(mq.padding.top, viewPadding.top);
+    final bottomInset = math.max(mq.padding.bottom, viewPadding.bottom);
     // Navbar height is 58.0; navbar bottom margin is (bottomInset > 0 ? bottomInset + 4 : 12.0)
-    final dockBottom = (bottomInset > 0 ? bottomInset + 4 : 12.0) + 58.0 + 8.0;
+    final dockBottom = (bottomInset > 0 ? bottomInset + 4 : 12.0) + 58.0 + 12.0;
 
-    return Stack(
-      children: [
-        // Top right moving ambient radial glow matching mockup
-        Positioned.fill(
-          child: IgnorePointer(
-            child: AnimatedBuilder(
-              animation: _gradientAnimCtrl,
-              builder: (context, _) {
-                final t = _gradientAnimCtrl.value;
-                final center = Alignment(
-                  0.80 + 0.12 * math.sin(t * math.pi),
-                  -0.95 + 0.08 * math.cos(t * math.pi),
-                );
-                return Container(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: center,
-                      radius: 1.35,
-                      colors: [
-                        AppColors.accent.withValues(alpha: 0.45),
-                        AppColors.accent.withValues(alpha: 0.22),
-                        AppColors.accent.withValues(alpha: 0.06),
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.35, 0.65, 1.0],
+    return ValueListenableBuilder<int>(
+      valueListenable: PlaybackPrefs.hideTitlesRevision,
+      builder: (context, _, __) {
+        return ValueListenableBuilder<int>(
+          valueListenable: PlaybackPrefs.peopleCardStyleRevision,
+          builder: (context, _, __) {
+            final playbackPrefs = sl.isRegistered<PlaybackPrefs>() ? sl<PlaybackPrefs>() : null;
+            final hideTitles = playbackPrefs?.hideTitles ?? false;
+            final peopleSquare = (playbackPrefs?.peopleCardStyle ?? 'circle') == 'square';
+
+            return Stack(
+              children: [
+                // Top right moving ambient radial glow matching mockup
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _gradientAnimCtrl,
+                      builder: (context, _) {
+                        final t = _gradientAnimCtrl.value;
+                        final center = Alignment(
+                          0.80 + 0.12 * math.sin(t * math.pi),
+                          -0.95 + 0.08 * math.cos(t * math.pi),
+                        );
+                        return Container(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: center,
+                              radius: 1.35,
+                              colors: [
+                                AppColors.accent.withValues(alpha: 0.45),
+                                AppColors.accent.withValues(alpha: 0.22),
+                                AppColors.accent.withValues(alpha: 0.06),
+                                Colors.transparent,
+                              ],
+                              stops: const [0.0, 0.35, 0.65, 1.0],
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
-                );
-              },
-            ),
-          ),
-        ),
+                ),
 
-        CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(child: SizedBox(height: topPadding + 8)),
-            SliverToBoxAdapter(child: _buildHeader()),
-            if (_selectedCategory == 'All') ...[
-              // 1. New Releases
-              SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  title: 'New Releases',
-                  onSeeAll: () => widget.onOpenSeeAll(
-                    'New Releases',
-                    _bannerItems.isNotEmpty ? _bannerItems : _movies,
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _buildNewReleasesSection(),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                CustomScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(child: SizedBox(height: topPadding + 8)),
+                    SliverToBoxAdapter(child: _buildHeader()),
+                    if (_selectedCategory == 'All') ...[
+                      // 1. New Releases
+                      SliverToBoxAdapter(
+                        child: _buildSectionHeader(
+                          title: 'New Releases',
+                          onSeeAll: () => widget.onOpenSeeAll(
+                            'New Releases',
+                            _bannerItems.isNotEmpty ? _bannerItems : _movies,
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildNewReleasesSection(),
+                      ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 14)),
 
-              // 2. From Providers
-              SliverToBoxAdapter(
-                child: _buildFromProvidersHeader(),
-              ),
-              SliverToBoxAdapter(
-                child: _buildFromProvidersSection(),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                      // 2. From Providers
+                      SliverToBoxAdapter(
+                        child: _buildFromProvidersHeader(),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildFromProvidersSection(),
+                      ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 14)),
 
-              // 3. Editor's Picks
-              SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  title: "Editor's Picks",
-                  onSeeAll: () => widget.onOpenSeeAll(
-                    "Editor's Picks",
-                    _editorsPicksItems,
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _buildEditorsPicksSection(),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                      // 3. Editor's Picks
+                      SliverToBoxAdapter(
+                        child: _buildSectionHeader(
+                          title: "Editor's Picks",
+                          onSeeAll: () => widget.onOpenSeeAll(
+                            "Editor's Picks",
+                            _editorsPicksItems,
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildEditorsPicksSection(),
+                      ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 14)),
 
-              // 4. Trending Actors
-              SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  title: _isTpdb ? 'Trending Performers' : 'Trending Actors',
-                  onSeeAll: () => _openSeeAllActors(),
+                      // 4. Trending Actors
+                      SliverToBoxAdapter(
+                        child: _buildSectionHeader(
+                          title: _isTpdb ? 'Trending Performers' : 'Trending Actors',
+                          onSeeAll: () => _openSeeAllActors(),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildTrendingActorsSection(hideTitles: hideTitles, square: peopleSquare),
+                      ),
+                    ] else if (_selectedCategory == 'Movies') ...[
+                      SliverToBoxAdapter(
+                        child: _buildSectionHeader(
+                          title: 'New Releases',
+                          onSeeAll: () => widget.onOpenSeeAll(
+                            'New Releases',
+                            _bannerItems.isNotEmpty ? _bannerItems : _movies,
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildNewReleasesSection(),
+                      ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                      SliverToBoxAdapter(
+                        child: _buildSectionHeader(
+                          title: 'Popular Movies',
+                          onSeeAll: () => widget.onOpenSeeAll(
+                            'Popular Movies',
+                            _movies,
+                            onLoadMore: _isMixed ? null : (p) => _tmdb.getTrendingMovies(page: p),
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildMediaRow(_movies, 'discover:movies', onLoadMore: _loadMoreMovies),
+                      ),
+                    ] else if (_selectedCategory == 'Series') ...[
+                      SliverToBoxAdapter(
+                        child: _buildSectionHeader(
+                          title: 'Popular Series',
+                          onSeeAll: () => widget.onOpenSeeAll(
+                            'Popular Series',
+                            _series,
+                            onLoadMore: (p) => _tmdb.getPopularSeries(page: p),
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildEditorsPicksSection(),
+                      ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                      SliverToBoxAdapter(
+                        child: _buildSectionHeader(
+                          title: 'All Series',
+                          onSeeAll: () => widget.onOpenSeeAll('All Series', _series),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildMediaRow(_series, 'discover:series', onLoadMore: _loadMoreSeries),
+                      ),
+                    ] else if (_selectedCategory == 'Anime') ...[
+                      SliverToBoxAdapter(
+                        child: _buildSectionHeader(
+                          title: 'Popular Anime',
+                          onSeeAll: () => widget.onOpenSeeAll(
+                            'Popular Anime',
+                            _anime,
+                            onLoadMore: (p) => _tmdb.getPopularAnime(page: p),
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildMediaRow(_anime, 'discover:anime', onLoadMore: _loadMoreAnime),
+                      ),
+                    ] else if (_selectedCategory == 'Actors' || _selectedCategory == 'Performers') ...[
+                      SliverToBoxAdapter(
+                        child: _buildSectionHeader(
+                          title: _isTpdb ? 'Trending Performers' : 'Trending Actors',
+                          onSeeAll: () => _openSeeAllActors(),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildTrendingActorsSection(hideTitles: hideTitles, square: peopleSquare),
+                      ),
+                    ] else if (_selectedCategory == 'Scenes') ...[
+                      SliverToBoxAdapter(
+                        child: _buildSectionHeader(
+                          title: 'Trending Scenes',
+                          onSeeAll: () => widget.onOpenSeeAll(
+                            'Trending Scenes',
+                            _trendingScenes,
+                            onLoadMore: (p) => _tpdb?.trendingMovies(page: p) ?? Future.value([]),
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildMediaRow(_trendingScenes, 'discover:tpdb:trending', onLoadMore: _loadMoreTrending),
+                      ),
+                    ],
+                    // Bottom padding so content scrolls clear of both floating search pill and navbar dock
+                    SliverToBoxAdapter(child: SizedBox(height: 160 + bottomInset)),
+                  ],
                 ),
-              ),
-              SliverToBoxAdapter(
-                child: _buildTrendingActorsSection(),
-              ),
-            ] else if (_selectedCategory == 'Movies') ...[
-              SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  title: 'New Releases',
-                  onSeeAll: () => widget.onOpenSeeAll(
-                    'New Releases',
-                    _bannerItems.isNotEmpty ? _bannerItems : _movies,
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _buildNewReleasesSection(),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 14)),
-              SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  title: 'Popular Movies',
-                  onSeeAll: () => widget.onOpenSeeAll(
-                    'Popular Movies',
-                    _movies,
-                    onLoadMore: _isMixed ? null : (p) => _tmdb.getTrendingMovies(page: p),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _buildMediaRow(_movies, 'discover:movies', onLoadMore: _loadMoreMovies),
-              ),
-            ] else if (_selectedCategory == 'Series') ...[
-              SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  title: 'Popular Series',
-                  onSeeAll: () => widget.onOpenSeeAll(
-                    'Popular Series',
-                    _series,
-                    onLoadMore: (p) => _tmdb.getPopularSeries(page: p),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _buildEditorsPicksSection(),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 14)),
-              SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  title: 'All Series',
-                  onSeeAll: () => widget.onOpenSeeAll('All Series', _series),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _buildMediaRow(_series, 'discover:series', onLoadMore: _loadMoreSeries),
-              ),
-            ] else if (_selectedCategory == 'Anime') ...[
-              SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  title: 'Popular Anime',
-                  onSeeAll: () => widget.onOpenSeeAll(
-                    'Popular Anime',
-                    _anime,
-                    onLoadMore: (p) => _tmdb.getPopularAnime(page: p),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _buildMediaRow(_anime, 'discover:anime', onLoadMore: _loadMoreAnime),
-              ),
-            ] else if (_selectedCategory == 'Actors' || _selectedCategory == 'Performers') ...[
-              SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  title: _isTpdb ? 'Trending Performers' : 'Trending Actors',
-                  onSeeAll: () => _openSeeAllActors(),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _buildTrendingActorsSection(),
-              ),
-            ] else if (_selectedCategory == 'Scenes') ...[
-              SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                  title: 'Trending Scenes',
-                  onSeeAll: () => widget.onOpenSeeAll(
-                    'Trending Scenes',
-                    _trendingScenes,
-                    onLoadMore: (p) => _tpdb?.trendingMovies(page: p) ?? Future.value([]),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _buildMediaRow(_trendingScenes, 'discover:tpdb:trending', onLoadMore: _loadMoreTrending),
-              ),
-            ],
-            // Bottom padding so content scrolls clear of both floating search pill and navbar dock
-            SliverToBoxAdapter(child: SizedBox(height: 160 + bottomInset)),
-          ],
-        ),
 
-        // Bottom Floating Search Bar Pill + Filter Toggle (Fixed above navbar)
-        Positioned(
-          left: 16,
-          right: 16,
-          bottom: dockBottom,
-          child: Row(
-            children: [
-              Expanded(child: _buildFloatingSearchBar()),
-              const SizedBox(width: 12),
-              _buildFloatingFilterButton(),
-            ],
-          ),
-        ),
-      ],
+                // Bottom Floating Search Bar Pill + Filter Toggle (Fixed above navbar)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: dockBottom,
+                  child: Row(
+                    children: [
+                      Expanded(child: _buildFloatingSearchBar()),
+                      const SizedBox(width: 12),
+                      _buildFloatingFilterButton(),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
+
   Widget _buildHeader() {
     final categories = _isTpdb ? _tpdbCategories : _tmdbCategories;
     final accent = AppColors.accent;
@@ -1008,6 +1024,7 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
             heroTag: heroTag,
             width: 144,
             height: 220,
+            showTitle: false, // Clean poster: NO title overlay on New Releases
             onTap: () => widget.onTapItem(item, heroTag: heroTag),
             onLongPress: () => widget.onLongPressItem?.call(item, heroTag),
           );
@@ -1048,7 +1065,7 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
 
     if (items.isEmpty && _loadingProvider) {
       return const SizedBox(
-        height: 175,
+        height: 215,
         child: Center(
           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
         ),
@@ -1056,7 +1073,8 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
     }
     if (items.isEmpty) return const SizedBox.shrink();
 
-    const rowHeight = 175.0;
+    // Taller uniform row height matching full tall posters without shrinking them
+    const rowHeight = 215.0;
 
     return SizedBox(
       height: rowHeight,
@@ -1070,7 +1088,9 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
           final item = items[index];
           final heroTag = 'discover:providers:$index:${item.id}';
           final isWide = (index % 3 == 0) || (item.heroImage != null && item.heroImage!.isNotEmpty);
-          final cardWidth = isWide ? (rowHeight * 16 / 9).clamp(240.0, 290.0) : (rowHeight * 2 / 3).clamp(112.0, 118.0);
+          final cardWidth = isWide
+              ? (rowHeight * 16 / 9).clamp(320.0, 390.0)
+              : (rowHeight * 2 / 3).roundToDouble();
 
           return _DiscoverCinematicCard(
             item: item,
@@ -1078,6 +1098,8 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
             width: cardWidth,
             height: rowHeight,
             preferHeroImage: isWide,
+            showTitle: true,
+            useOriginalLogo: true, // Uses original movie/series typography
             onTap: () => widget.onTapItem(item, heroTag: heroTag),
             onLongPress: () => widget.onLongPressItem?.call(item, heroTag),
           );
@@ -1091,15 +1113,18 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
 
     if (items.isEmpty) {
       return const SizedBox(
-        height: 140,
+        height: 150,
         child: Center(
           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
         ),
       );
     }
 
+    const rowHeight = 150.0;
+    const cardWidth = 265.0;
+
     return SizedBox(
-      height: 140,
+      height: rowHeight,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         scrollDirection: Axis.horizontal,
@@ -1112,9 +1137,11 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
           return _DiscoverCinematicCard(
             item: item,
             heroTag: heroTag,
-            width: 248,
-            height: 140,
+            width: cardWidth,
+            height: rowHeight,
             preferHeroImage: true,
+            showTitle: true,
+            useOriginalLogo: true, // Uses original movie/series typography
             onTap: () => widget.onTapItem(item, heroTag: heroTag),
             onLongPress: () => widget.onLongPressItem?.call(item, heroTag),
           );
@@ -1123,20 +1150,22 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
     );
   }
 
-  Widget _buildTrendingActorsSection() {
+  Widget _buildTrendingActorsSection({required bool hideTitles, required bool square}) {
     final actors = _actors;
+    final cardHeight = square ? (hideTitles ? 134.0 : 176.0) : (hideTitles ? 124.0 : 166.0);
+    final avatarSize = square ? 130.0 : 118.0;
 
     if (actors.isEmpty) {
-      return const SizedBox(
-        height: 190,
-        child: Center(
+      return SizedBox(
+        height: cardHeight,
+        child: const Center(
           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
         ),
       );
     }
 
     return SizedBox(
-      height: 190,
+      height: cardHeight,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         scrollDirection: Axis.horizontal,
@@ -1149,8 +1178,9 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
           return _TrendingActorCard(
             actor: actor,
             heroTag: heroTag,
-            width: 142,
-            height: 190,
+            avatarSize: avatarSize,
+            square: square,
+            hideTitles: hideTitles,
             onTap: () => widget.onTapPerson(actor),
             onLongPress: () => widget.onLongPressPerson?.call(actor, heroTag),
           );
@@ -1330,7 +1360,7 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Search movies, series, anime...',
+                'Search',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -1377,7 +1407,7 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
 }
 
 /// Modern cinematic card with full image, subtle dark bottom gradient vignette,
-/// and uppercase serif letter-spaced stylized title matching mockup design
+/// and uppercase serif letter-spaced stylized title or original title logo
 class _DiscoverCinematicCard extends StatefulWidget {
   const _DiscoverCinematicCard({
     required this.item,
@@ -1387,6 +1417,8 @@ class _DiscoverCinematicCard extends StatefulWidget {
     required this.onTap,
     this.onLongPress,
     this.preferHeroImage = false,
+    this.showTitle = true,
+    this.useOriginalLogo = false,
   });
 
   final MediaItem item;
@@ -1396,6 +1428,8 @@ class _DiscoverCinematicCard extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final bool preferHeroImage;
+  final bool showTitle;
+  final bool useOriginalLogo;
 
   @override
   State<_DiscoverCinematicCard> createState() => _DiscoverCinematicCardState();
@@ -1403,6 +1437,34 @@ class _DiscoverCinematicCard extends StatefulWidget {
 
 class _DiscoverCinematicCardState extends State<_DiscoverCinematicCard> {
   bool _pressed = false;
+  String? _logoUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.showTitle && widget.useOriginalLogo) {
+      _fetchLogo();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _DiscoverCinematicCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.showTitle && widget.useOriginalLogo && (oldWidget.item.id != widget.item.id || _logoUrl == null)) {
+      _fetchLogo();
+    }
+  }
+
+  Future<void> _fetchLogo() async {
+    final titleLogo = sl.isRegistered<TitleLogoService>() ? sl<TitleLogoService>() : null;
+    if (titleLogo == null) return;
+    try {
+      final logo = await titleLogo.logoFor(widget.item);
+      if (mounted && logo != null && logo.isNotEmpty) {
+        setState(() => _logoUrl = logo);
+      }
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1460,51 +1522,51 @@ class _DiscoverCinematicCardState extends State<_DiscoverCinematicCard> {
                     child: const Icon(Icons.movie_outlined, color: Colors.white24, size: 32),
                   ),
 
-                // Cinematic bottom gradient overlay
-                const Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Color(0x22000000),
-                          Color(0xCC000000),
-                          Color(0xF5000000),
-                        ],
-                        stops: [0.35, 0.55, 0.82, 1.0],
+                if (widget.showTitle) ...[
+                  // Cinematic bottom gradient overlay
+                  const Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Color(0x22000000),
+                            Color(0xCC000000),
+                            Color(0xF5000000),
+                          ],
+                          stops: [0.35, 0.55, 0.82, 1.0],
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                // Uppercase letter-spaced serif title in bottom center
-                Positioned(
-                  left: 10,
-                  right: 10,
-                  bottom: 12,
-                  child: Text(
-                    widget.item.title.toUpperCase(),
-                    maxLines: 2,
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'serif',
-                      color: Colors.white,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 2.0,
-                      shadows: [
-                        Shadow(
-                          color: Color(0xDD000000),
-                          blurRadius: 6,
-                          offset: Offset(0, 2),
+                  // Display official movie/series logo if available, otherwise stylized serif text
+                  if (_logoUrl != null && _logoUrl!.isNotEmpty)
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      bottom: 12,
+                      height: 46,
+                      child: Align(
+                        alignment: Alignment.bottomLeft,
+                        child: CachedNetworkImage(
+                          imageUrl: _logoUrl!,
+                          fit: BoxFit.contain,
+                          alignment: Alignment.bottomLeft,
+                          errorWidget: (_, __, ___) => _buildFallbackTitle(),
                         ),
-                      ],
+                      ),
+                    )
+                  else
+                    Positioned(
+                      left: 10,
+                      right: 10,
+                      bottom: 12,
+                      child: _buildFallbackTitle(),
                     ),
-                  ),
-                ),
+                ],
               ],
             ),
           ),
@@ -1512,23 +1574,48 @@ class _DiscoverCinematicCardState extends State<_DiscoverCinematicCard> {
       ),
     );
   }
+
+  Widget _buildFallbackTitle() {
+    return Text(
+      widget.item.title.toUpperCase(),
+      maxLines: 2,
+      textAlign: TextAlign.center,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        fontFamily: 'serif',
+        color: Colors.white,
+        fontSize: 11.5,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 2.0,
+        shadows: [
+          Shadow(
+            color: Color(0xDD000000),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-/// Actor portrait card with subtle bottom vignette and bold name
+/// Actor card supporting square vs circle preference and hide titles option
 class _TrendingActorCard extends StatefulWidget {
   const _TrendingActorCard({
     required this.actor,
     required this.heroTag,
-    required this.width,
-    required this.height,
+    required this.avatarSize,
+    required this.square,
+    required this.hideTitles,
     required this.onTap,
     this.onLongPress,
   });
 
   final PersonRef actor;
   final String heroTag;
-  final double width;
-  final double height;
+  final double avatarSize;
+  final bool square;
+  final bool hideTitles;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 
@@ -1551,94 +1638,77 @@ class _TrendingActorCardState extends State<_TrendingActorCard> {
       onTapCancel: () => setState(() => _pressed = false),
       behavior: HitTestBehavior.opaque,
       child: AnimatedScale(
-        scale: _pressed ? 0.95 : 1.0,
+        scale: _pressed ? 0.94 : 1.0,
         duration: const Duration(milliseconds: 140),
         curve: Curves.easeOutCubic,
-        child: Container(
-          width: widget.width,
-          height: widget.height,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            color: const Color(0xFF161214),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x55000000),
-                blurRadius: 10,
-                offset: Offset(0, 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Hero(
+              tag: widget.heroTag,
+              child: Container(
+                width: widget.avatarSize,
+                height: widget.avatarSize,
+                decoration: BoxDecoration(
+                  shape: widget.square ? BoxShape.rectangle : BoxShape.circle,
+                  borderRadius: widget.square ? BorderRadius.circular(16) : null,
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x44000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: widget.square
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: _buildAvatarImage(photo),
+                      )
+                    : ClipOval(
+                        child: _buildAvatarImage(photo),
+                      ),
+              ),
+            ),
+            if (!widget.hideTitles) ...[
+              const SizedBox(height: 6),
+              SizedBox(
+                width: widget.avatarSize,
+                child: Text(
+                  widget.actor.name,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.0,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (photo != null && photo.isNotEmpty)
-                  Hero(
-                    tag: widget.heroTag,
-                    child: CachedNetworkImage(
-                      imageUrl: photo,
-                      fit: BoxFit.cover,
-                      cacheManager: AppImageCache.cacheManagerOrDefault,
-                      errorWidget: (_, __, ___) => Container(
-                        color: const Color(0xFF1E1A1D),
-                        child: const Icon(Icons.person_rounded, color: Colors.white24, size: 36),
-                      ),
-                    ),
-                  )
-                else
-                  Container(
-                    color: const Color(0xFF1E1A1D),
-                    child: const Icon(Icons.person_rounded, color: Colors.white24, size: 36),
-                  ),
-
-                // Subtle bottom gradient vignette
-                const Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Color(0x88000000),
-                          Color(0xDD000000),
-                        ],
-                        stops: [0.60, 0.85, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Actor name
-                Positioned(
-                  left: 10,
-                  right: 10,
-                  bottom: 10,
-                  child: Text(
-                    widget.actor.name,
-                    maxLines: 1,
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      shadows: [
-                        Shadow(
-                          color: Color(0xDD000000),
-                          blurRadius: 6,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAvatarImage(String? photo) {
+    if (photo != null && photo.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: photo,
+        fit: BoxFit.cover,
+        cacheManager: AppImageCache.cacheManagerOrDefault,
+        errorWidget: (_, __, ___) => Container(
+          color: const Color(0xFF1E1A1D),
+          child: const Icon(Icons.person_rounded, color: Colors.white24, size: 36),
+        ),
+      );
+    }
+    return Container(
+      color: const Color(0xFF1E1A1D),
+      child: const Icon(Icons.person_rounded, color: Colors.white24, size: 36),
     );
   }
 }
@@ -1669,6 +1739,8 @@ class _DiscoverWiderCard extends StatelessWidget {
       width: width,
       height: height,
       preferHeroImage: true,
+      showTitle: true,
+      useOriginalLogo: true,
       onTap: onTap,
       onLongPress: onLongPress,
     );

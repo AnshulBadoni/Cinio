@@ -593,10 +593,14 @@ class PlaybackPrefs {
   /// does. Note it's the provider's claim, not something we verify.
   /// Home people/cast card presentation: 'circle' or 'square'.
   /// The setting is intentionally independent of the normal poster-card style.
+  static final ValueNotifier<int> peopleCardStyleRevision = ValueNotifier<int>(0);
+
   String get peopleCardStyle =>
       _box.get('peopleCardStyle', defaultValue: 'circle') as String;
-  Future<void> setPeopleCardStyle(String value) =>
-      _box.put('peopleCardStyle', value);
+  Future<void> setPeopleCardStyle(String value) async {
+    await _box.put('peopleCardStyle', value);
+    peopleCardStyleRevision.value++;
+  }
 
   /// Normal Home row card shape: adaptive, poster, or landscape.
   String get homeCardStyle =>
