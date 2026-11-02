@@ -106,6 +106,33 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
   // Banner Carousel items (TMDB / Mixed / TPDB)
   List<MediaItem> _bannerItems = [];
 
+  String _selectedCategory = 'All';
+
+  static const List<String> _tmdbCategories = ['All', 'Movies', 'Series', 'Anime', 'Actors'];
+  static const List<String> _tpdbCategories = ['All', 'Scenes', 'Movies', 'Performers'];
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) {
+      return 'Good morning';
+    } else if (hour < 17) {
+      return 'Good afternoon';
+    } else {
+      return 'Good evening';
+    }
+  }
+
+  List<MediaItem> get _editorsPicksItems {
+    if (_isTpdb) {
+      if (_trendingScenes.isNotEmpty) return _trendingScenes;
+      if (_topRatedScenes.isNotEmpty) return _topRatedScenes;
+      return _popularScenes;
+    }
+    if (_series.isNotEmpty) return _series;
+    if (_anime.isNotEmpty) return _anime;
+    return _movies.skip(3).toList();
+  }
+
   // Provider section
   String _selectedProviderId = '';
   List<({String id, String label, String? repo})> _availableProviders = [];
@@ -642,287 +669,620 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
     // Navbar height is 58.0; navbar bottom margin is (bottomInset > 0 ? bottomInset + 4 : 12.0)
     final dockBottom = (bottomInset > 0 ? bottomInset + 4 : 12.0) + 58.0 + 8.0;
 
-    return ValueListenableBuilder<int>(
-      valueListenable: PlaybackPrefs.hideTitlesRevision,
-      builder: (context, _, _) {
-        final hideTitles = sl<PlaybackPrefs>().hideTitles;
-        final spacing = sl<PlaybackPrefs>().hiddenTitleSpacing;
-        const width = 140.0;
-        final rowHeight = hideTitles ? (width / (2 / 3)) + spacing : 236.0;
+    return Stack(
+      children: [
+        // Top right moving ambient radial glow matching mockup
+        Positioned.fill(
+          child: IgnorePointer(
+            child: AnimatedBuilder(
+              animation: _gradientAnimCtrl,
+              builder: (context, _) {
+                final t = _gradientAnimCtrl.value;
+                final center = Alignment(
+                  0.80 + 0.12 * math.sin(t * math.pi),
+                  -0.95 + 0.08 * math.cos(t * math.pi),
+                );
+                return Container(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: center,
+                      radius: 1.35,
+                      colors: [
+                        AppColors.accent.withValues(alpha: 0.45),
+                        AppColors.accent.withValues(alpha: 0.22),
+                        AppColors.accent.withValues(alpha: 0.06),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.35, 0.65, 1.0],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
 
-        return Stack(
-          children: [
-            // Top moving ambient radial gradient from prominent color of top movie
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _gradientAnimCtrl,
-                  builder: (context, _) {
-                    final t = _gradientAnimCtrl.value;
-                    final center = Alignment(
-                      -1.0 + 0.35 * t,
-                      -1.0 + 0.25 * math.sin(t * math.pi),
-                    );
-                    return Container(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          center: center,
-                          radius: 1.45,
-                          colors: [
-                            _prominentColor.withValues(alpha: 0.50),
-                            _prominentColor.withValues(alpha: 0.25),
-                            _prominentColor.withValues(alpha: 0.08),
-                            Colors.transparent,
-                          ],
-                          stops: const [0.0, 0.32, 0.65, 1.0],
-                        ),
-                      ),
-                    );
-                  },
+        CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(child: SizedBox(height: topPadding + 8)),
+            SliverToBoxAdapter(child: _buildHeader()),
+            if (_selectedCategory == 'All') ...[
+              // 1. New Releases
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  title: 'New Releases',
+                  onSeeAll: () => widget.onOpenSeeAll(
+                    'New Releases',
+                    _bannerItems.isNotEmpty ? _bannerItems : _movies,
+                  ),
                 ),
               ),
-            ),
-
-            CustomScrollView(
-              physics: const BouncingScrollPhysics(),
-              slivers: [
-                SliverToBoxAdapter(child: SizedBox(height: topPadding + 16)),
-                if (_isTpdb) ...[
-                  // TPDB Mode: Popular, Trending, Top Rated, Performers, New Releases
-                  SliverToBoxAdapter(
-                    child: ContentRow(
-                      title: 'Popular',
-                      itemWidth: width,
-                      itemHeight: rowHeight,
-                      itemCount: _popularScenes.length,
-                      onSeeAll: () => widget.onOpenSeeAll(
-                        'Popular',
-                        _popularScenes,
-                        onLoadMore: (p) => _tpdb?.popularMovies(page: p) ?? Future.value([]),
-                      ),
-                      onLoadMore: _loadMorePopular,
-                      isLoadingMore: _loadingMorePopular,
-                      itemBuilder: (c, i) => _buildPosterCard(
-                        _popularScenes[i],
-                        'tpdb:popular:$i:${_popularScenes[i].id}',
-                        width,
-                      ),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                  SliverToBoxAdapter(
-                    child: ContentRow(
-                      title: 'Trending',
-                      itemWidth: width,
-                      itemHeight: rowHeight,
-                      itemCount: _trendingScenes.length,
-                      onSeeAll: () => widget.onOpenSeeAll(
-                        'Trending',
-                        _trendingScenes,
-                        onLoadMore: (p) => _tpdb?.trendingMovies(page: p) ?? Future.value([]),
-                      ),
-                      onLoadMore: _loadMoreTrending,
-                      isLoadingMore: _loadingMoreTrending,
-                      itemBuilder: (c, i) => _buildPosterCard(
-                        _trendingScenes[i],
-                        'tpdb:trending:$i:${_trendingScenes[i].id}',
-                        width,
-                      ),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                  SliverToBoxAdapter(
-                    child: ContentRow(
-                      title: 'Top Rated',
-                      itemWidth: width,
-                      itemHeight: rowHeight,
-                      itemCount: _topRatedScenes.length,
-                      onSeeAll: () => widget.onOpenSeeAll(
-                        'Top Rated',
-                        _topRatedScenes,
-                        onLoadMore: (p) => _tpdb?.topRatedMovies(page: p) ?? Future.value([]),
-                      ),
-                      onLoadMore: _loadMoreTopRated,
-                      isLoadingMore: _loadingMoreTopRated,
-                      itemBuilder: (c, i) => _buildPosterCard(
-                        _topRatedScenes[i],
-                        'tpdb:toprated:$i:${_topRatedScenes[i].id}',
-                        width,
-                      ),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                  SliverToBoxAdapter(
-                    child: _buildActorsSection(hideTitles),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                      child: Text(
-                        'New Releases',
-                        style: AppText.headline.copyWith(
-                          color: const Color(0xFFEDE8E4),
-                          fontSize: 16.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.1,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: _NewReleasesCarousel(
-                      items: _bannerItems,
-                      onTap: (item, {heroTag}) => widget.onTapItem(item, heroTag: heroTag),
-                      onLongPress: widget.onLongPressItem,
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                  SliverToBoxAdapter(
-                    child: _buildProviderSection(hideTitles, rowHeight),
-                  ),
-                ] else ...[
-                  // TMDB & Mixed Mode: Movies, Series, Anime, Actors, New Releases
-                  SliverToBoxAdapter(
-                    child: ContentRow(
-                      title: 'Movies',
-                      itemWidth: width,
-                      itemHeight: rowHeight,
-                      itemCount: _movies.length,
-                      onSeeAll: () => widget.onOpenSeeAll(
-                        'Movies',
-                        _movies,
-                        onLoadMore: _isMixed ? null : (p) => _tmdb.getTrendingMovies(page: p),
-                      ),
-                      onLoadMore: _isMixed ? null : _loadMoreMovies,
-                      isLoadingMore: _loadingMoreMovies,
-                      itemBuilder: (c, i) => _buildPosterCard(
-                        _movies[i],
-                        'discover:movies:$i:${_movies[i].id}',
-                        width,
-                      ),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                  SliverToBoxAdapter(
-                    child: ContentRow(
-                      title: 'Series',
-                      itemWidth: width,
-                      itemHeight: rowHeight,
-                      itemCount: _series.length,
-                      onSeeAll: () => widget.onOpenSeeAll(
-                        'Series',
-                        _series,
-                        onLoadMore: (p) => _tmdb.getPopularSeries(page: p),
-                      ),
-                      onLoadMore: _loadMoreSeries,
-                      isLoadingMore: _loadingMoreSeries,
-                      itemBuilder: (c, i) => _buildPosterCard(
-                        _series[i],
-                        'discover:series:$i:${_series[i].id}',
-                        width,
-                      ),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                  SliverToBoxAdapter(
-                    child: ContentRow(
-                      title: 'Anime',
-                      itemWidth: width,
-                      itemHeight: rowHeight,
-                      itemCount: _anime.length,
-                      onSeeAll: () => widget.onOpenSeeAll(
-                        'Anime',
-                        _anime,
-                        onLoadMore: (p) => _tmdb.getPopularAnime(page: p),
-                      ),
-                      onLoadMore: _loadMoreAnime,
-                      isLoadingMore: _loadingMoreAnime,
-                      itemBuilder: (c, i) => _buildPosterCard(
-                        _anime[i],
-                        'discover:anime:$i:${_anime[i].id}',
-                        width,
-                      ),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                  SliverToBoxAdapter(
-                    child: _buildActorsSection(hideTitles),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                      child: Text(
-                        'New Releases',
-                        style: AppText.headline.copyWith(
-                          color: const Color(0xFFEDE8E4),
-                          fontSize: 16.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.1,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: _NewReleasesCarousel(
-                      items: _bannerItems,
-                      onTap: (item, {heroTag}) => widget.onTapItem(item, heroTag: heroTag),
-                      onLongPress: widget.onLongPressItem,
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                  SliverToBoxAdapter(
-                    child: _buildProviderSection(hideTitles, rowHeight),
-                  ),
-                ],
-                // Bottom padding so content scrolls clear of both floating search pill and navbar dock
-                SliverToBoxAdapter(child: SizedBox(height: 160 + bottomInset)),
-              ],
-            ),
-
-            // Bottom Floating Search Bar Pill + Filter Toggle (Fixed above navbar)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: dockBottom,
-              child: Builder(
-                builder: (context) {
-                  final materialThemeBg = Color.lerp(
-                    ThemeController.materialYou
-                        ? Color.lerp(AppColors.bg, AppColors.surface, 0.40)!
-                        : const Color(0xFF161211),
-                    AppColors.accent,
-                    0.05,
-                  )!;
-                  return Row(
-                    children: [
-                      Expanded(child: _buildFloatingSearchBar(materialThemeBg)),
-                      const SizedBox(width: 10),
-                      _GlassFilterButton(onTap: widget.onOpenFilters, bgColor: materialThemeBg),
-                    ],
-                  );
-                },
+              SliverToBoxAdapter(
+                child: _buildNewReleasesSection(),
               ),
-            ),
+              const SliverToBoxAdapter(child: SizedBox(height: 14)),
+
+              // 2. From Providers
+              SliverToBoxAdapter(
+                child: _buildFromProvidersHeader(),
+              ),
+              SliverToBoxAdapter(
+                child: _buildFromProvidersSection(),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 14)),
+
+              // 3. Editor's Picks
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  title: "Editor's Picks",
+                  onSeeAll: () => widget.onOpenSeeAll(
+                    "Editor's Picks",
+                    _editorsPicksItems,
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _buildEditorsPicksSection(),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 14)),
+
+              // 4. Trending Actors
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  title: _isTpdb ? 'Trending Performers' : 'Trending Actors',
+                  onSeeAll: () => _openSeeAllActors(),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _buildTrendingActorsSection(),
+              ),
+            ] else if (_selectedCategory == 'Movies') ...[
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  title: 'New Releases',
+                  onSeeAll: () => widget.onOpenSeeAll(
+                    'New Releases',
+                    _bannerItems.isNotEmpty ? _bannerItems : _movies,
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _buildNewReleasesSection(),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 14)),
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  title: 'Popular Movies',
+                  onSeeAll: () => widget.onOpenSeeAll(
+                    'Popular Movies',
+                    _movies,
+                    onLoadMore: _isMixed ? null : (p) => _tmdb.getTrendingMovies(page: p),
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _buildMediaRow(_movies, 'discover:movies', onLoadMore: _loadMoreMovies),
+              ),
+            ] else if (_selectedCategory == 'Series') ...[
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  title: 'Popular Series',
+                  onSeeAll: () => widget.onOpenSeeAll(
+                    'Popular Series',
+                    _series,
+                    onLoadMore: (p) => _tmdb.getPopularSeries(page: p),
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _buildEditorsPicksSection(),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 14)),
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  title: 'All Series',
+                  onSeeAll: () => widget.onOpenSeeAll('All Series', _series),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _buildMediaRow(_series, 'discover:series', onLoadMore: _loadMoreSeries),
+              ),
+            ] else if (_selectedCategory == 'Anime') ...[
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  title: 'Popular Anime',
+                  onSeeAll: () => widget.onOpenSeeAll(
+                    'Popular Anime',
+                    _anime,
+                    onLoadMore: (p) => _tmdb.getPopularAnime(page: p),
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _buildMediaRow(_anime, 'discover:anime', onLoadMore: _loadMoreAnime),
+              ),
+            ] else if (_selectedCategory == 'Actors' || _selectedCategory == 'Performers') ...[
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  title: _isTpdb ? 'Trending Performers' : 'Trending Actors',
+                  onSeeAll: () => _openSeeAllActors(),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _buildTrendingActorsSection(),
+              ),
+            ] else if (_selectedCategory == 'Scenes') ...[
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  title: 'Trending Scenes',
+                  onSeeAll: () => widget.onOpenSeeAll(
+                    'Trending Scenes',
+                    _trendingScenes,
+                    onLoadMore: (p) => _tpdb?.trendingMovies(page: p) ?? Future.value([]),
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _buildMediaRow(_trendingScenes, 'discover:tpdb:trending', onLoadMore: _loadMoreTrending),
+              ),
+            ],
+            // Bottom padding so content scrolls clear of both floating search pill and navbar dock
+            SliverToBoxAdapter(child: SizedBox(height: 160 + bottomInset)),
           ],
-        );
-      },
+        ),
+
+        // Bottom Floating Search Bar Pill + Filter Toggle (Fixed above navbar)
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: dockBottom,
+          child: Row(
+            children: [
+              Expanded(child: _buildFloatingSearchBar()),
+              const SizedBox(width: 12),
+              _buildFloatingFilterButton(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+  Widget _buildHeader() {
+    final categories = _isTpdb ? _tpdbCategories : _tmdbCategories;
+    final accent = AppColors.accent;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Discover',
+            style: AppText.display.copyWith(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            _getGreeting(),
+            style: AppText.body.copyWith(
+              color: Colors.white.withValues(alpha: 0.65),
+              fontSize: 14.5,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          const SizedBox(height: 18),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: categories.map((cat) {
+                final isSelected = cat == _selectedCategory;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedCategory = cat),
+                    behavior: HitTestBehavior.opaque,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected ? accent : const Color(0xFF161214),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isSelected ? accent : Colors.white.withValues(alpha: 0.12),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        cat,
+                        style: TextStyle(
+                          color: isSelected ? Colors.black : Colors.white.withValues(alpha: 0.85),
+                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                          fontSize: 13.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildPosterCard(MediaItem item, String heroTag, double width) {
-    return PosterCard(
-      title: item.title,
-      imageUrl: item.cover,
-      headers: item.coverHeaders,
-      cellWidth: width,
-      qualityBadge: item.quality,
-      dubBadge: item.dubBadge,
-      heroTag: heroTag,
-      onTap: () => widget.onTapItem(item, heroTag: heroTag),
-      onLongPress: () => widget.onLongPressItem?.call(item, heroTag),
+  Widget _buildSectionHeader({
+    required String title,
+    required VoidCallback onSeeAll,
+    Widget? action,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: AppText.headline.copyWith(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
+            ),
+          ),
+          if (action != null) ...[
+            action,
+            const SizedBox(width: 8),
+          ],
+          GestureDetector(
+            onTap: onSeeAll,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(
+                Icons.chevron_right_rounded,
+                color: Colors.white.withValues(alpha: 0.70),
+                size: 22,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Widget _buildNewReleasesSection() {
+    final items = _bannerItems.isNotEmpty
+        ? _bannerItems
+        : (_movies.isNotEmpty ? _movies : _trendingScenes);
+
+    if (items.isEmpty) {
+      return const SizedBox(
+        height: 220,
+        child: Center(
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 220,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          final heroTag = 'discover:new_releases:$index:${item.id}';
+          return _DiscoverCinematicCard(
+            item: item,
+            heroTag: heroTag,
+            width: 144,
+            height: 220,
+            onTap: () => widget.onTapItem(item, heroTag: heroTag),
+            onLongPress: () => widget.onLongPressItem?.call(item, heroTag),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFromProvidersHeader() {
+    return _buildSectionHeader(
+      title: 'From Providers',
+      onSeeAll: () {
+        if (_isTpdb) {
+          _openTpdbProviderView(context);
+        } else {
+          widget.onOpenSeeAll('From Providers', _providerItems);
+        }
+      },
+      action: GestureDetector(
+        onTap: () => _openProviderSwitcher(),
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(
+            CupertinoIcons.square_stack_3d_up,
+            color: Colors.white.withValues(alpha: 0.70),
+            size: 20,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFromProvidersSection() {
+    final items = _providerItems.isNotEmpty
+        ? _providerItems
+        : (_trendingScenes.isNotEmpty ? _trendingScenes : _movies);
+
+    if (items.isEmpty && _loadingProvider) {
+      return const SizedBox(
+        height: 175,
+        child: Center(
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
+        ),
+      );
+    }
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    const rowHeight = 175.0;
+
+    return SizedBox(
+      height: rowHeight,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          final heroTag = 'discover:providers:$index:${item.id}';
+          final isWide = (index % 3 == 0) || (item.heroImage != null && item.heroImage!.isNotEmpty);
+          final cardWidth = isWide ? (rowHeight * 16 / 9).clamp(240.0, 290.0) : (rowHeight * 2 / 3).clamp(112.0, 118.0);
+
+          return _DiscoverCinematicCard(
+            item: item,
+            heroTag: heroTag,
+            width: cardWidth,
+            height: rowHeight,
+            preferHeroImage: isWide,
+            onTap: () => widget.onTapItem(item, heroTag: heroTag),
+            onLongPress: () => widget.onLongPressItem?.call(item, heroTag),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEditorsPicksSection() {
+    final items = _editorsPicksItems;
+
+    if (items.isEmpty) {
+      return const SizedBox(
+        height: 140,
+        child: Center(
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 140,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          final heroTag = 'discover:editors_picks:$index:${item.id}';
+          return _DiscoverCinematicCard(
+            item: item,
+            heroTag: heroTag,
+            width: 248,
+            height: 140,
+            preferHeroImage: true,
+            onTap: () => widget.onTapItem(item, heroTag: heroTag),
+            onLongPress: () => widget.onLongPressItem?.call(item, heroTag),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildTrendingActorsSection() {
+    final actors = _actors;
+
+    if (actors.isEmpty) {
+      return const SizedBox(
+        height: 190,
+        child: Center(
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 190,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: actors.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final actor = actors[index];
+          final heroTag = 'discover:actors:$index:${actor.id}';
+          return _TrendingActorCard(
+            actor: actor,
+            heroTag: heroTag,
+            width: 142,
+            height: 190,
+            onTap: () => widget.onTapPerson(actor),
+            onLongPress: () => widget.onLongPressPerson?.call(actor, heroTag),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMediaRow(
+    List<MediaItem> items,
+    String prefix, {
+    VoidCallback? onLoadMore,
+  }) {
+    if (items.isEmpty) {
+      return const SizedBox(
+        height: 190,
+        child: Center(
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 200,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (scrollInfo) {
+          if (onLoadMore != null &&
+              scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
+            onLoadMore();
+          }
+          return false;
+        },
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          itemCount: items.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            final heroTag = '$prefix:$index:${item.id}';
+            return _DiscoverCinematicCard(
+              item: item,
+              heroTag: heroTag,
+              width: 132,
+              height: 200,
+              onTap: () => widget.onTapItem(item, heroTag: heroTag),
+              onLongPress: () => widget.onLongPressItem?.call(item, heroTag),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _openSeeAllActors() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SeeAllActorsScreen(
+          title: _isTpdb ? 'Trending Performers' : 'Trending Actors',
+          initialActors: _actors,
+          onLoadMore: _isTpdb ? null : (p) => _tmdb.getPopularPeople(page: p),
+        ),
+      ),
+    );
+  }
+
+  void _openProviderSwitcher() {
+    if (_isTpdb) {
+      _openTpdbProviderView(context);
+    } else {
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: const Color(0xFF161214),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (ctx) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: Text(
+                      'Select Catalog Source',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const Divider(color: Colors.white12),
+                  ListTile(
+                    leading: const Icon(Icons.movie_outlined, color: Colors.white70),
+                    title: const Text('TMDB (Movies & Series)', style: TextStyle(color: Colors.white)),
+                    trailing: !_isTpdb ? Icon(Icons.check_circle_rounded, color: AppColors.accent) : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      if (_isTpdb) {
+                        _prefs.setSource(CatalogSource.tmdb);
+                        setState(() {
+                          _selectedCategory = 'All';
+                        });
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.explicit_outlined, color: Colors.white70),
+                    title: const Text('ThePornDB', style: TextStyle(color: Colors.white)),
+                    trailing: _isTpdb ? Icon(Icons.check_circle_rounded, color: AppColors.accent) : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      if (!_isTpdb) {
+                        _prefs.setSource(CatalogSource.thePornDb);
+                        setState(() {
+                          _selectedCategory = 'All';
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
   }
 
   void _openTpdbProviderView(BuildContext context) {
@@ -938,253 +1298,20 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
     );
   }
 
-  Widget _buildActorsSection(bool hideTitles) {
-    final square = sl<PlaybackPrefs>().peopleCardStyle == 'square';
-    final cardWidth = square ? 138.0 : 124.0;
-    final cardHeight = hideTitles
-        ? (square ? 132.0 : 122.0)
-        : (square ? 176.0 : 164.0);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Actors',
-                  style: AppText.headline.copyWith(
-                    color: const Color(0xFFEDE8E4),
-                    fontSize: 16.5,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.1,
-                  ),
-                ),
-              ),
-              _GlassChevronButton(
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => SeeAllActorsScreen(
-                      title: _isTpdb ? 'Performers' : 'Actors',
-                      initialActors: _actors,
-                      onLoadMore: _isTpdb
-                          ? (_tpdb != null
-                              ? (page) async {
-                                  final media = await _tpdb!.trendingPerformers(page: page);
-                                  return media
-                                      .map((p) => PersonRef(
-                                            id: 0,
-                                            externalId: p.id.replaceFirst('tpdb:performer:', ''),
-                                            source: PersonSource.thePornDbPerformer,
-                                            name: p.title,
-                                            photo: p.cover,
-                                          ))
-                                      .toList();
-                                }
-                              : null)
-                          : (page) => _tmdb.getPopularPeople(page: page),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(
-          height: cardHeight,
-          child: _actors.isEmpty
-              ? const Center(
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white24),
-                  ),
-                )
-              : ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _actors.length,
-                  itemBuilder: (context, index) {
-                    final actor = _actors[index];
-                    final heroTag = 'discover:actor:$index:${actor.id}:${actor.name}';
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: SizedBox(
-                        width: cardWidth,
-                        child: _DiscoverActorCard(
-                          actor: actor,
-                          square: square,
-                          hideTitles: hideTitles,
-                          heroTag: heroTag,
-                          onTap: () => widget.onTapPerson(actor),
-                          onLongPress: () => widget.onLongPressPerson?.call(actor, heroTag),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildProviderSection(bool hideTitles, double rowHeight) {
-    if (_availableProviders.isEmpty) return const SizedBox.shrink();
-    final currentProvider = _availableProviders.firstWhere(
-      (p) => p.id == _selectedProviderId,
-      orElse: () => _availableProviders.first,
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 12, 10),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  currentProvider.label,
-                  style: AppText.headline.copyWith(
-                    color: const Color(0xFFEDE8E4),
-                    fontSize: 16.5,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.1,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              PopupMenuButton<String>(
-                tooltip: 'Switch provider',
-                icon: const Icon(
-                  Icons.layers_rounded,
-                  color: Color(0xFFB5B0AA),
-                  size: 22,
-                ),
-                color: Color.lerp(
-                  ThemeController.materialYou
-                      ? Color.lerp(AppColors.bg, AppColors.surface, 0.40)!
-                      : const Color(0xFF161211),
-                  AppColors.accent,
-                  0.05,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    width: 0.8,
-                  ),
-                ),
-                initialValue: _selectedProviderId,
-                onSelected: (id) {
-                  if (_selectedProviderId == id) return;
-                  setState(() => _selectedProviderId = id);
-                  _fetchProviderItems(id);
-                },
-                itemBuilder: (context) => [
-                  for (final p in _availableProviders)
-                    PopupMenuItem(
-                      value: p.id,
-                      child: Text(
-                        p.label,
-                        style: TextStyle(
-                          color: p.id == _selectedProviderId
-                              ? AppColors.accent
-                              : Colors.white,
-                          fontWeight: p.id == _selectedProviderId
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          fontSize: 13.5,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        SizedBox(
-          height: rowHeight,
-          child: _loadingProvider
-              ? const Center(
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white24,
-                    ),
-                  ),
-                )
-              : _providerItems.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No content found for ${currentProvider.label}',
-                        style: AppText.caption.copyWith(color: Colors.white38),
-                      ),
-                    )
-                  : ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _providerItems.length,
-                      itemBuilder: (context, index) {
-                        final item = _providerItems[index];
-                        final heroTag = 'discover:provider:$index:${item.id}';
-                        if (item.cover != null && item.cover!.isNotEmpty) {
-                          _resolveImageAspect(item.cover!, item.coverHeaders);
-                        }
-                        final isWide = _isItemWide(item);
-                        final effectiveHeight = rowHeight - (hideTitles ? 0 : 26);
-                        final itemWidth = isWide
-                            ? (effectiveHeight * (16 / 9)).clamp(200.0, 360.0)
-                            : 140.0;
-
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: SizedBox(
-                            width: itemWidth,
-                            height: rowHeight,
-                            child: isWide
-                                ? _DiscoverWiderCard(
-                                    item: item,
-                                    heroTag: heroTag,
-                                    width: itemWidth,
-                                    height: rowHeight,
-                                    onTap: () => widget.onTapItem(item, heroTag: heroTag),
-                                    onLongPress: () => widget.onLongPressItem?.call(item, heroTag),
-                                  )
-                                : _buildPosterCard(item, heroTag, itemWidth),
-                          ),
-                        );
-                      },
-                    ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFloatingSearchBar(Color bg) {
-    final unselectedColor = Color.lerp(
-      const Color(0xFFDEC5BF),
-      AppColors.accent,
-      0.10,
-    )!;
+  Widget _buildFloatingSearchBar() {
     return GestureDetector(
       onTap: widget.onTapSearch,
       behavior: HitTestBehavior.opaque,
       child: Container(
         height: 52,
-        padding: const EdgeInsets.symmetric(horizontal: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(28),
+          color: const Color(0xFF1E1A1D),
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 1,
+          ),
           boxShadow: const [
             BoxShadow(
               color: Color(0x66000000),
@@ -1197,60 +1324,91 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
           children: [
             Icon(
               Icons.search_rounded,
-              color: unselectedColor,
+              color: Colors.white.withValues(alpha: 0.60),
               size: 22,
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Search',
-                style: AppText.body.copyWith(
-                  color: unselectedColor.withValues(alpha: 0.8),
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w500,
+                'Search movies, series, anime...',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.45),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
-            ),
-            Icon(
-              Icons.mic_none_rounded,
-              color: unselectedColor.withValues(alpha: 0.8),
-              size: 22,
             ),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildFloatingFilterButton() {
+    return GestureDetector(
+      onTap: widget.onOpenFilters,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.accent,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.accent.withValues(alpha: 0.35),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: const Center(
+          child: Icon(
+            Icons.tune_rounded,
+            color: Colors.black,
+            size: 22,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-/// Wider landscape 16:9 poster card for TPDB New Releases
-class _DiscoverWiderCard extends StatefulWidget {
-  const _DiscoverWiderCard({
+/// Modern cinematic card with full image, subtle dark bottom gradient vignette,
+/// and uppercase serif letter-spaced stylized title matching mockup design
+class _DiscoverCinematicCard extends StatefulWidget {
+  const _DiscoverCinematicCard({
     required this.item,
     required this.heroTag,
-    required this.onTap,
-    required this.onLongPress,
     required this.width,
     required this.height,
+    required this.onTap,
+    this.onLongPress,
+    this.preferHeroImage = false,
   });
 
   final MediaItem item;
   final String heroTag;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
   final double width;
   final double height;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final bool preferHeroImage;
 
   @override
-  State<_DiscoverWiderCard> createState() => _DiscoverWiderCardState();
+  State<_DiscoverCinematicCard> createState() => _DiscoverCinematicCardState();
 }
 
-class _DiscoverWiderCardState extends State<_DiscoverWiderCard> {
+class _DiscoverCinematicCardState extends State<_DiscoverCinematicCard> {
   bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = widget.item.heroImage ?? widget.item.cover;
+    final imageUrl = widget.preferHeroImage
+        ? (widget.item.heroImage ?? widget.item.cover)
+        : (widget.item.cover ?? widget.item.heroImage);
 
     return GestureDetector(
       onTap: widget.onTap,
@@ -1263,12 +1421,22 @@ class _DiscoverWiderCardState extends State<_DiscoverWiderCard> {
         scale: _pressed ? 0.95 : 1.0,
         duration: const Duration(milliseconds: 140),
         curve: Curves.easeOutCubic,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
-            width: widget.width,
-            height: widget.height,
-            color: const Color(0xFF16161D),
+        child: Container(
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: const Color(0xFF161214),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x55000000),
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -1280,37 +1448,61 @@ class _DiscoverWiderCardState extends State<_DiscoverWiderCard> {
                       httpHeaders: widget.item.coverHeaders,
                       fit: BoxFit.cover,
                       cacheManager: AppImageCache.cacheManagerOrDefault,
-                      errorWidget: (_, _, _) => Container(color: const Color(0xFF1E1E26)),
+                      errorWidget: (_, __, ___) => Container(
+                        color: const Color(0xFF1E1A1D),
+                        child: const Icon(Icons.movie_outlined, color: Colors.white24, size: 32),
+                      ),
                     ),
                   )
                 else
-                  Container(color: const Color(0xFF1E1E26)),
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Color(0xB3000000),
-                      ],
-                      stops: [0.45, 1.0],
+                  Container(
+                    color: const Color(0xFF1E1A1D),
+                    child: const Icon(Icons.movie_outlined, color: Colors.white24, size: 32),
+                  ),
+
+                // Cinematic bottom gradient overlay
+                const Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Color(0x22000000),
+                          Color(0xCC000000),
+                          Color(0xF5000000),
+                        ],
+                        stops: [0.35, 0.55, 0.82, 1.0],
+                      ),
                     ),
                   ),
                 ),
+
+                // Uppercase letter-spaced serif title in bottom center
                 Positioned(
                   left: 10,
-                  bottom: 8,
                   right: 10,
+                  bottom: 12,
                   child: Text(
-                    widget.item.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
+                    widget.item.title.toUpperCase(),
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'serif',
+                      color: Colors.white,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 2.0,
+                      shadows: [
+                        Shadow(
+                          color: Color(0xDD000000),
+                          blurRadius: 6,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -1322,34 +1514,34 @@ class _DiscoverWiderCardState extends State<_DiscoverWiderCard> {
   }
 }
 
-/// Actor card following circle vs square people preference with smooth scale animation
-class _DiscoverActorCard extends StatefulWidget {
-  const _DiscoverActorCard({
+/// Actor portrait card with subtle bottom vignette and bold name
+class _TrendingActorCard extends StatefulWidget {
+  const _TrendingActorCard({
     required this.actor,
-    required this.square,
-    required this.hideTitles,
     required this.heroTag,
+    required this.width,
+    required this.height,
     required this.onTap,
-    required this.onLongPress,
+    this.onLongPress,
   });
 
   final PersonRef actor;
-  final bool square;
-  final bool hideTitles;
   final String heroTag;
+  final double width;
+  final double height;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback? onLongPress;
 
   @override
-  State<_DiscoverActorCard> createState() => _DiscoverActorCardState();
+  State<_TrendingActorCard> createState() => _TrendingActorCardState();
 }
 
-class _DiscoverActorCardState extends State<_DiscoverActorCard> {
+class _TrendingActorCardState extends State<_TrendingActorCard> {
   bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
-    final avatarSize = widget.square ? 130.0 : 118.0;
+    final photo = widget.actor.photo;
 
     return GestureDetector(
       onTap: widget.onTap,
@@ -1359,303 +1551,49 @@ class _DiscoverActorCardState extends State<_DiscoverActorCard> {
       onTapCancel: () => setState(() => _pressed = false),
       behavior: HitTestBehavior.opaque,
       child: AnimatedScale(
-        scale: _pressed ? 0.94 : 1.0,
+        scale: _pressed ? 0.95 : 1.0,
         duration: const Duration(milliseconds: 140),
         curve: Curves.easeOutCubic,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Hero(
-              tag: widget.heroTag,
-              child: Container(
-                width: avatarSize,
-                height: avatarSize,
-                decoration: BoxDecoration(
-                  shape: widget.square ? BoxShape.rectangle : BoxShape.circle,
-                  borderRadius: widget.square ? BorderRadius.circular(16) : null,
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x44000000),
-                      blurRadius: 8,
-                      offset: Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: widget.square
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: _buildAvatarImage(),
-                      )
-                    : ClipOval(
-                        child: _buildAvatarImage(),
-                      ),
-              ),
-            ),
-            if (!widget.hideTitles) ...[
-              const SizedBox(height: 6),
-              Text(
-                widget.actor.name,
-                style: AppText.caption.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12.0,
-                ),
-                maxLines: 2,
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
+        child: Container(
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            color: const Color(0xFF161214),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x55000000),
+                blurRadius: 10,
+                offset: Offset(0, 4),
               ),
             ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAvatarImage() {
-    final photo = widget.actor.photo;
-    if (photo != null && photo.isNotEmpty) {
-      return CachedNetworkImage(
-        imageUrl: photo,
-        fit: BoxFit.cover,
-        cacheManager: AppImageCache.cacheManagerOrDefault,
-        errorWidget: (_, _, _) => Container(
-          color: AppColors.surface2,
-          child: const Icon(Icons.person_rounded, color: AppColors.textTertiary, size: 36),
-        ),
-      );
-    }
-    return Container(
-      color: AppColors.surface2,
-      child: const Icon(Icons.person_rounded, color: AppColors.textTertiary, size: 36),
-    );
-  }
-}
-
-/// Auto-sliding Widescreen New Releases Banner Carousel with Full Card Swiping
-class _NewReleasesCarousel extends StatefulWidget {
-  const _NewReleasesCarousel({
-    required this.items,
-    required this.onTap,
-    this.onLongPress,
-  });
-
-  final List<MediaItem> items;
-  final void Function(MediaItem, {String? heroTag}) onTap;
-  final void Function(MediaItem, String)? onLongPress;
-
-  @override
-  State<_NewReleasesCarousel> createState() => _NewReleasesCarouselState();
-}
-
-class _NewReleasesCarouselState extends State<_NewReleasesCarousel> {
-  late final PageController _pageController;
-  Timer? _timer;
-  int _currentPage = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(viewportFraction: 0.92);
-    _startTimer();
-  }
-
-  void _startTimer() {
-    _timer?.cancel();
-    if (widget.items.length <= 1) return;
-    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (!mounted || !_pageController.hasClients || widget.items.isEmpty) return;
-      final nextPage = (_currentPage + 1) % widget.items.length;
-      _pageController.animateToPage(
-        nextPage,
-        duration: const Duration(milliseconds: 650),
-        curve: Curves.easeInOutCubic,
-      );
-    });
-  }
-
-  @override
-  void didUpdateWidget(covariant _NewReleasesCarousel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.items.length > 1 && (_timer == null || !_timer!.isActive)) {
-      _startTimer();
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final carouselHeight = ((screenWidth - 32) * 9 / 16).clamp(148.0, 196.0);
-
-    if (widget.items.isEmpty) {
-      return Container(
-        height: carouselHeight,
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: AppColors.surface2,
-          borderRadius: BorderRadius.circular(18),
-        ),
-      );
-    }
-
-    return SizedBox(
-      height: carouselHeight,
-      child: Stack(
-        children: [
-          PageView.builder(
-            controller: _pageController,
-            itemCount: widget.items.length,
-            onPageChanged: (idx) {
-              setState(() => _currentPage = idx);
-            },
-            itemBuilder: (context, index) {
-              final item = widget.items[index];
-              final heroTag = 'discover:banner:$index:${item.id}';
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 5),
-                child: _CarouselSlide(
-                  key: ValueKey('carousel-slide-${item.id}-$index'),
-                  item: item,
-                  heroTag: heroTag,
-                  onTap: () => widget.onTap(item, heroTag: heroTag),
-                  onLongPress: widget.onLongPress,
-                ),
-              );
-            },
           ),
-
-          // Animated Pagination Dots
-          if (widget.items.length > 1)
-            Positioned(
-              right: 24,
-              bottom: 12,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: List.generate(
-                  widget.items.length.clamp(0, 6),
-                  (i) {
-                    final isActive = i == _currentPage % widget.items.length;
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      margin: const EdgeInsets.symmetric(horizontal: 2.5),
-                      width: isActive ? 16 : 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: isActive
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CarouselSlide extends StatefulWidget {
-  const _CarouselSlide({
-    super.key,
-    required this.item,
-    required this.heroTag,
-    required this.onTap,
-    this.onLongPress,
-  });
-
-  final MediaItem item;
-  final String heroTag;
-  final VoidCallback onTap;
-  final void Function(MediaItem, String)? onLongPress;
-
-  @override
-  State<_CarouselSlide> createState() => _CarouselSlideState();
-}
-
-class _CarouselSlideState extends State<_CarouselSlide> {
-  String? _logoUrl;
-  bool _pressed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadLogo();
-  }
-
-  @override
-  void didUpdateWidget(covariant _CarouselSlide oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.id != widget.item.id) {
-      _logoUrl = null;
-      _loadLogo();
-    }
-  }
-
-  Future<void> _loadLogo() async {
-    if (!sl.isRegistered<TitleLogoService>()) return;
-    try {
-      final url = await sl<TitleLogoService>().logoFor(widget.item);
-      if (mounted && url != null && url.isNotEmpty) {
-        setState(() => _logoUrl = url);
-      }
-    } catch (_) {}
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final imageUrl = widget.item.heroImage ?? widget.item.cover;
-
-    return AnimatedScale(
-      scale: _pressed ? 0.96 : 1.0,
-      duration: const Duration(milliseconds: 140),
-      curve: Curves.easeOutCubic,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        onLongPress: () => widget.onLongPress?.call(widget.item, widget.heroTag),
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp: (_) => setState(() => _pressed = false),
-        onTapCancel: () => setState(() => _pressed = false),
-        behavior: HitTestBehavior.opaque,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF16161D),
-              borderRadius: BorderRadius.circular(18),
-            ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
             child: Stack(
               fit: StackFit.expand,
               children: [
-                if (imageUrl != null && imageUrl.isNotEmpty)
+                if (photo != null && photo.isNotEmpty)
                   Hero(
                     tag: widget.heroTag,
                     child: CachedNetworkImage(
-                      imageUrl: imageUrl,
+                      imageUrl: photo,
                       fit: BoxFit.cover,
                       cacheManager: AppImageCache.cacheManagerOrDefault,
-                      errorWidget: (_, _, _) => Container(
-                        color: const Color(0xFF1E1E26),
+                      errorWidget: (_, __, ___) => Container(
+                        color: const Color(0xFF1E1A1D),
+                        child: const Icon(Icons.person_rounded, color: Colors.white24, size: 36),
                       ),
                     ),
                   )
                 else
-                  Container(color: const Color(0xFF1E1E26)),
-                // Bottom subtle gradient overlay for title legibility
-                const Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: 80,
+                  Container(
+                    color: const Color(0xFF1E1A1D),
+                    child: const Icon(Icons.person_rounded, color: Colors.white24, size: 36),
+                  ),
+
+                // Subtle bottom gradient vignette
+                const Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -1663,31 +1601,38 @@ class _CarouselSlideState extends State<_CarouselSlide> {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          Color(0xE6000000),
+                          Color(0x88000000),
+                          Color(0xDD000000),
                         ],
+                        stops: [0.60, 0.85, 1.0],
                       ),
                     ),
                   ),
                 ),
-                // Title logo or stylized display font in bottom-left
+
+                // Actor name
                 Positioned(
-                  left: 14,
-                  bottom: 12,
-                  right: 76,
-                  child: (_logoUrl != null && _logoUrl!.isNotEmpty)
-                      ? SizedBox(
-                          height: 38,
-                          child: Align(
-                            alignment: Alignment.bottomLeft,
-                            child: CachedNetworkImage(
-                              imageUrl: _logoUrl!,
-                              fit: BoxFit.contain,
-                              alignment: Alignment.bottomLeft,
-                              errorWidget: (_, __, ___) => _titleText(widget.item.title),
-                            ),
-                          ),
-                        )
-                      : _titleText(widget.item.title),
+                  left: 10,
+                  right: 10,
+                  bottom: 10,
+                  child: Text(
+                    widget.actor.name,
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      shadows: [
+                        Shadow(
+                          color: Color(0xDD000000),
+                          blurRadius: 6,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1696,133 +1641,36 @@ class _CarouselSlideState extends State<_CarouselSlide> {
       ),
     );
   }
-
-  Widget _titleText(String title) {
-    return Text(
-      title,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: AppText.display.copyWith(
-        fontSize: 16.5,
-        fontWeight: FontWeight.w800,
-        color: Colors.white,
-        shadows: const [
-          Shadow(
-            color: Color(0xCC000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-/// The circular glass filter button in top right of Discover header
-class _GlassFilterButton extends StatefulWidget {
-  const _GlassFilterButton({required this.onTap, this.bgColor});
+/// Compatibility wrapper for _DiscoverWiderCard used in _TpdbProviderScreen
+class _DiscoverWiderCard extends StatelessWidget {
+  const _DiscoverWiderCard({
+    required this.item,
+    required this.heroTag,
+    required this.width,
+    required this.height,
+    required this.onTap,
+    this.onLongPress,
+  });
 
+  final MediaItem item;
+  final String heroTag;
+  final double width;
+  final double height;
   final VoidCallback onTap;
-  final Color? bgColor;
-
-  @override
-  State<_GlassFilterButton> createState() => _GlassFilterButtonState();
-}
-
-class _GlassFilterButtonState extends State<_GlassFilterButton> {
-  bool _pressed = false;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    final bg = widget.bgColor ?? const Color(0x6618181E);
-    final iconColor = Color.lerp(
-      const Color(0xFFDEC5BF),
-      AppColors.accent,
-      0.12,
-    )!;
-    return GestureDetector(
-      onTap: widget.onTap,
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.90 : 1.0,
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOutCubic,
-        child: Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: bg,
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x66000000),
-                blurRadius: 18,
-                offset: Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Center(
-            child: Icon(
-              Icons.tune_rounded,
-              color: iconColor,
-              size: 22,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The circular glass chevron button matching home screen ContentRow header
-class _GlassChevronButton extends StatefulWidget {
-  const _GlassChevronButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  State<_GlassChevronButton> createState() => _GlassChevronButtonState();
-}
-
-class _GlassChevronButtonState extends State<_GlassChevronButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.onTap,
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.90 : 1.0,
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOutCubic,
-        child: ClipOval(
-          child: Container(
-            width: 28,
-            height: 28,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0x6618181E),
-            ),
-            child: const Center(
-              child: Padding(
-                padding: EdgeInsets.only(left: 1.5),
-                child: Icon(
-                  CupertinoIcons.chevron_right,
-                  size: 13,
-                  color: Color(0xDDFFFFFF),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+    return _DiscoverCinematicCard(
+      item: item,
+      heroTag: heroTag,
+      width: width,
+      height: height,
+      preferHeroImage: true,
+      onTap: onTap,
+      onLongPress: onLongPress,
     );
   }
 }

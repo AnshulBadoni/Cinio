@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:hugeicons/hugeicons.dart';
@@ -779,17 +780,24 @@ class _DockItem extends StatelessWidget {
         final itemColor = selected
             ? Color.lerp(Colors.white, activeAccent, 0.28)!
             : const Color(0xFF9E9EA6);
-        final label = tab.label;
+        final label = tab == DockTab.search ? 'Discover' : tab.label;
 
-        final Widget iconWidget = HugeIcon(
-          icon: _hugeIconFor(tab),
-          color: itemColor,
-          size: 21.2,
-          strokeWidth: selected ? 2.1 : 1.6,
-        );
+        final Widget iconWidget = tab == DockTab.search
+            ? Icon(
+                CupertinoIcons.compass,
+                color: selected ? Colors.white : itemColor,
+                size: 20.0,
+              )
+            : HugeIcon(
+                icon: _hugeIconFor(tab),
+                color: selected ? Colors.white : itemColor,
+                size: 21.2,
+                strokeWidth: selected ? 2.1 : 1.6,
+              );
 
         final navPrefs = sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : null;
         final showLabels = navPrefs?.showNavigationLabels ?? true;
+        final pillBg = Color.lerp(activeAccent, const Color(0xFF651B3D), 0.45)!.withValues(alpha: 0.88);
 
         return Material(
           color: Colors.transparent,
@@ -798,58 +806,77 @@ class _DockItem extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
             child: Center(
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 140),
+                duration: const Duration(milliseconds: 160),
                 curve: Curves.easeOutCubic,
                 margin: const EdgeInsets.symmetric(
                   horizontal: 2.0,
-                  vertical: 2.0,
+                  vertical: 3.0,
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                padding: EdgeInsets.symmetric(
+                  horizontal: selected ? 14.0 : 4.0,
+                  vertical: selected ? 6.0 : 2.0,
+                ),
                 decoration: BoxDecoration(
-                  color: selected
-                      ? activeAccent.withValues(alpha: 0.14)
-                      : Colors.transparent,
+                  color: selected ? pillBg : Colors.transparent,
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        height: 23,
-                        child: Center(
-                          child: _DockPop(selected: selected, child: iconWidget),
-                        ),
-                      ),
-                      if (showLabels && labelOpacity > 0.01) ...[
-                        SizedBox(height: 1.5 * (1.0 - t)),
-                        SizedBox(
-                          height: labelHeight,
-                          child: Opacity(
-                            opacity: labelOpacity,
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                label,
-                                maxLines: 1,
-                                style: TextStyle(
-                                  fontFamily: 'Inter',
-                                  fontSize: 11.0,
-                                  color: itemColor,
-                                  fontWeight: selected
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
-                                  letterSpacing: -0.1,
+                child: selected
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _DockPop(selected: selected, child: iconWidget),
+                          const SizedBox(width: 8),
+                          Text(
+                            label,
+                            maxLines: 1,
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 12.0,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.1,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            height: 23,
+                            child: Center(
+                              child: _DockPop(selected: selected, child: iconWidget),
+                            ),
+                          ),
+                          if (showLabels && labelOpacity > 0.01) ...[
+                            SizedBox(height: 1.5 * (1.0 - t)),
+                            SizedBox(
+                              height: labelHeight,
+                              child: Opacity(
+                                opacity: labelOpacity,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    label,
+                                    maxLines: 1,
+                                    style: TextStyle(
+                                      fontFamily: 'Inter',
+                                      fontSize: 11.0,
+                                      color: itemColor,
+                                      fontWeight: selected
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                      letterSpacing: -0.1,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
+                          ],
+                        ],
+                      ),
               ),
             ),
           ),
@@ -887,12 +914,20 @@ class _PixelDockItem extends StatelessWidget {
       0.10,
     )!;
 
-    final iconWidget = HugeIcon(
-      icon: _hugeIconFor(tab),
-      color: selectedTextColor,
-      size: 19.0,
-      strokeWidth: 2.2,
-    );
+    final label = tab == DockTab.search ? 'Discover' : tab.label;
+
+    final Widget iconWidget = tab == DockTab.search
+        ? Icon(
+            CupertinoIcons.compass,
+            color: selectedTextColor,
+            size: 19.0,
+          )
+        : HugeIcon(
+            icon: _hugeIconFor(tab),
+            color: selectedTextColor,
+            size: 19.0,
+            strokeWidth: 2.2,
+          );
 
     return Material(
       color: Colors.transparent,
@@ -919,7 +954,7 @@ class _PixelDockItem extends StatelessWidget {
                 const SizedBox(width: 7),
               ],
               Text(
-                tab.label,
+                label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
