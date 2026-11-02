@@ -100,70 +100,65 @@ class _SeeAllActorsScreenState extends State<SeeAllActorsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final square = sl.isRegistered<PlaybackPrefs>() &&
+        sl<PlaybackPrefs>().peopleCardStyle == 'square';
+    final width = MediaQuery.sizeOf(context).width;
+    final cols = width >= 900 ? 6 : (width >= 600 ? 5 : (square ? 3 : 4));
+    final aspectRatio = square ? 0.72 : 0.68;
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(widget.title),
-      body: ValueListenableBuilder<bool>(
-        valueListenable: PlaybackPrefs.peopleCardsSquareRevision,
-        builder: (context, _, __) {
-          final square = sl.isRegistered<PlaybackPrefs>() &&
-              sl<PlaybackPrefs>().peopleCardsSquare;
-          final width = MediaQuery.sizeOf(context).width;
-          final cols = width >= 900 ? 6 : (width >= 600 ? 5 : (square ? 3 : 4));
-          final aspectRatio = square ? 0.72 : 0.68;
-
-          return CustomScrollView(
-            controller: _scrollController,
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                sliver: SliverGrid(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: cols,
-                    childAspectRatio: aspectRatio,
-                    crossAxisSpacing: 14,
-                    mainAxisSpacing: 18,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final actor = _actors[index];
-                      return _GridActorCard(
-                        actor: actor,
-                        square: square,
-                        onTap: () => Navigator.of(context).push(
-                          PersonPage.route(actor),
-                        ),
-                      );
-                    },
-                    childCount: _actors.length,
-                  ),
-                ),
+      body: CustomScrollView(
+        controller: _scrollController,
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: cols,
+                childAspectRatio: aspectRatio,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 18,
               ),
-              if (_isLoadingMore)
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.accent,
-                        ),
-                      ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final actor = _actors[index];
+                  return _GridActorCard(
+                    actor: actor,
+                    square: square,
+                    onTap: () => Navigator.of(context).push(
+                      PersonPage.route(actor),
+                    ),
+                  );
+                },
+                childCount: _actors.length,
+              ),
+            ),
+          ),
+          if (_isLoadingMore)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.accent,
                     ),
                   ),
                 ),
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: MediaQuery.paddingOf(context).bottom + 24,
-                ),
               ),
-            ],
-          );
-        },
+            ),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: MediaQuery.paddingOf(context).bottom + 24,
+            ),
+          ),
+        ],
       ),
     );
   }

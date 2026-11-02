@@ -338,7 +338,7 @@ class _MyListViewState extends State<_MyListView> {
                         child: Container(
                           width: 7,
                           height: 7,
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: AppColors.accent,
                           ),
