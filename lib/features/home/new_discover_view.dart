@@ -24,7 +24,7 @@ import '../../core/ui/content_row.dart';
 import '../../core/ui/native_cover_provider.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/source_switcher.dart';
-import '../people/favorite_actors_screen.dart';
+import '../people/see_all_actors_screen.dart';
 import '../search/bloc/search_bloc.dart';
 import '../search/bloc/search_state.dart';
 
@@ -111,6 +111,69 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
   List<({String id, String label, String? repo})> _availableProviders = [];
   List<MediaItem> _providerItems = [];
   bool _loadingProvider = false;
+  final Map<String, double> _aspectRatios = {};
+
+  void _resolveImageAspect(String url, Map<String, String>? headers) {
+    if (_aspectRatios.containsKey(url)) return;
+    try {
+      final ImageProvider imageProvider = headers != null && headers.isNotEmpty
+          ? nativeCoverProvider(url, headers)
+          : CachedNetworkImageProvider(url);
+      imageProvider.resolve(const ImageConfiguration()).addListener(
+        ImageStreamListener((info, _) {
+          final w = info.image.width;
+          final h = info.image.height;
+          if (h > 0 && mounted) {
+            final ratio = w / h;
+            if (_aspectRatios[url] == null) {
+              setState(() {
+                _aspectRatios[url] = ratio;
+              });
+            }
+          }
+        }, onError: (_, __) {}),
+      );
+    } catch (_) {}
+  }
+
+  bool _isItemWide(MediaItem item) {
+    if (item.heroImage != null && item.heroImage!.isNotEmpty) return true;
+    if (_isTpdb) return true;
+    final provId = _selectedProviderId.toLowerCase();
+    if (provId.contains('tpdb') ||
+        provId.contains('theporndb') ||
+        provId.contains('jav') ||
+        provId.contains('scene') ||
+        provId.contains('tube') ||
+        provId.contains('porn') ||
+        provId.contains('adult')) {
+      return true;
+    }
+    final src = item.sourceId.toLowerCase();
+    if (src.contains('tpdb') ||
+        src.contains('performer') ||
+        src.contains('scene') ||
+        src.contains('jav') ||
+        src.contains('tube')) {
+      return true;
+    }
+    final cover = (item.cover ?? '').toLowerCase();
+    if (cover.contains('/w500/') ||
+        cover.contains('/original/') ||
+        cover.contains('backdrop') ||
+        cover.contains('fanart') ||
+        cover.contains('thumb') ||
+        cover.contains('preview') ||
+        cover.contains('screenshot') ||
+        cover.contains('banner')) {
+      return true;
+    }
+    final cached = _aspectRatios[item.cover];
+    if (cached != null && cached >= 1.15) {
+      return true;
+    }
+    return false;
+  }
 
   static const List<Color> _curatedVibrantColors = [
     Color(0xFF8B5CF6), // Vibrant Purple
@@ -574,7 +637,10 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
 
   @override
   Widget build(BuildContext context) {
+    final topPadding = MediaQuery.paddingOf(context).top;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    // Navbar height is 58.0; navbar bottom margin is (bottomInset > 0 ? bottomInset + 4 : 12.0)
+    final dockBottom = (bottomInset > 0 ? bottomInset + 4 : 12.0) + 58.0 + 8.0;
 
     return ValueListenableBuilder<int>(
       valueListenable: PlaybackPrefs.hideTitlesRevision,
@@ -620,7 +686,7 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
             CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                SliverToBoxAdapter(child: SizedBox(height: topPadding + 16)),
                 if (_isTpdb) ...[
                   // TPDB Mode: Popular, Trending, Top Rated, Performers, New Releases
                   SliverToBoxAdapter(
@@ -810,16 +876,16 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
                     child: _buildProviderSection(hideTitles, rowHeight),
                   ),
                 ],
-                // Bottom padding so content scrolls clear of the bottom floating search pill
-                const SliverToBoxAdapter(child: SizedBox(height: 96)),
+                // Bottom padding so content scrolls clear of both floating search pill and navbar dock
+                SliverToBoxAdapter(child: SizedBox(height: 160 + bottomInset)),
               ],
             ),
 
-            // Bottom Floating Search Bar Pill + Filter Toggle (Fixed at bottom)
+            // Bottom Floating Search Bar Pill + Filter Toggle (Fixed above navbar)
             Positioned(
               left: 16,
               right: 16,
-              bottom: bottomInset > 0 ? bottomInset + 10 : 16,
+              bottom: dockBottom,
               child: Builder(
                 builder: (context) {
                   final materialThemeBg = Color.lerp(
@@ -901,7 +967,26 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
               _GlassChevronButton(
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const FavoriteActorsScreen(),
+                    builder: (_) => SeeAllActorsScreen(
+                      title: _isTpdb ? 'Performers' : 'Actors',
+                      initialActors: _actors,
+                      onLoadMore: _isTpdb
+                          ? (_tpdb != null
+                              ? (page) async {
+                                  final media = await _tpdb!.trendingPerformers(page: page);
+                                  return media
+                                      .map((p) => PersonRef(
+                                            id: 0,
+                                            externalId: p.id.replaceFirst('tpdb:performer:', ''),
+                                            source: PersonSource.thePornDbPerformer,
+                                            name: p.title,
+                                            photo: p.cover,
+                                          ))
+                                      .toList();
+                                }
+                              : null)
+                          : (page) => _tmdb.getPopularPeople(page: page),
+                    ),
                   ),
                 ),
               ),
@@ -1052,11 +1137,11 @@ class _NewDiscoverViewState extends State<NewDiscoverView>
                       itemBuilder: (context, index) {
                         final item = _providerItems[index];
                         final heroTag = 'discover:provider:$index:${item.id}';
-                        final hasHero = item.heroImage != null &&
-                            item.heroImage!.isNotEmpty &&
-                            item.heroImage != item.cover;
+                        if (item.cover != null && item.cover!.isNotEmpty) {
+                          _resolveImageAspect(item.cover!, item.coverHeaders);
+                        }
+                        final isWide = _isItemWide(item);
                         final effectiveHeight = rowHeight - (hideTitles ? 0 : 26);
-                        final isWide = hasHero || item.type == ProviderType.anime;
                         final itemWidth = isWide
                             ? (effectiveHeight * (16 / 9)).clamp(200.0, 360.0)
                             : 140.0;
@@ -1165,6 +1250,8 @@ class _DiscoverWiderCardState extends State<_DiscoverWiderCard> {
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl = widget.item.heroImage ?? widget.item.cover;
+
     return GestureDetector(
       onTap: widget.onTap,
       onLongPress: widget.onLongPress,
@@ -1185,11 +1272,12 @@ class _DiscoverWiderCardState extends State<_DiscoverWiderCard> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                if (widget.item.cover != null && widget.item.cover!.isNotEmpty)
+                if (imageUrl != null && imageUrl.isNotEmpty)
                   Hero(
                     tag: widget.heroTag,
                     child: CachedNetworkImage(
-                      imageUrl: widget.item.cover!,
+                      imageUrl: imageUrl,
+                      httpHeaders: widget.item.coverHeaders,
                       fit: BoxFit.cover,
                       cacheManager: AppImageCache.cacheManagerOrDefault,
                       errorWidget: (_, _, _) => Container(color: const Color(0xFF1E1E26)),
@@ -1544,10 +1632,6 @@ class _CarouselSlideState extends State<_CarouselSlide> {
             decoration: BoxDecoration(
               color: const Color(0xFF16161D),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
-                width: 0.8,
-              ),
             ),
             child: Stack(
               fit: StackFit.expand,

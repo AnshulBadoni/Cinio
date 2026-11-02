@@ -322,13 +322,9 @@ class _RootShellState extends State<RootShell>
               if (sl.isRegistered<CatalogSourcePrefs>()) sl<CatalogSourcePrefs>(),
             ]),
             builder: (context, _) {
-              final isNewDiscover = sl.isRegistered<CatalogSourcePrefs>() &&
-                  sl<CatalogSourcePrefs>().newDiscoverPage;
-              // Hide dock when a Settings section is open, while actively searching,
-              // OR while on Discover page (so the bottom search bar has the spotlight).
+              // Hide dock when a Settings section is open or while actively searching.
               final hide = (dockHiddenBySection.value && _tab == DockTab.profile) ||
-                  (dockHiddenBySearch.value && _tab == DockTab.search) ||
-                  (_tab == DockTab.search && isNewDiscover);
+                  (dockHiddenBySearch.value && _tab == DockTab.search);
               if (hide) {
                 return const SizedBox.shrink();
               }

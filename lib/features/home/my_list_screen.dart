@@ -29,6 +29,7 @@ import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/theme/theme_controller.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/watch_history.dart';
@@ -226,6 +227,13 @@ class _MyListViewState extends State<_MyListView> {
   Widget _topSearchWithFilter(BuildContext context) {
     final hasFilter = _typeFilter != null;
     final hasSort = _sort != null;
+    final themedBg = Color.lerp(
+      ThemeController.materialYou
+          ? Color.lerp(AppColors.bg, AppColors.surface, 0.40)!
+          : const Color(0xFF161211),
+      AppColors.accent,
+      0.05,
+    )!;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
@@ -233,16 +241,16 @@ class _MyListViewState extends State<_MyListView> {
         children: [
           Expanded(
             child: Container(
-              height: 46,
+              height: 48,
               decoration: BoxDecoration(
-                color: AppColors.surface2,
-                borderRadius: BorderRadius.circular(16),
+                color: themedBg,
+                borderRadius: BorderRadius.circular(24),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.06),
-                  width: 0.5,
+                  color: Colors.white.withValues(alpha: 0.10),
+                  width: 0.65,
                 ),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
                   Icon(
@@ -266,7 +274,7 @@ class _MyListViewState extends State<_MyListView> {
                         ),
                         border: InputBorder.none,
                         isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                     ),
                   ),
@@ -299,18 +307,18 @@ class _MyListViewState extends State<_MyListView> {
             child: GestureDetector(
               onTap: () => _openMergedFilterSheet(context),
               child: Container(
-                height: 46,
-                width: 46,
+                height: 48,
+                width: 48,
                 decoration: BoxDecoration(
+                  shape: BoxShape.circle,
                   color: (hasFilter || hasSort)
-                      ? AppColors.accentSoft
-                      : AppColors.surface2,
-                  borderRadius: BorderRadius.circular(16),
+                      ? AppColors.accent.withValues(alpha: 0.22)
+                      : themedBg,
                   border: Border.all(
                     color: (hasFilter || hasSort)
-                        ? AppColors.accent.withValues(alpha: 0.3)
-                        : Colors.white.withValues(alpha: 0.06),
-                    width: 0.5,
+                        ? AppColors.accent.withValues(alpha: 0.45)
+                        : Colors.white.withValues(alpha: 0.10),
+                    width: 0.65,
                   ),
                 ),
                 child: Stack(
@@ -325,14 +333,14 @@ class _MyListViewState extends State<_MyListView> {
                     ),
                     if (hasFilter || hasSort)
                       Positioned(
-                        top: 10,
-                        right: 10,
+                        top: 11,
+                        right: 11,
                         child: Container(
                           width: 7,
                           height: 7,
-                          decoration: BoxDecoration(
-                            color: AppColors.accent,
+                          decoration: const BoxDecoration(
                             shape: BoxShape.circle,
+                            color: AppColors.accent,
                           ),
                         ),
                       ),

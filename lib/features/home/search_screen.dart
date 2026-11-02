@@ -660,6 +660,7 @@ class _SearchViewState extends State<_SearchView>
             child: isDiscoverMode
                 ? SafeArea(
                     key: const ValueKey('discover_view'),
+                    top: false,
                     bottom: false,
                     child: NewDiscoverView(
                       onBack: () {
